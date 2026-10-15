@@ -49,7 +49,13 @@ python3 x07asm.py send jeu.bas --port /dev/ttyUSB0 --ram 16
 python3 x07asm.py send jeu.bas --emu                       # essai complet sans câble
 ```
 
-1. **Une seule fois,** tapez sur le X-07 le petit programme BASIC `RECEPTEUR`, affiché par `recepteur`. Il reste en mémoire, même machine éteinte.
+1. **Une seule fois,** tapez sur le X-07 le petit programme BASIC `RECEPTEUR`, produit par la commande `recepteur` :
+   ```sh
+   python3 x07asm.py recepteur                       # à l'écran
+   python3 x07asm.py recepteur -o recepteur.bas      # dans un fichier
+   python3 x07asm.py recepteur --baud 1200           # pour une autre vitesse (1200, 2400, 4800, 8000)
+   ```
+   Utilisez la même vitesse ici et dans `send --baud`. Le X-07 garde ce programme en mémoire, même éteint ; vous pouvez aussi le sauvegarder sur cassette (`CSAVE"RECEPT"`).
 2. **Sur le PC,** lancez `send`. Un `.bas` est compilé au passage ; un `.asm`, un `.hex`, ou un `.bin` avec `--org` sont aussi acceptés.
 3. **Sur le X-07,** tapez la commande `CLEAR 50,&H…` affichée par le PC, puis `RUN`. Le transfert se termine par `OK. EXEC &H…`.
 

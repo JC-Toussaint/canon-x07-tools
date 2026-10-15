@@ -146,7 +146,13 @@ Si vous trouvez ces deux tensions là où le dessin les place, l'orientation est
 
 Le dossier `assembleur/` fournit le transfert complet. Le protocole par blocs de 16 octets, avec accusé de réception, convient au câblage minimal ; le détail est dans `assembleur/COMPILATEUR.md`.
 
-1. **Une seule fois, tapez le récepteur sur le X-07.** Affichez-le avec `python3 x07asm.py recepteur`. Il reste en mémoire, même machine éteinte.
+1. **Une seule fois, tapez le récepteur sur le X-07.** Depuis le dossier `assembleur/` :
+   ```sh
+   python3 x07asm.py recepteur                       # à l'écran
+   python3 x07asm.py recepteur -o recepteur.bas      # dans un fichier
+   python3 x07asm.py recepteur --baud 1200           # pour une autre vitesse (1200, 2400, 4800, 8000)
+   ```
+   Utilisez la même vitesse ici et dans `send --baud`. Le récepteur reste en mémoire, même machine éteinte.
 2. **Sur le PC :** `python3 x07asm.py send monprog.bas --port /dev/ttyUSB0 --ram 16`. Un `.bas` est compilé au passage ; un `.bin`, un `.hex` ou un `.asm` sont aussi acceptés.
 3. **Sur le X-07 :** `CLEAR 50,&H…` (la commande exacte est affichée par le PC), puis `RUN`. À la fin, le X-07 affiche `OK. EXEC &H…`.
 
