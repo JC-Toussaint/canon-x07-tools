@@ -759,6 +759,12 @@ remet \hex{0B9} à 1. Les programmes du livre qui écrivent
 \texttt{LD HL,\$0502 : LD (\$00B8),HL} placent donc le curseur en colonne 5,
 ligne 2.}
 
+\nota{Vérifié dans la ROM : à chaque \texttt{RUN} (\hex{D234}), la ROM remplit
+les 26 octets \hex{032A}--\hex{0343} avec \texttt{LD (HL),\$08} : \textbf{une
+variable sans suffixe est en double précision} (14 chiffres), comme sur les
+MSX, et non en simple précision. \texttt{PRINT 1/3} affiche donc
+\texttt{.33333333333333}.}
+
 \paragraph{BREAKFLAG (\hex{002B}).} Bit 0 : BREAK ; bit 1 : piles épuisées ;
 bit 3 : pile de la carte épuisée ; bit 6 : arrêt par la minuterie ;
 bit 7 : OFF.
@@ -843,6 +849,13 @@ Format pour \hex{BBAB} : A\,=\,0 : conversion brute ; sinon bit 7 :
 bit 3 : signe présent ; bit 2 : signe selon la valeur ; bit 0 : notation
 exponentielle.
 
+\nota{Vérifié dans la ROM : \hex{BBAB} commence par \texttt{XOR A} et ignore
+donc A, B et C : c'est la conversion \textbf{en format libre} (FOUT), celle
+qu'utilisent \texttt{PRINT} (\hex{EA2C}) et \texttt{STR\$} (\hex{D53D}). Elle
+rend HL = début du texte, terminé par \hex{00}, avec une espace en tête pour
+un nombre positif. Le format décrit ci-dessus correspond à une autre entrée
+(\hex{BEEE}, \texttt{PRINT USING}).}
+
 \subsection{Arithmétique}
 \begin{routines}
 CCC6 & HL, DE ; 1D9 = 2 & addition entière & HL (DE conservé) ; en cas de dépassement : accumulateur, type = 8 & \\
@@ -858,6 +871,21 @@ B200 & idem & accumulateur $-$ accumulateur 2 & accumulateur & \\
 B376 & idem & multiplication & accumulateur & \\
 B42F & idem & accumulateur / accumulateur 2 & accumulateur & \\
 \end{routines}
+\nota{Vérifié dans la ROM : les routines « simple précision » ne calculent pas
+en simple précision. \hex{CDA9} range BC:DE dans l'accumulateur 2 (C en
+\hex{049F}, B, E, D ensuite), complète l'accumulateur par des zéros
+(\hex{CB98}) et saute dans \hex{B20E} : \textbf{le résultat est en double
+précision} (type 8). L'arrondi à 6 chiffres n'a lieu qu'au rangement dans une
+variable simple ou par \texttt{CSNG}. L'évaluateur choisit la routine dans une
+table par type (\hex{F0FF} double, \hex{F10B} simple, \hex{F117} entier :
+addition, soustraction, multiplication, division, puissance, comparaison),
+l'opérande gauche ayant été empilé, puis saute en \hex{F9E4}. Pour la
+comparaison en double (\hex{CAD9}), A vaut 1 si l'accumulateur est inférieur à
+l'accumulateur 2, $-1$ s'il est supérieur, 0 s'ils sont égaux. Deux
+comportements en découlent : un dépassement entier passe en double
+(\texttt{PRINT 30000+30000} affiche 60000), et \texttt{CINT} (\hex{CAE0})
+\textbf{tronque} au lieu d'arrondir (\texttt{CINT(2.6)} = 2,
+\texttt{CINT(-2.6)} = $-2$).}
 
 \subsubsection*{Comparaisons}
 Dans ce tableau, A est le registre \reg{A} du Z80.
@@ -909,6 +937,14 @@ de la table des vecteurs (§\,\ref{sec:zone}).}
 \bottomrule
 \end{tabular}
 \end{center}
+\nota{Vérifié dans la ROM (exécution de \hex{FC2F}) : la ligne de l'entier est
+fausse. Pour un entier, RST 30 rend \textbf{C = 1, Z = 0, M} (A = $-1$).
+Ainsi, C = 1 pour l'entier, la chaîne et la simple précision, et C = 0 pour la
+double précision : le répartiteur des fonctions (\hex{FBEB}) convertit en
+double l'argument de \texttt{SQR}, \texttt{RND}, \texttt{LOG}, \texttt{EXP},
+\texttt{COS}, \texttt{SIN}, \texttt{TAN} et \texttt{ATN} par
+\texttt{CALL C,\$CB90}. Ces routines donnent un résultat faux si on leur passe
+directement un entier.}
 
 \subsubsection*{Transferts de données}
 \begin{routines}
