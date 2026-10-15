@@ -1,10 +1,18 @@
 """Compilateur BASIC -> assembleur Z80 pour le Canon X-07.
 
-Dialecte : celui du BASIC du X-07 (Microsoft), avec des nombres ENTIERS
-16 bits (-32768..32767) et des chaînes de STRCAP caractères au plus.
-Le source produit s'assemble avec x07asm.asm ; il se lance par EXEC.
+Dialecte : celui du BASIC du X-07 (Microsoft), avec ses types :
+  entier (%)  : 16 bits, calculé dans HL (rapide) ;
+  simple (!)  : 6 chiffres BCD ;   double (#) : 14 chiffres BCD (défaut du X-07) ;
+  chaîne ($)  : au plus STRCAP caractères.
+DEFINT, DEFSNG, DEFDBL et DEFSTR changent le type par défaut d'une lettre.
 
-Voir COMPILATEUR.md pour la liste des instructions reconnues.
+Les nombres non entiers sont calculés par les routines de la ROM, dans son
+accumulateur (FAC, $044E) avec le type réel en VALTYP ($01D9), exactement
+comme l'interpréteur : mêmes conversions, mêmes arrondis, même affichage.
+Les constantes sont converties à la compilation par la routine FIN de la ROM
+(il faut donc ROM_x07/x07.bin pour compiler des nombres non entiers).
+
+Voir COMPILATEUR.md.
 """
 import re
 
@@ -17,7 +25,7 @@ from . import runtime
 KEYWORDS = sorted("""
 END FOR NEXT DATA INPUT DIM READ LET GOTO GOSUB RUN IF RESTORE RETURN REM STOP
 ELSE THEN TO STEP ON OUT POKE PRINT LPRINT CLEAR CLS LOCATE PSET PRESET LINE
-CIRCLE BEEP EXEC DEF FN DEFINT DEFSNG DEFDBL DEFSTR WHILE WEND TR MOTOR ERROR
+CIRCLE BEEP EXEC DEFFN FN DEFINT DEFSNG DEFDBL DEFSTR WHILE WEND TR MOTOR ERROR
 RESUME LIST LLIST CONT NEW CONSOLE COLOR OFF SLEEP DIR DELETE FSET PAINT LOAD
 SAVE INIT ERASE CLOAD CSAVE SCREEN USING STRING$ INSTR INKEY$ INP VARPTR USR
 SNS ALM$ DATE$ TIME$ START$ FONT$ KEY$ NOT EQV IMP AND OR XOR MOD SGN INT ABS
@@ -52,8 +60,12 @@ def _kw_at(up, i):
     return None
 
 
+_NUMBER = re.compile(r"(\d*\.?\d*)(?:([ED])([+-]?\d+))?([%!#]?)", re.I)
+
+
 def tokenize(text, line=None):
-    """Découpe une ligne (sans son numéro) en lexèmes."""
+    """Découpe une ligne (sans son numéro) en lexèmes.  Un nombre donne
+    ('num', texte) ; son type est fixé par l'analyse syntaxique."""
     toks = []
     up = text.upper()
     i, n = 0, len(text)
@@ -69,17 +81,10 @@ def tokenize(text, line=None):
             toks.append(Tok("str", text[i + 1:j]))
             i = j + 1
             continue
-        if c.isdigit() or c == ".":
-            j = i
-            while j < n and text[j].isdigit():
-                j += 1
-            if j < n and text[j] in ".Ee" and not (text[j] in "Ee" and _kw_at(up, j)):
-                raise CompileError("nombre décimal non géré (entiers seulement) : %s"
-                                   % text[i:j + 3], line)
-            if j < n and text[j] in "%!#":
-                j += 1
-            toks.append(Tok("num", int(text[i:j].rstrip("%!#") or "0")))
-            i = j
+        if c.isdigit() or (c == "." and i + 1 < n and text[i + 1].isdigit()):
+            m = _NUMBER.match(up, i)             # « 1E » sans chiffres : pas d'exposant
+            toks.append(Tok("num", m.group(0)))
+            i = m.end()
             continue
         if c == "&":
             base, j = 8, i + 1
@@ -93,7 +98,10 @@ def tokenize(text, line=None):
                 k += 1
             if k == j:
                 raise CompileError("nombre hexadécimal incorrect", line)
-            toks.append(Tok("num", int(up[j:k], base)))
+            v = int(up[j:k], base)
+            if v > 0xFFFF:
+                raise CompileError("nombre hexadécimal trop grand", line)
+            toks.append(Tok("int", _s16(v)))
             i = k
             continue
         if c == "'":
@@ -127,10 +135,7 @@ def tokenize(text, line=None):
                 j += 1
             if j < n and text[j] in "$%!#":
                 j += 1
-            name = up[i:j]
-            if name[-1] in "!#":
-                name = name[:-1]
-            toks.append(Tok("id", name))
+            toks.append(Tok("id", up[i:j]))
             i = j
             continue
         if text[i:i + 2] in OPS2:
@@ -164,48 +169,112 @@ def split_data(raw):
     return items
 
 
-# ======================================================================
-#  Analyse syntaxique
-# ======================================================================
-#  Expressions : ('num',v) ('str',s) ('var',nom) ('arr',nom,[indices])
-#                ('un',op,e) ('bin',op,a,b) ('call',fonction,[args])
-#                ('fn',nom,[args])
+def _s16(v):
+    v &= 0xFFFF
+    return v - 65536 if v > 32767 else v
 
-NUM_FUNCS = {   # nom : types des arguments
+
+# ======================================================================
+#  Types
+# ======================================================================
+#  Type d'une variable : 'i' entier, 'f' simple, 'd' double, 's' chaîne.
+#  Genre d'une expression : 'i' (dans HL), 'x' (nombre dans FAC), 's'.
+
+SUFFIX_TYPE = {"%": "i", "!": "f", "#": "d", "$": "s"}
+
+
+class Types:
+    """Types par défaut des 26 lettres (DEFINT...), double au départ comme le X-07."""
+
+    def __init__(self, default="d"):
+        self.letters = {chr(65 + k): default for k in range(26)}
+
+    def set_range(self, a, b, t):
+        for k in range(ord(a), ord(b) + 1):
+            self.letters[chr(k)] = t
+
+    def of(self, name):
+        if name[-1] in SUFFIX_TYPE:
+            return SUFFIX_TYPE[name[-1]]
+        return self.letters[name[0]]
+
+    def base(self, name):
+        return name[:-1] if name[-1] in SUFFIX_TYPE else name
+
+
+# Expressions : ('int',v) ('flt',texte) ('str',s) ('var',nom) ('arr',nom,[indices])
+#               ('un',op,e) ('bin',op,a,b) ('call',fonction,[args]) ('fn',nom,[args])
+
+NUM_FUNCS = {   # nom : types des arguments ('n' nombre, 's' chaîne)
     "ABS": "n", "SGN": "n", "INT": "n", "FIX": "n", "CINT": "n", "CSNG": "n",
     "CDBL": "n", "PEEK": "n", "INP": "n", "RND": "n", "LEN": "s", "ASC": "s",
     "VAL": "s", "POINT": "nn", "STICK": "n", "STRIG": "n", "CSRLIN": "",
-    "POS": "n",
+    "POS": "n", "SQR": "n", "LOG": "n", "EXP": "n", "SIN": "n", "COS": "n",
+    "TAN": "n", "ATN": "n",
 }
 STR_FUNCS = {
     "CHR$": "n", "STR$": "n", "HEX$": "n", "LEFT$": "sn", "RIGHT$": "sn",
     "MID$": "sn", "STRING$": "n?", "INKEY$": "",
 }
 OPTIONAL_LAST = {"MID$": "n"}       # MID$(s,p[,n])
+X_FUNCS = {"CSNG": "FCSNG", "CDBL": "FCDBL", "SQR": "FSQR", "LOG": "FLOG", "EXP": "FEXP",
+           "SIN": "FSIN", "COS": "FCOS", "TAN": "FTAN", "ATN": "FATN", "RND": "FRND",
+           "VAL": None}
+SAME_FUNCS = {"ABS": "FABS", "INT": "FINT", "FIX": "FFIX"}   # genre de l'argument
 
 REL = ("=", "<>", "<", ">", "<=", ">=")
+INT_OPS = ("\\", "MOD", "AND", "OR", "XOR", "EQV", "IMP")
+ROM_OPS = {"+": 0, "-": 1, "*": 2, "/": 3, "^": 4}            # index du répartiteur
 
 
-def etype(e):
+def etype(e, ty):
     k = e[0]
-    if k in ("num", "un", "fn"):
-        return "n"
+    if k == "int":
+        return "i"
+    if k == "flt":
+        return "x"
     if k == "str":
         return "s"
     if k in ("var", "arr"):
-        return "s" if e[1].endswith("$") else "n"
+        t = ty.of(e[1])
+        return t if t in "is" else "x"
+    if k == "un":
+        return "i" if e[1] == "NOT" else etype(e[2], ty)
+    if k == "fn":
+        t = ty.of(e[1])
+        return t if t in "is" else "x"
     if k == "call":
-        return "s" if e[1] in STR_FUNCS else "n"
+        if e[1] in STR_FUNCS:
+            return "s"
+        if e[1] in SAME_FUNCS:
+            return etype(e[2][0], ty)
+        return "x" if e[1] in X_FUNCS else "i"
     if k == "bin":
-        if e[1] in REL:
-            return "n"
-        return etype(e[2]) if e[1] == "+" else "n"
+        op = e[1]
+        if op in REL or op in INT_OPS:
+            return "i"
+        a, b = etype(e[2], ty), etype(e[3], ty)
+        if op == "+" and a == "s":
+            return "s"
+        if op in ("/", "^"):
+            return "x"
+        return "i" if a == b == "i" else "x"
     raise ValueError(e)
 
 
+# ======================================================================
+#  Analyse syntaxique
+# ======================================================================
+
 class Parser:
-    def __init__(self, toks, line):
-        self.t, self.i, self.line = toks, 0, line
+    def __init__(self, toks, line, ty):
+        self.t, self.i, self.line, self.ty = toks, 0, line, ty
+
+    def et(self, e):
+        return etype(e, self.ty)
+
+    def num(self, e):
+        return self.et(e) in "ix"
 
     def err(self, msg):
         raise CompileError(msg, self.line)
@@ -256,25 +325,30 @@ class Parser:
 
     # ---------------------------------------------------- expressions
     def expr(self):
+        e = self.eqv()
+        while self.iskw("IMP"):
+            self.next()
+            e = self._binn("IMP", e, self.eqv())
+        return e
+
+    def eqv(self):
+        e = self.xor()
+        while self.iskw("EQV"):
+            self.next()
+            e = self._binn("EQV", e, self.xor())
+        return e
+
+    def xor(self):
         e = self.or_()
         while self.iskw("XOR"):
             self.next()
-            e = ("bin", "XOR", e, self.or_())
-        return self._check(e)
+            e = self._binn("XOR", e, self.or_())
+        return e
 
     def nexpr(self):
         e = self.expr()
-        if etype(e) != "n":
+        if not self.num(e):
             self.err("expression numérique attendue")
-        return e
-
-    def sexpr(self):
-        e = self.expr()
-        if etype(e) != "s":
-            self.err("expression chaîne attendue")
-        return e
-
-    def _check(self, e):
         return e
 
     def or_(self):
@@ -303,7 +377,7 @@ class Parser:
         while self.cur.kind == "op" and self.cur.val in REL:
             op = self.next().val
             b = self.add()
-            if etype(e) != etype(b):
+            if (self.et(e) == "s") != (self.et(b) == "s"):
                 self.err("comparaison entre une chaîne et un nombre")
             e = ("bin", op, e, b)
         return e
@@ -313,7 +387,7 @@ class Parser:
         while self.cur.kind == "op" and self.cur.val in "+-":
             op = self.next().val
             b = self.mod()
-            if op == "+" and etype(e) == "s" and etype(b) == "s":
+            if op == "+" and self.et(e) == "s" and self.et(b) == "s":
                 e = ("bin", "+", e, b)
             else:
                 e = self._binn(op, e, b)
@@ -328,7 +402,7 @@ class Parser:
     def idiv(self):
         e = self.mul()
         while self.accept_op("\\"):
-            e = self._binn("/", e, self.mul())
+            e = self._binn("\\", e, self.mul())
         return e
 
     def mul(self):
@@ -354,7 +428,7 @@ class Parser:
         return e
 
     def _needn(self, e):
-        if etype(e) != "n":
+        if not self.num(e):
             self.err("opération numérique sur une chaîne")
 
     def _binn(self, op, a, b):
@@ -362,13 +436,25 @@ class Parser:
         self._needn(b)
         return ("bin", op, a, b)
 
+    def number(self, text):
+        """Constante : entier si elle s'écrit comme tel et tient sur 16 bits."""
+        t = text.upper()
+        if re.fullmatch(r"\d+%?", t):
+            v = int(t.rstrip("%"))
+            if v <= 32767:
+                return ("int", v)
+            if t.endswith("%"):
+                self.err("constante entière trop grande : %s" % text)
+        return ("flt", t)
+
     def atom(self):
         t = self.cur
         if t.kind == "num":
             self.next()
-            if t.val > 65535:
-                self.err("nombre trop grand : %d" % t.val)
-            return ("num", t.val - 65536 if t.val > 32767 else t.val)
+            return self.number(t.val)
+        if t.kind == "int":
+            self.next()
+            return ("int", t.val)
         if t.kind == "str":
             self.next()
             return ("str", t.val)
@@ -400,8 +486,8 @@ class Parser:
                 return ("call", name, args)
             self.err("« %s » inattendu dans une expression%s"
                      % (name, " (fonction non gérée)" if name.endswith("$") or name in
-                        ("SQR", "SIN", "COS", "TAN", "ATN", "LOG", "EXP", "INSTR",
-                         "FRE", "VARPTR", "USR", "ERR", "ERL", "TKEY", "SNS") else ""))
+                        ("INSTR", "FRE", "VARPTR", "USR", "ERR", "ERL", "TKEY", "SNS")
+                        else ""))
         if t.kind == "id":
             self.next()
             if self.accept_op("("):
@@ -423,7 +509,9 @@ class Parser:
             self.err("nombre d'arguments incorrect pour %s" % name)
         for k, a in enumerate(args):
             want = sig[k] if k < len(sig) else "n"
-            if want != "?" and etype(a) != want:
+            if want == "?":
+                continue
+            if (want == "s") != (self.et(a) == "s"):
                 self.err("argument %d de %s : %s attendu" % (
                     k + 1, name, "nombre" if want == "n" else "chaîne"))
 
@@ -450,14 +538,17 @@ class Parser:
 
     def line_number(self):
         t = self.cur
-        if t.kind != "num":
+        if t.kind != "num" or not t.val.isdigit():
             self.err("numéro de ligne attendu%s" % self._near())
         self.next()
-        return t.val
+        return int(t.val)
 
     def statement(self):
         t = self.cur
         if t.kind == "id":
+            nxt = self.t[self.i + 1]
+            if t.val == "DEF" and nxt.kind == "kw" and nxt.val == "FN":
+                self.err("écrivez DEFFN en un seul mot (le X-07 refuse « DEF FN »)")
             return self._let()
         if t.kind != "kw":
             self.err("instruction attendue%s" % self._near())
@@ -471,7 +562,7 @@ class Parser:
         tgt = self.target()
         self.expect_op("=")
         e = self.expr()
-        if etype(e) != etype(tgt):
+        if (self.et(e) == "s") != (self.et(tgt) == "s"):
             self.err("types incompatibles dans l'affectation")
         return ("let", tgt, e)
 
@@ -493,10 +584,7 @@ class Parser:
                 items.append((k.lower(), e))
             else:
                 items.append(("expr", self.expr()))
-        nl = not items or items[-1][0] not in ("sep", "tab", "spc") or \
-            (items[-1][0] in ("tab", "spc") and False)
-        if items and items[-1][0] in ("tab", "spc"):
-            nl = True
+        nl = not items or items[-1][0] != "sep"
         return ("print", items, nl)
 
     def st_IF(self):
@@ -534,13 +622,13 @@ class Parser:
 
     def st_FOR(self):
         v = self.target()
-        if v[0] != "var" or v[1].endswith("$"):
+        if v[0] != "var" or self.ty.of(v[1]) == "s":
             self.err("variable numérique simple attendue après FOR")
         self.expect_op("=")
         a = self.nexpr()
         self.expect_kw("TO")
         b = self.nexpr()
-        s = self.nexpr() if self.accept_kw("STEP") else ("num", 1)
+        s = self.nexpr() if self.accept_kw("STEP") else ("int", 1)
         return ("for", v[1], a, b, s)
 
     def st_NEXT(self):
@@ -565,7 +653,7 @@ class Parser:
                 self.err("DIM : tableau attendu")
             dims = []
             for e in t[2]:
-                if e[0] != "num" or e[1] < 0:
+                if e[0] != "int" or e[1] < 0:
                     self.err("DIM : dimension constante attendue")
                 dims.append(e[1])
             decls.append((t[1], dims))
@@ -632,10 +720,9 @@ class Parser:
         prompt, q = None, True
         if self.cur.kind == "str":
             prompt = self.next().val
-            if self.accept_op(","):
-                q = False
-            else:
-                self.expect_op(";")
+            if self.isop(","):
+                self.err("INPUT : « ; » attendu après le texte (le X-07 refuse « , »)")
+            self.expect_op(";")
         tg = [self.target()]
         while self.accept_op(","):
             tg.append(self.target())
@@ -668,18 +755,17 @@ class Parser:
             lines.append(self.line_number())
         return ("on", e, kind, lines)
 
-    def st_DEF(self):
-        self.expect_kw("FN")
+    def st_DEFFN(self):
         if self.cur.kind != "id":
             self.err("nom de fonction attendu")
         name = self.next().val
-        if name.endswith("$"):
+        if self.ty.of(name) == "s":
             self.err("fonctions chaîne (DEF FN...$) non gérées")
         params = []
         if self.accept_op("("):
             while True:
                 p = self.target()
-                if p[0] != "var" or p[1].endswith("$"):
+                if p[0] != "var" or self.ty.of(p[1]) == "s":
                     self.err("paramètre numérique attendu")
                 params.append(p[1])
                 if not self.accept_op(","):
@@ -688,15 +774,81 @@ class Parser:
         self.expect_op("=")
         return ("deffn", name, params, self.nexpr())
 
-    def _ignore(self):
+    def _deftype(self):
+        """DEFINT A-C,X : les plages ont déjà été appliquées (prescan)."""
         while not self.at_end():
             self.next()
         return ("nop",)
 
-    st_CLEAR = st_DEFINT = st_DEFSNG = st_DEFDBL = _ignore
+    st_DEFINT = st_DEFSNG = st_DEFDBL = st_DEFSTR = _deftype
 
-    def st_DEFSTR(self):
-        self.err("DEFSTR non géré : utilisez des noms terminés par $")
+    def st_CLEAR(self):
+        while not self.at_end():
+            self.next()
+        return ("nop",)
+
+
+def scan_deftypes(toks, ty, where):
+    """Applique les DEFINT/DEFSNG/DEFDBL/DEFSTR d'une ligne."""
+    kinds = {"DEFINT": "i", "DEFSNG": "f", "DEFDBL": "d", "DEFSTR": "s"}
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        i += 1
+        if t.kind == "kw" and t.val in kinds:
+            while i < len(toks) and toks[i].kind == "id":
+                a = toks[i].val
+                i += 1
+                b = a
+                if i + 1 < len(toks) and toks[i].kind == "op" and toks[i].val == "-":
+                    b = toks[i + 1].val
+                    i += 2
+                if not (len(a) == 1 and len(b) == 1 and a.isalpha() and b.isalpha()):
+                    raise CompileError("%s : lettres attendues" % t.val, where)
+                ty.set_range(a, b, kinds[t.val])
+                if i < len(toks) and toks[i].kind == "op" and toks[i].val == ",":
+                    i += 1
+                else:
+                    break
+
+
+# ======================================================================
+#  Constantes : conversion par la ROM
+# ======================================================================
+
+_fin_cache = {}
+
+
+def rom_constant(text):
+    """(octets BCD sur 8, type 4 ou 8, ou 2 pour un entier) calculés par FIN."""
+    if text in _fin_cache:
+        return _fin_cache[text]
+    from . import emu
+    from .sim import EXIT, SimError
+    try:
+        m = emu.boot(16)
+    except SimError as e:
+        raise CompileError("nombre %s : %s" % (text, e))
+    m.strict = False
+    err = {}
+
+    def hook(c):
+        err["e"] = c.r["E"]
+        raise SimError("erreur")
+    m.mem[0xAB:0xAE] = bytes([0xC3, 0xF0, 0x7F])
+    m.traps[0x7FF0] = hook
+    b = text.encode("ascii") + b"\0"
+    m.mem[0x3000:0x3000 + len(b)] = b
+    m.set16("HL", 0x3000)
+    m.push(EXIT)
+    m.pc = 0xBA21
+    try:
+        m.run(200000)
+    except SimError:
+        raise CompileError("nombre %s : dépassement de capacité (OV)" % text)
+    r = (bytes(m.mem[0x044E:0x0456]), m.mem[0x01D9])
+    _fin_cache[text] = r
+    return r
 
 
 # ======================================================================
@@ -707,53 +859,60 @@ _NUM_LINE = re.compile(r"^\s*(\d+)\s?(.*)$")
 
 
 def _fold(e):
-    """Calcul des sous-expressions constantes (arithmétique 16 bits)."""
+    """Calcul des sous-expressions entières constantes.  Un débordement
+    donne une constante double, comme le X-07 (300*300 -> 90000)."""
     if e[0] == "un":
         a = _fold(e[2])
-        if a[0] == "num":
-            v = -a[1] if e[1] == "-" else ~a[1]
-            return ("num", _s16(v))
+        if a[0] == "int":
+            if e[1] == "NOT":
+                return ("int", _s16(~a[1]))
+            if a[1] != -32768:
+                return ("int", -a[1])
         return ("un", e[1], a)
     if e[0] == "bin":
         a, b = _fold(e[2]), _fold(e[3])
-        if a[0] == "num" and b[0] == "num":
-            x, y, op = a[1], b[1], e[1]
+        op = e[1]
+        if a[0] == "int" and b[0] == "int" and op not in ("/", "^"):
+            x, y = a[1], b[1]
             try:
                 v = {"+": lambda: x + y, "-": lambda: x - y, "*": lambda: x * y,
-                     "/": lambda: int(x / y), "MOD": lambda: x - y * int(x / y),
+                     "\\": lambda: int(x / y), "MOD": lambda: x - y * int(x / y),
                      "AND": lambda: x & y, "OR": lambda: x | y, "XOR": lambda: x ^ y,
+                     "EQV": lambda: ~(x ^ y), "IMP": lambda: ~x | y,
                      "=": lambda: -(x == y), "<>": lambda: -(x != y),
                      "<": lambda: -(x < y), ">": lambda: -(x > y),
-                     "<=": lambda: -(x <= y), ">=": lambda: -(x >= y),
-                     "^": lambda: x ** y if y >= 0 else 0}[op]()
-                return ("num", _s16(v))
+                     "<=": lambda: -(x <= y), ">=": lambda: -(x >= y)}[op]()
             except ZeroDivisionError:
-                pass
-        return ("bin", e[1], a, b)
+                return ("bin", op, a, b)
+            if -32768 <= v <= 32767:
+                return ("int", v)
+            return ("flt", "%d#" % v)
+        return ("bin", op, a, b)
     if e[0] in ("arr", "call", "fn"):
         return (e[0], e[1], [_fold(x) for x in e[2]])
     return e
 
 
-def _s16(v):
-    v &= 0xFFFF
-    return v - 65536 if v > 32767 else v
-
-
 def _label(name):
-    return re.sub(r"[^A-Z0-9]", "_", name.replace("$", "").replace("%", "_I"))
+    return re.sub(r"[^A-Z0-9]", "_", name)
+
+
+TYPE_TAG = {"i": "I", "f": "F", "d": "D"}
+TYPE_SIZE = {"i": 2, "f": 4, "d": 8}
 
 
 class Compiler:
-    def __init__(self, strcap=80, brk=True, debug=False, bounds=True):
+    def __init__(self, strcap=80, brk=True, debug=False, bounds=True, default="d"):
         if not 1 <= strcap <= 254:
             raise CompileError("capacité des chaînes entre 1 et 254")
         self.strcap, self.brk, self.debug, self.bounds = strcap, brk, debug, bounds
+        self.default = default
         self.warnings = []
 
     # ---------------------------------------------------- lecture
     def parse(self, text):
-        lines = []
+        self.ty = Types(self.default)
+        raw_lines = []
         last = -1
         for n, raw in enumerate(text.splitlines(), 1):
             if not raw.strip():
@@ -767,18 +926,27 @@ class Compiler:
             else:
                 num, body = None, raw
             where = num if num is not None else "(source %d)" % n
-            p = Parser(tokenize(body, where), where)
+            toks = tokenize(body, where)
+            scan_deftypes(toks, self.ty, where)
+            raw_lines.append((num, toks, raw.strip(), where))
+        lines = []
+        for num, toks, src, where in raw_lines:
+            p = Parser(toks, where, self.ty)
             stmts = p.statements()
             if p.iskw("ELSE"):
                 p.err("ELSE sans IF")
-            lines.append((num, stmts, raw.strip(), where))
+            lines.append((num, stmts, src, where))
         return lines
+
+    def et(self, e):
+        return etype(e, self.ty)
 
     # ---------------------------------------------------- compilation
     def compile(self, text, name="PROG", org=0x1000):
         self.lines = self.parse(text)
         self.code = []
         self.lits = {}
+        self.flits = {}          # texte -> (étiquette, octets, type)
         self.vars = {}           # étiquette -> taille
         self.arrays = {}         # nom -> dimensions
         self.temps = set()
@@ -803,7 +971,6 @@ class Compiler:
             if self.debug and num is not None:
                 self.emit("LD   HL,%d" % num)
                 self.emit("LD   (RT_LINE),HL")
-                self.used.add("RT_LINE")
             for s in stmts:
                 self.stmt(s)
         if self.fors:
@@ -812,14 +979,13 @@ class Compiler:
             raise CompileError("WHILE sans WEND", self.whiles[-1][1])
         self.emit("")
         self.emit("JP   RT_END")
-        self.used.add("RT_END")
         self._gen_fns()
         return self._assemble_text(name, org)
 
     def _prescan(self):
         self.targets = set()
-        self.data = []           # (ligne, texte)
-        self.data_at = {}        # ligne -> indice du premier élément
+        self.data = []
+        self.data_at = {}
         walk = []
 
         def visit(stmts, num):
@@ -844,20 +1010,22 @@ class Compiler:
                 self._need_line(s[1], where)
             elif k == "dim":
                 for name, dims in s[1]:
-                    if name in self.arrays:
+                    key = self.akey(name)
+                    if key in self.arrays:
                         raise CompileError("tableau %s dimensionné deux fois" % name, where)
-                    self.arrays[name] = dims
+                    self.arrays[key] = dims
             elif k == "deffn":
-                if s[1] in self.fns:
+                key = self.vkey(s[1])
+                if key in self.fns:
                     raise CompileError("FN%s défini deux fois" % s[1], where)
-                self.fns[s[1]] = (s[2], _fold(s[3]), where)
+                self.fns[key] = (s[1], s[2], _fold(s[3]), where)
             elif k == "data":
                 if isinstance(where, int):
                     self.data_at.setdefault(where, len(self.data))
                 for item in s[1]:
                     if len(item) > 254:
                         raise CompileError("élément DATA trop long", where)
-                    self.data.append(item)
+                    self.data.append((where if isinstance(where, int) else 0, item))
 
     def _need_line(self, n, where):
         if n not in self.linenums:
@@ -884,35 +1052,59 @@ class Compiler:
             self.lits[s] = "LIT_%d" % (len(self.lits) + 1)
         return self.lits[s]
 
+    def flit(self, text):
+        """Constante flottante convertie par la ROM -> (étiquette, type)."""
+        if text not in self.flits:
+            try:
+                data, t = rom_constant(text)
+            except CompileError as e:
+                raise CompileError(e.msg, self.where)
+            self.flits[text] = ("FLT_%d" % (len(self.flits) + 1), data, t)
+        lab, data, t = self.flits[text]
+        return lab, t
+
     def tmp(self, d):
         d += self.tmpbase
         self.temps.add(d)
         return "TMP_%d" % d
 
+    def vkey(self, name):
+        return (self.ty.base(name), self.ty.of(name))
+
+    def akey(self, name):
+        return ("A",) + self.vkey(name)
+
     def var(self, name):
+        """Étiquette d'une variable simple (selon son type)."""
         if name in self.fnparams:
             return self.fnparams[name]
-        if name.endswith("$"):
-            lab = "S_" + _label(name)
+        base, t = self.vkey(name)
+        if t == "s":
+            lab = "S_" + _label(base)
             self.vars[lab] = self.strcap + 1
         else:
-            lab = "V_" + _label(name)
-            self.vars[lab] = 2
+            lab = "V_%s_%s" % (_label(base), TYPE_TAG[t])
+            self.vars[lab] = TYPE_SIZE[t]
         return lab
 
+    def vtype(self, name):
+        return self.ty.of(name)
+
     def array(self, name, nidx):
-        if name not in self.arrays:
-            self.arrays[name] = [10] * nidx
+        key = self.akey(name)
+        if key not in self.arrays:
+            self.arrays[key] = [10] * nidx
             self.warnings.append("%s : tableau %s non dimensionné, DIM %s(%s) supposé"
                                  % (self.where, name, name, ",".join(["10"] * nidx)))
-        dims = self.arrays[name]
+        dims = self.arrays[key]
         if len(dims) != nidx:
             self.err("tableau %s : %d indice(s) attendu(s)" % (name, len(dims)))
-        lab = ("AS_" if name.endswith("$") else "AV_") + _label(name)
+        base, t = key[1], key[2]
+        lab = ("AS_%s" % _label(base)) if t == "s" else "A%s_%s" % (TYPE_TAG[t], _label(base))
         count = 1
         for d in dims:
             count *= d + 1
-        esz = self.strcap + 1 if name.endswith("$") else 2
+        esz = self.strcap + 1 if t == "s" else TYPE_SIZE[t]
         self.vars[lab] = count * esz
         return lab, dims, esz
 
@@ -935,23 +1127,58 @@ class Compiler:
 
     def s_let(self, s):
         tgt, e = s[1], _fold(s[2])
-        if etype(tgt) == "n":
-            self.gen_n(e, 0)
-            if tgt[0] == "var":
-                self.emit("LD   (%s),HL" % self.var(tgt[1]))
-            else:
-                const = self.const_addr(tgt)
-                if const:
-                    self.emit("LD   (%s),HL" % const)
-                else:
-                    self.emit("PUSH HL")
-                    self.gen_addr(tgt, 0)
-                    self.emit("POP  DE")
-                    self.emit("LD   (HL),E")
-                    self.emit("INC  HL")
-                    self.emit("LD   (HL),D")
+        t = self.vtype(tgt[1])
+        if t == "s":
+            return self._let_string(tgt, e)
+        if tgt[0] == "var":
+            self.gen_value(e, t)
+            self.store_value(t, self.var(tgt[1]))
             return
-        # chaîne
+        const = self.const_addr(tgt)
+        if const:
+            self.gen_value(e, t)
+            self.store_value(t, const)
+            return
+        if t == "i":
+            self.gen_i(e, 0)
+            self.emit("PUSH HL")
+            self.gen_addr(tgt, 0)
+            self.emit("POP  DE")
+            self.emit("LD   (HL),E")
+            self.emit("INC  HL")
+            self.emit("LD   (HL),D")
+        else:
+            self.gen_addr(tgt, 0)
+            self.emit("PUSH HL")
+            self.gen_value(e, t)
+            self.emit("POP  HL")
+            self.store_value(t, None)
+
+    def gen_value(self, e, t):
+        """Valeur de e convertie au type t : HL pour 'i', FAC sinon."""
+        if t == "i":
+            self.gen_i(e, 0)
+        else:
+            self.gen_x(e, 0)
+            self.emit("CALL %s" % ("FCSNG" if t == "f" else "FCDBL"))
+
+    def store_value(self, t, lab):
+        """Range la valeur (HL ou FAC) dans lab, ou à l'adresse HL si lab est None."""
+        if t == "i":
+            self.emit("LD   (%s),HL" % lab)
+            return
+        if lab is not None:
+            self.emit("LD   HL,%s" % lab)
+        self.emit("CALL RT_STF%d" % TYPE_SIZE[t])
+
+    def load_var(self, name, lab=None):
+        """FAC <- variable flottante (étiquette ou adresse dans HL)."""
+        t = self.vtype(name)
+        if lab is not None:
+            self.emit("LD   HL,%s" % lab)
+        self.emit("CALL RT_LDF%d" % TYPE_SIZE[t])
+
+    def _let_string(self, tgt, e):
         if tgt[0] == "var":
             dest = self.var(tgt[1])
             if e[0] == "bin" and e[2] == ("var", tgt[1]):     # A$=A$+...
@@ -966,8 +1193,6 @@ class Compiler:
             self.emit("CALL RT_SCOPY")
         else:
             src = self.sptr(e, 0)
-            if src.startswith("TMP_") or e[0] == "arr":
-                pass
             self.gen_addr(tgt, 1)
             self.emit("LD   DE,%s" % src)
             self.emit("CALL RT_SCOPY")
@@ -978,26 +1203,33 @@ class Compiler:
                 if e == ",":
                     self.emit("CALL RT_COMMA")
             elif kind in ("tab", "spc"):
-                self.gen_n(_fold(e), 0)
+                self.gen_i(_fold(e), 0)
                 self.emit("CALL RT_%s" % kind.upper())
             else:
                 e = _fold(e)
-                if etype(e) == "s":
+                if self.et(e) == "s":
                     self.emit("LD   HL,%s" % self.sptr(e, 0))
                     self.emit("CALL RT_PRS")
                 else:
-                    self.gen_n(e, 0)
-                    self.emit("CALL RT_PRN")
+                    self.gen_x(e, 0)
+                    self.emit("CALL RT_PRNUM")
         if s[2]:
-            self.emit("CALL RT_NL")
+            self.emit("CALL CRLF")
 
-    def s_if(self, s):
-        cond = _fold(s[1])
-        lelse, lend = self.newlabel(), self.newlabel()
-        self.gen_n(cond, 0)
+    def gen_cond(self, cond, false_label):
+        cond = _fold(cond)
+        if self.et(cond) == "i":
+            self.gen_i(cond, 0)
+        else:
+            self.gen_x(cond, 0)
+            self.emit("CALL FSGN")                     # HL = signe (0 si faux)
         self.emit("LD   A,H")
         self.emit("OR   L")
-        self.emit("JP   Z,%s" % lelse)
+        self.emit("JP   Z,%s" % false_label)
+
+    def s_if(self, s):
+        lelse, lend = self.newlabel(), self.newlabel()
+        self.gen_cond(s[1], lelse)
         for st in s[2]:
             self.stmt(st)
         if s[3]:
@@ -1025,30 +1257,51 @@ class Compiler:
     def s_end(self, s):
         self.emit("JP   RT_END")
 
+    # ---------------------------------------------------- FOR / NEXT
     def s_for(self, s):
         _, name, a, b, st = s
         a, b, st = _fold(a), _fold(b), _fold(st)
+        t = self.vtype(name)
         v = self.var(name)
         n = self.newlabel()
-        f = {"var": name, "lab": n, "line": self.where}
-        self.gen_n(a, 0)
-        self.emit("LD   (%s),HL" % v)
-        if b[0] == "num":
-            f["lim"] = str(b[1])
+        f = {"var": name, "lab": n, "line": self.where, "type": t}
+        self.gen_value(a, t)
+        self.store_value(t, v)
+        if t == "i":
+            if b[0] == "int":
+                f["lim"] = str(b[1])
+            else:
+                self.gen_i(b, 0)
+                lim = n + "_L"
+                self.vars[lim] = 2
+                self.emit("LD   (%s),HL" % lim)
+                f["lim"] = "(%s)" % lim
+            if st[0] == "int":
+                f["step"] = st[1]
+            else:
+                self.gen_i(st, 0)
+                stp = n + "_S"
+                self.vars[stp] = 2
+                self.emit("LD   (%s),HL" % stp)
+                f["step"] = stp
         else:
-            self.gen_n(b, 0)
-            lim = n + "_L"
-            self.vars[lim] = 2
-            self.emit("LD   (%s),HL" % lim)
-            f["lim"] = "(%s)" % lim
-        if st[0] == "num":
-            f["step"] = st[1]
-        else:
-            self.gen_n(st, 0)
-            stp = n + "_S"
-            self.vars[stp] = 2
-            self.emit("LD   (%s),HL" % stp)
-            f["step"] = stp
+            size = TYPE_SIZE[t]
+            for key, e in (("lim", b), ("step", st)):
+                lab = "%s_%s" % (n, key[0].upper())
+                self.vars[lab] = size
+                self.gen_value(e, t)
+                self.store_value(t, lab)
+                f[key] = lab
+            if st[0] == "int":
+                f["sign"] = (st[1] > 0) - (st[1] < 0)
+            else:
+                self.load_var(name, f["step"])
+                self.emit("CALL FSGN")
+                sg = n + "_G"
+                self.vars[sg] = 1
+                self.emit("LD   A,H")
+                self.emit("LD   (%s),A" % sg)
+                f["sign"] = sg
         self.label(n)
         self.fors.append(f)
 
@@ -1058,39 +1311,41 @@ class Compiler:
             if not self.fors:
                 self.err("NEXT sans FOR")
             if name is not None:
-                while self.fors and self.fors[-1]["var"] != name:
+                while self.fors and self.vkey(self.fors[-1]["var"]) != self.vkey(name):
                     self.fors.pop()                   # boucles internes abandonnées
                 if not self.fors:
                     self.err("NEXT %s sans FOR correspondant" % name)
             f = self.fors.pop()
-            v, n = self.var(f["var"]), f["lab"]
-            out = n + "_X"
             if self.brk:
                 self.emit("CALL RT_BRK")
-            self.emit("LD   HL,(%s)" % v)
-            step = f["step"]
-            self.emit(("LD   DE,%d" if isinstance(step, int) else "LD   DE,(%s)") % step)
-            self.emit("OR   A")
-            self.emit("ADC  HL,DE")
-            self.emit("JP   PE,%s" % out)              # dépassement : fin de boucle
-            self.emit("LD   (%s),HL" % v)
-            lim = f["lim"]
-            ld_lim = "LD   %%s,%s" % lim
-            if isinstance(step, int):
-                if step >= 0:
-                    self._next_up(ld_lim, n)
-                else:
-                    self._next_down(ld_lim, n)
+            if f["type"] == "i":
+                self._next_int(f)
             else:
-                neg = self.newlabel()
-                self.emit("LD   A,(%s+1)" % step)
-                self.emit("RLA")
-                self.emit("JR   C,%s" % neg)
-                self._next_up(ld_lim, n)
-                self.emit("JP   %s" % out)
-                self.label(neg)
-                self._next_down(ld_lim, n)
-            self.label(out)
+                self._next_float(f)
+
+    def _next_int(self, f):
+        v, n = self.var(f["var"]), f["lab"]
+        out = n + "_X"
+        self.emit("LD   HL,(%s)" % v)
+        step = f["step"]
+        self.emit(("LD   DE,%d" if isinstance(step, int) else "LD   DE,(%s)") % step)
+        self.emit("OR   A")
+        self.emit("ADC  HL,DE")
+        self.emit("JP   PE,%s" % out)              # dépassement : fin de boucle
+        self.emit("LD   (%s),HL" % v)
+        ld_lim = "LD   %%s,%s" % f["lim"]
+        if isinstance(step, int):
+            (self._next_up if step >= 0 else self._next_down)(ld_lim, n)
+        else:
+            neg = self.newlabel()
+            self.emit("LD   A,(%s+1)" % step)
+            self.emit("RLA")
+            self.emit("JR   C,%s" % neg)
+            self._next_up(ld_lim, n)
+            self.emit("JP   %s" % out)
+            self.label(neg)
+            self._next_down(ld_lim, n)
+        self.label(out)
 
     def _next_up(self, ld_lim, n):            # continue tant que var <= limite
         self.emit(ld_lim % "DE")
@@ -1103,13 +1358,52 @@ class Compiler:
         self.emit("CALL RT_ICMP")
         self.emit("JP   NC,%s" % n)
 
+    def _next_float(self, f):
+        """var = var + pas (par la ROM, puis arrondi au type de var) ;
+        on continue tant que var <= limite (pas >= 0) ou var >= limite."""
+        name, n, t = f["var"], f["lab"], f["type"]
+        v = self.var(name)
+        ret = self.newlabel()
+        self.emit("LD   HL,%s" % ret)
+        self.emit("PUSH HL")
+        self.load_var(name, v)
+        self.emit("LD   C,0")
+        self.emit("CALL RT_FPUSHL")
+        self.load_var(name, f["step"])
+        self.emit("JP   FOPDISP")
+        self.label(ret)
+        self.emit("CALL %s" % ("FCSNG" if t == "f" else "FCDBL"))
+        self.store_value(t, v)
+        self.load_var(name, v)                 # compare la valeur rangée à la limite
+        self.emit("CALL FCDBL")
+        self.emit("CALL RT_FPUSH8")
+        self.load_var(name, f["lim"])
+        self.emit("CALL FCDBL")
+        self.emit("CALL RT_FPOPARG")
+        self.emit("CALL DCMP")                 # A = 1 si var < lim, -1 si var > lim
+        sign = f["sign"]
+        if isinstance(sign, int):
+            self.emit("CP   %s" % ("$FF" if sign >= 0 else "1"))
+            self.emit("JP   NZ,%s" % n)
+        else:
+            down = self.newlabel()
+            self.emit("LD   B,A")
+            self.emit("LD   A,(%s)" % sign)
+            self.emit("RLA")
+            self.emit("LD   A,B")
+            self.emit("JR   C,%s" % down)
+            self.emit("CP   $FF")
+            self.emit("JP   NZ,%s" % n)
+            self.emit("JR   %s_X" % n)
+            self.label(down)
+            self.emit("CP   1")
+            self.emit("JP   NZ,%s" % n)
+        self.label(n + "_X")
+
     def s_while(self, s):
         top, out = self.newlabel(), self.newlabel()
         self.label(top)
-        self.gen_n(_fold(s[1]), 0)
-        self.emit("LD   A,H")
-        self.emit("OR   L")
-        self.emit("JP   Z,%s" % out)
+        self.gen_cond(s[1], out)
         self.whiles.append((top, self.where, out))
 
     def s_wend(self, s):
@@ -1121,6 +1415,7 @@ class Compiler:
         self.emit("JP   %s" % top)
         self.label(out)
 
+    # ---------------------------------------------------- écran, E/S
     def s_cls(self, s):
         self.emit("CALL LCDCLS")
 
@@ -1134,8 +1429,8 @@ class Compiler:
 
     def s_poke(self, s):
         a, v = _fold(s[1]), _fold(s[2])
-        if v[0] == "num":
-            self.gen_n(a, 0)
+        if v[0] == "int":
+            self.gen_i(a, 0)
             self.emit("LD   (HL),%d" % (v[1] & 0xFF))
         else:
             self.gen_pair(a, v)
@@ -1148,7 +1443,7 @@ class Compiler:
         self.emit("OUT  (C),L")
 
     def s_exec(self, s):
-        self.gen_n(_fold(s[1]), 0)
+        self.gen_i(_fold(s[1]), 0)
         self.emit("CALL RT_JPHL")
 
     def s_beep(self, s):
@@ -1172,7 +1467,7 @@ class Compiler:
 
     def _t6_params(self, args):
         for k, e in enumerate(args):
-            self.gen_n(_fold(e), 0)
+            self.gen_i(_fold(e), 0)
             self.emit("LD   A,L")
             self.emit("LD   (RT_GB+%d),A" % k)
 
@@ -1184,15 +1479,48 @@ class Compiler:
         self.emit("LD   A,%d" % (1 if q else 0))
         self.emit("CALL RT_INPUT")
         for t in targets:
-            self.gen_target_addr(t)
-            self.emit("CALL RT_IN%s" % ("S" if etype(t) == "s" else "N"))
+            if self.vtype(t[1]) == "s":
+                self.gen_target_addr(t)
+                self.emit("CALL RT_INS")
+            else:
+                self._read_number(t, "CALL RT_INFLD", "CALL FIN")
 
     def s_read(self, s):
         if not self.data:
             self.err("READ sans DATA")
         for t in s[1]:
-            self.gen_target_addr(t)
-            self.emit("CALL RT_RD%s" % ("S" if etype(t) == "s" else "N"))
+            if self.vtype(t[1]) == "s":
+                self.gen_target_addr(t)
+                self.emit("CALL RT_RDS")
+            else:
+                self._read_number(t, "CALL RT_RDX")
+
+    def _read_number(self, t, *calls):
+        """Lit un nombre (texte -> FAC par FIN) et le range dans la cible t."""
+        ty = self.vtype(t[1])
+        if t[0] == "arr":
+            self.gen_addr(t, 0)
+            self.emit("PUSH HL")
+        for c in calls:
+            self.emit(c)
+        if ty == "i":
+            self.emit("CALL FCINT")
+            self.emit("LD   HL,(FACINT)")
+            if t[0] == "arr":
+                self.emit("EX   DE,HL")
+                self.emit("POP  HL")
+                self.emit("LD   (HL),E")
+                self.emit("INC  HL")
+                self.emit("LD   (HL),D")
+            else:
+                self.emit("LD   (%s),HL" % self.var(t[1]))
+        else:
+            self.emit("CALL %s" % ("FCSNG" if ty == "f" else "FCDBL"))
+            if t[0] == "arr":
+                self.emit("POP  HL")
+                self.store_value(ty, None)
+            else:
+                self.store_value(ty, self.var(t[1]))
 
     def s_restore(self, s):
         if s[1] is None:
@@ -1209,7 +1537,7 @@ class Compiler:
         tab = "ON_%d" % (len(self.tables) + 1)
         self.tables.append((tab, lines))
         end = self.newlabel()
-        self.gen_n(_fold(e), 0)
+        self.gen_i(_fold(e), 0)
         self.emit("LD   DE,%s" % tab)
         self.emit("CALL RT_ONSEL")
         self.emit("LD   A,H")
@@ -1229,34 +1557,41 @@ class Compiler:
         else:
             self.gen_addr(t, 0)
 
-    # ---------------------------------------------------- expressions
+    # ---------------------------------------------------- expressions entières
     def simple(self, e):
-        return e[0] == "num" or (e[0] == "var" and not e[1].endswith("$"))
+        return e[0] == "int" or (e[0] == "var" and self.vtype(e[1]) == "i")
 
     def load(self, e, reg):
-        if e[0] == "num":
+        if e[0] == "int":
             self.emit("LD   %s,%d" % (reg, e[1]))
         else:
             self.emit("LD   %s,(%s)" % (reg, self.var(e[1])))
 
     def gen_pair(self, a, b, d=0):
-        """DE = a, HL = b."""
+        """DE = a, HL = b (entiers)."""
         if self.simple(b):
-            self.gen_n(a, d)
+            self.gen_i(a, d)
             self.emit("EX   DE,HL")
             self.load(b, "HL")
         elif self.simple(a):
-            self.gen_n(b, d)
+            self.gen_i(b, d)
             self.load(a, "DE")
         else:
-            self.gen_n(a, d)
+            self.gen_i(a, d)
             self.emit("PUSH HL")
-            self.gen_n(b, d)
+            self.gen_i(b, d)
             self.emit("POP  DE")
 
-    def gen_n(self, e, d):
+    def gen_i(self, e, d):
+        """HL = valeur entière de e (un nombre est converti par CINT, qui
+        tronque sur le X-07 ; OV au-delà de 16 bits)."""
+        if self.et(e) == "x":
+            self.gen_x(e, d)
+            self.emit("CALL FCINT")
+            self.emit("LD   HL,(FACINT)")
+            return
         k = e[0]
-        if k == "num":
+        if k == "int":
             self.emit("LD   HL,%d" % e[1])
         elif k == "var":
             self.emit("LD   HL,(%s)" % self.var(e[1]))
@@ -1271,88 +1606,117 @@ class Compiler:
                 self.emit("LD   H,(HL)")
                 self.emit("LD   L,A")
         elif k == "un":
-            self.gen_n(e[2], d)
+            self.gen_i(e[2], d)
             if e[1] == "-":
-                self.emit("CALL RT_NEG")
+                self.emit("CALL RT_INEG")
             else:
-                for r in ("L", "H"):
-                    self.emit("LD   A,%s" % r)
-                    self.emit("CPL")
-                    self.emit("LD   %s,A" % r)
+                self._cpl()
         elif k == "bin":
-            self.gen_bin(e, d)
+            self.gen_ibin(e, d)
         elif k == "call":
-            self.gen_call(e, d)
+            self.gen_icall(e, d)
         elif k == "fn":
             self.gen_fncall(e, d)
         else:
             self.err("expression numérique attendue")
 
-    def gen_bin(self, e, d):
+    def _cpl(self):
+        for r in ("L", "H"):
+            self.emit("LD   A,%s" % r)
+            self.emit("CPL")
+            self.emit("LD   %s,A" % r)
+
+    def gen_ibin(self, e, d):
         op, a, b = e[1], e[2], e[3]
         if op in REL:
-            flag = {"=": "FEQ", "<>": "FNE", "<": "FLT", ">": "FLT",
-                    "<=": "FGE", ">=": "FGE"}[op]
-            swap = op in (">", "<=")
-            if etype(a) == "s":
-                pa, pb = self.sptr(a, d), self.sptr(b, d + 1)
-                if swap:
-                    pa, pb = pb, pa
-                self.emit("LD   DE,%s" % pa)
-                self.emit("LD   HL,%s" % pb)
-                self.emit("CALL RT_SCMP")
-            else:
-                self.gen_pair(a, b, d)
-                if swap:
-                    self.emit("EX   DE,HL")
-                self.emit("CALL RT_ICMP")
-            self.emit("CALL RT_%s" % flag)
-            return
-        if op == "*" and b[0] == "num" and b[1] > 0 and b[1] & (b[1] - 1) == 0:
-            self.gen_n(a, d)
-            for _ in range(b[1].bit_length() - 1):
-                self.emit("ADD  HL,HL")
-            return
-        if op == "+" and b[0] == "num" and 0 <= b[1] <= 3:
-            self.gen_n(a, d)
-            for _ in range(b[1]):
-                self.emit("INC  HL")
-            return
-        if op == "-" and b[0] == "num" and 0 <= b[1] <= 3:
-            self.gen_n(a, d)
-            for _ in range(b[1]):
-                self.emit("DEC  HL")
-            return
+            return self.gen_rel(op, a, b, d)
         self.gen_pair(a, b, d)
         if op == "+":
-            self.emit("ADD  HL,DE")
+            self.emit("OR   A")
+            self.emit("ADC  HL,DE")
+            self.emit("JP   PE,RT_OV")
         elif op == "-":
             self.emit("EX   DE,HL")
             self.emit("OR   A")
             self.emit("SBC  HL,DE")
-        elif op in ("AND", "OR", "XOR"):
+            self.emit("JP   PE,RT_OV")
+        elif op in ("AND", "OR", "XOR", "EQV", "IMP"):
+            if op == "IMP":                          # (NOT a) OR b
+                self.emit("LD   A,E")
+                self.emit("CPL")
+                self.emit("LD   E,A")
+                self.emit("LD   A,D")
+                self.emit("CPL")
+                self.emit("LD   D,A")
+            z80 = {"AND": "AND", "OR": "OR", "XOR": "XOR", "EQV": "XOR", "IMP": "OR"}[op]
             for r1, r2 in (("E", "L"), ("D", "H")):
                 self.emit("LD   A,%s" % r1)
-                self.emit("%-4s %s" % (op, r2))
+                self.emit("%-4s %s" % (z80, r2))
                 self.emit("LD   %s,A" % r2)
+            if op == "EQV":
+                self._cpl()
         else:
-            self.emit("CALL RT_%s" % {"*": "MUL", "/": "DIV", "MOD": "MOD", "^": "POW"}[op])
+            self.emit("CALL RT_%s" % {"*": "MUL", "\\": "DIV", "MOD": "MOD"}[op])
 
-    def gen_call(self, e, d):
+    def gen_rel(self, op, a, b, d):
+        """Comparaison -> HL = -1 (vrai) ou 0."""
+        ka, kb = self.et(a), self.et(b)
+        swap = op in (">", "<=")
+        if ka == "s":
+            flag = {"=": "FEQ", "<>": "FNE", "<": "FLT", ">": "FLT",
+                    "<=": "FGE", ">=": "FGE"}[op]
+            pa, pb = self.sptr(a, d), self.sptr(b, d + 1)
+            if swap:
+                pa, pb = pb, pa
+            self.emit("LD   DE,%s" % pa)
+            self.emit("LD   HL,%s" % pb)
+            self.emit("CALL RT_SCMP")
+            self.emit("CALL RT_%s" % flag)
+        elif ka == kb == "i":
+            flag = {"=": "FEQ", "<>": "FNE", "<": "FLT", ">": "FLT",
+                    "<=": "FGE", ">=": "FGE"}[op]
+            self.gen_pair(a, b, d)
+            if swap:
+                self.emit("EX   DE,HL")
+            self.emit("CALL RT_ICMP")
+            self.emit("CALL RT_%s" % flag)
+        else:
+            # nombres : comparaison en double par la ROM ; A = 1 (<), 0 (=), $FF (>)
+            self.gen_x(a, d)
+            self.emit("CALL FCDBL")
+            self.emit("CALL RT_FPUSH8")
+            self.gen_x(b, d)
+            self.emit("CALL FCDBL")
+            self.emit("CALL RT_FPOPARG")
+            self.emit("CALL DCMP")
+            test, flag = {"<": ("CP   1", "FEQ"), ">": ("CP   $FF", "FEQ"),
+                          "=": ("OR   A", "FEQ"), "<>": ("OR   A", "FNE"),
+                          "<=": ("CP   $FF", "FNE"), ">=": ("CP   1", "FNE")}[op]
+            self.emit(test)
+            self.emit("CALL RT_%s" % flag)
+
+    def gen_icall(self, e, d):
         name, args = e[1], e[2]
-        if name in STR_FUNCS:
-            self.err("fonction chaîne dans une expression numérique")
-        if name in ("INT", "FIX", "CINT", "CSNG", "CDBL"):
-            return self.gen_n(args[0], d)
-        if name in ("ABS", "SGN", "RND"):
-            self.gen_n(args[0], d)
-            self.emit("CALL RT_%s" % name)
+        if name in ("INT", "FIX"):
+            return self.gen_i(args[0], d)
+        if name == "ABS":
+            self.gen_i(args[0], d)
+            self.emit("CALL RT_IABS")
+        elif name == "SGN":
+            if self.et(args[0]) == "i":
+                self.gen_i(args[0], d)
+                self.emit("CALL RT_SGN")
+            else:
+                self.gen_x(args[0], d)
+                self.emit("CALL FSGN")
+        elif name == "CINT":
+            self.gen_i(args[0], d)
         elif name == "PEEK":
-            self.gen_n(args[0], d)
+            self.gen_i(args[0], d)
             self.emit("LD   L,(HL)")
             self.emit("LD   H,0")
         elif name == "INP":
-            self.gen_n(args[0], d)
+            self.gen_i(args[0], d)
             self.emit("LD   C,L")
             self.emit("IN   L,(C)")
             self.emit("LD   H,0")
@@ -1364,9 +1728,6 @@ class Compiler:
         elif name == "ASC":
             self.emit("LD   HL,%s" % self.sptr(args[0], d))
             self.emit("CALL RT_ASC")
-        elif name == "VAL":
-            self.emit("LD   HL,%s" % self.sptr(args[0], d))
-            self.emit("CALL RT_VAL")
         elif name in ("CSRLIN", "POS"):
             self.emit("LD   A,(%s)" % ("CSRY" if name == "CSRLIN" else "CSRX"))
             self.emit("DEC  A")                       # comptés à partir de 1
@@ -1391,7 +1752,7 @@ class Compiler:
             self.emit("LD   H,0")
         elif name == "STRIG":
             a = args[0]
-            if a[0] != "num":
+            if a[0] != "int":
                 self.err("STRIG : argument constant attendu")
             self.emit("LD   A,$%02X" % (0x84 if a[1] == 0 else 0x83))
             self.emit("LD   BC,$0001")
@@ -1403,43 +1764,137 @@ class Compiler:
         else:
             self.err("fonction non gérée : %s" % name)
 
+    # ---------------------------------------------------- expressions flottantes
+    def gen_x(self, e, d):
+        """FAC = valeur de e, avec son type réel en VALTYP (comme l'interpréteur)."""
+        kind = self.et(e)
+        if kind == "s":
+            self.err("expression numérique attendue")
+        if kind == "i":
+            # Opération entière dont le résultat va dans FAC : la ROM la calcule
+            # et passe en double en cas de dépassement (30000+30000 -> 60000).
+            if e[0] == "bin" and e[1] in ("+", "-", "*"):
+                return self.gen_rom_op(ROM_OPS[e[1]], e[2], e[3], d)
+            if e[0] == "un" and e[1] == "-":
+                self.gen_x(e[2], d)
+                self.emit("CALL FNEG")
+                return
+            if e[0] == "call" and e[1] == "ABS":
+                self.gen_x(e[2][0], d)
+                self.emit("CALL FABS")
+                return
+            self.gen_i(e, d)
+            self.emit("CALL HL2FAC")
+            return
+        k = e[0]
+        if k == "flt":
+            lab, t = self.flit(e[1])
+            if t == 2:                                   # FIN a rendu un entier
+                data = self.flits[e[1]][1]
+                self.emit("LD   HL,%d" % _s16(data[2] | data[3] << 8))
+                self.emit("CALL HL2FAC")
+            else:
+                self.emit("LD   HL,%s" % lab)
+                self.emit("CALL RT_LDF%d" % t)
+        elif k == "var":
+            self.load_var(e[1], self.var(e[1]))
+        elif k == "arr":
+            const = self.const_addr(e)
+            if const:
+                self.load_var(e[1], const)
+            else:
+                self.gen_addr(e, d)
+                self.load_var(e[1])
+        elif k == "un":                                  # « - » (NOT est entier)
+            self.gen_x(e[2], d)
+            self.emit("CALL FNEG")
+        elif k == "bin":
+            self.gen_rom_op(ROM_OPS[e[1]], e[2], e[3], d)
+        elif k == "call":
+            self.gen_xcall(e, d)
+        elif k == "fn":
+            self.gen_fncall(e, d)
+        else:
+            self.err("expression numérique attendue")
+
+    def gen_rom_op(self, op, a, b, d):
+        """a op b par le répartiteur de la ROM ($F9E4), comme l'interpréteur :
+        on empile a comme l'évaluateur, b dans FAC, puis saut en FOPDISP."""
+        ret = self.newlabel()
+        self.emit("LD   HL,%s" % ret)
+        self.emit("PUSH HL")
+        self.gen_x(a, d)
+        self.emit("LD   C,%d" % op)
+        self.emit("CALL RT_FPUSHL")
+        self.gen_x(b, d)
+        self.emit("JP   FOPDISP")
+        self.label(ret)
+
+    def gen_xcall(self, e, d):
+        name, args = e[1], e[2]
+        if name in SAME_FUNCS:                   # ABS, INT, FIX d'un nombre
+            self.gen_x(args[0], d)
+            self.emit("CALL %s" % SAME_FUNCS[name])
+        elif name == "VAL":
+            self.emit("LD   HL,%s" % self.sptr(args[0], d))
+            self.emit("CALL RT_VALX")
+        elif name in X_FUNCS:
+            self.gen_x(args[0], d)
+            if name not in ("CSNG", "CDBL"):
+                # comme le répartiteur des fonctions ($FBEB) : entier et simple -> double
+                self.emit("CALL FCDBL")
+            self.emit("CALL %s" % X_FUNCS[name])
+        else:
+            self.err("fonction non gérée : %s" % name)
+
+    # ---------------------------------------------------- DEF FN
     def gen_fncall(self, e, d):
         name, args = e[1], e[2]
-        if name not in self.fns:
+        key = self.vkey(name)
+        if key not in self.fns:
             self.err("FN%s non défini" % name)
-        params = self.fns[name][0]
+        _, params, body, _ = self.fns[key]
         if len(params) != len(args):
             self.err("FN%s : %d argument(s) attendu(s)" % (name, len(params)))
-        for a in args:
-            if etype(a) != "n":
+        for p, a in zip(params, args):
+            if self.et(a) == "s":
                 self.err("FN%s : argument numérique attendu" % name)
-            self.gen_n(_fold(a), d)
-            self.emit("PUSH HL")
-        for p in reversed(params):
-            self.emit("POP  HL")
-            self.emit("LD   (P_%s_%s),HL" % (_label(name), _label(p)))
-        self.emit("CALL FN_%s" % _label(name))
+            if any(x[0] == "fn" and self.vkey(x[1]) == key for x in _walk(a)):
+                self.err("FN%s appelée dans ses propres arguments : non géré" % name)
+            t = self.vtype(p)
+            self.gen_value(_fold(a), t)
+            self.store_value(t, self.fnparam_label(name, p))
+        self.emit("CALL FN_%s" % self.fn_label(name))
+
+    def fn_label(self, name):
+        base, t = self.vkey(name)
+        return "%s_%s" % (_label(base), TYPE_TAG[t])
+
+    def fnparam_label(self, name, p):
+        base, t = self.vkey(p)
+        return "P_%s_%s_%s" % (self.fn_label(name), _label(base), TYPE_TAG[t])
 
     def _gen_fns(self):
-        for k, (name, (params, body, where)) in enumerate(sorted(self.fns.items())):
+        for k, (key, (name, params, body, where)) in enumerate(sorted(self.fns.items())):
             self.where = where
             self.emit("")
             self.emit("; DEF FN%s" % name)
-            self.label("FN_%s" % _label(name))
+            self.label("FN_%s" % self.fn_label(name))
             self.fnparams = {}
             for p in params:
-                lab = "P_%s_%s" % (_label(name), _label(p))
-                self.vars[lab] = 2
+                lab = self.fnparam_label(name, p)
+                self.vars[lab] = TYPE_SIZE[self.vtype(p)]
                 self.fnparams[p] = lab
             self.tmpbase = 50 + 10 * k
-            self.gen_n(body, 0)
+            t = key[1]
+            self.gen_value(body, t)              # résultat au type de la fonction
             self.emit("RET")
             self.fnparams, self.tmpbase = {}, 0
 
     # ---------------------------------------------------- tableaux
     def const_addr(self, e):
         """Adresse constante d'un élément si tous les indices sont constants."""
-        if not all(i[0] == "num" for i in e[2]):
+        if not all(i[0] == "int" for i in e[2]):
             return None
         lab, dims, esz = self.array(e[1], len(e[2]))
         idx = 0
@@ -1458,13 +1913,13 @@ class Compiler:
         lab, dims, esz = self.array(e[1], len(e[2]))
         idx = [_fold(i) for i in e[2]]
         for i in idx:
-            if etype(i) != "n":
+            if self.et(i) == "s":
                 self.err("indice numérique attendu")
-        self.gen_n(idx[0], d)
+        self.gen_i(idx[0], d)
         self._chk(dims[0])
         for i, dmax in zip(idx[1:], dims[1:]):
             self.emit("PUSH HL")
-            self.gen_n(i, d)
+            self.gen_i(i, d)
             self._chk(dmax)
             self.emit("POP  DE")
             self.emit("PUSH HL")
@@ -1472,9 +1927,9 @@ class Compiler:
             self.emit("CALL RT_MUL")
             self.emit("POP  DE")
             self.emit("ADD  HL,DE")
-        if esz == 2:
+        for _ in range({2: 1, 4: 2, 8: 3}.get(esz, 0)):
             self.emit("ADD  HL,HL")
-        else:
+        if esz not in (2, 4, 8):
             self.emit("LD   DE,%d" % esz)
             self.emit("CALL RT_MUL")
         self.emit("LD   DE,%s" % lab)
@@ -1517,40 +1972,44 @@ class Compiler:
         elif k == "call":
             name, args = e[1], [_fold(a) for a in e[2]]
             if name == "CHR$":
-                self.gen_n(args[0], d)
+                self.gen_i(args[0], d)
                 self.emit("LD   A,L")
                 self.emit("LD   HL,%s" % t)
                 self.emit("LD   (HL),1")
                 self.emit("INC  HL")
                 self.emit("LD   (HL),A")
-            elif name in ("STR$", "HEX$"):
-                self.gen_n(args[0], d)
+            elif name == "STR$":
+                self.gen_x(args[0], d)
                 self.emit("LD   DE,%s" % t)
-                self.emit("CALL RT_%s" % name[:-1])
+                self.emit("CALL RT_STRX")
+            elif name == "HEX$":
+                self.gen_i(args[0], d)
+                self.emit("LD   DE,%s" % t)
+                self.emit("CALL RT_HEX")
             elif name in ("LEFT$", "RIGHT$"):
                 self.gen_s(args[0], d)
-                self.gen_n(args[1], d + 1)
+                self.gen_i(args[1], d + 1)
                 self.emit("LD   DE,%s" % t)
                 self.emit("CALL RT_%s" % name[:-1])
             elif name == "MID$":
                 self.gen_s(args[0], d)
-                self.gen_n(args[1], d + 1)
+                self.gen_i(args[1], d + 1)
                 self.emit("PUSH HL")
                 if len(args) > 2:
-                    self.gen_n(args[2], d + 1)
+                    self.gen_i(args[2], d + 1)
                 else:
                     self.emit("LD   HL,255")
                 self.emit("POP  BC")
                 self.emit("LD   DE,%s" % t)
                 self.emit("CALL RT_MID")
             elif name == "STRING$":
-                self.gen_n(args[0], d)
+                self.gen_i(args[0], d)
                 self.emit("PUSH HL")
-                if etype(args[1]) == "s":
+                if self.et(args[1]) == "s":
                     p = self.sptr(args[1], d)
                     self.emit("LD   A,(%s+1)" % p)
                 else:
-                    self.gen_n(args[1], d)
+                    self.gen_i(args[1], d)
                     self.emit("LD   A,L")
                 self.emit("POP  HL")
                 self.emit("LD   DE,%s" % t)
@@ -1565,10 +2024,10 @@ class Compiler:
 
     # ---------------------------------------------------- assemblage du texte
     def _assemble_text(self, name, org):
-        routines, rvars = runtime.closure(self.used, self.debug)
+        routines, rvars = runtime.closure(self.used | {"RT_END", "RT_FERR"}, self.debug)
         out = []
         w = out.append
-        w("; %s - compilé par x07basic (BASIC entier pour Canon X-07)" % name)
+        w("; %s - compilé par x07basic (BASIC du Canon X-07)" % name)
         w("; Chargement : CLEAR 50,&H%X  puis  EXEC &H%X" % (org - 1, org))
         w("")
         w("STRCAP  EQU  %d               ; capacité des chaînes" % self.strcap)
@@ -1582,6 +2041,14 @@ class Compiler:
         w("        PUSH IX")
         w("        PUSH IY")
         w("        LD   (RT_SP),SP")
+        w("        LD   HL,(HKERROR)        ; détourne le crochet d'erreur de la ROM")
+        w("        LD   (RT_HSAV),HL")
+        w("        LD   A,(HKERROR+2)")
+        w("        LD   (RT_HSAV+2),A")
+        w("        LD   A,$C3               ; JP RT_FERR")
+        w("        LD   (HKERROR),A")
+        w("        LD   HL,RT_FERR")
+        w("        LD   (HKERROR+1),HL")
         w("        LD   HL,VARS")
         w("        LD   DE,VARS+1")
         w("        LD   BC,VARS_END-VARS-1")
@@ -1590,25 +2057,26 @@ class Compiler:
         if "RT_DPTR" in rvars:
             w("        LD   HL,DATA_0")
             w("        LD   (RT_DPTR),HL")
-        if "RT_SEED" in rvars:
-            w("        LD   A,R                 ; germe du générateur aléatoire")
-            w("        OR   1")
-            w("        LD   L,A")
-            w("        LD   H,$5A")
-            w("        LD   (RT_SEED),HL")
+        if "FRND" in self._words():
+            w("        CALL RNDINIT             ; RND repart comme après RUN")
         out += self.code
         w("")
         w("; ------------------------------------------------ bibliothèque")
         for r in routines:
             w("")
             w(runtime.routine(r, self.debug))
-        if "RT_ASC" in self.used:
-            pass
         if self.lits:
             w("")
             w("; ------------------------------------------------ chaînes")
             for s, lab in self.lits.items():
                 w("%-8s DB   %s" % (lab + ":", _db_string(s)))
+        if self.flits:
+            w("")
+            w("; ------------------------------------------------ nombres (BCD, convertis par la ROM)")
+            for text, (lab, data, t) in self.flits.items():
+                n = 4 if t == 4 else 8
+                w("%-8s DB   %s   ; %s" % (lab + ":", ",".join("$%02X" % b for b in data[:n]),
+                                            text))
         if self.tables:
             w("")
             for tab, lines in self.tables:
@@ -1617,27 +2085,44 @@ class Compiler:
         if "RT_DPTR" in rvars:
             w("")
             w("; ------------------------------------------------ DATA")
-            for k, item in enumerate(self.data):
+            for k, (line, item) in enumerate(self.data):   # ligne, longueur, texte
                 w("DATA_%d:" % k)
+                w("         DW   %d" % line)
                 w("         DB   %s" % _db_string(item))
             w("DATA_%d:" % len(self.data))
-            w("         DB   $FF")
+            w("         DW   $FFFF")
         w("")
         w("RT_SP:   DW   0")
+        w("RT_HSAV: DB   0,0,0")
         w("")
         w("; ------------------------------------------------ variables (non chargées)")
         w("VARS:")
         for lab, size in sorted(self.vars.items()):
-            w("%-12s DS   %d" % (lab + ":", size))
+            w("%-14s DS   %d" % (lab + ":", size))
         for lab in rvars:
-            w("%-12s DS   %d" % (lab + ":", runtime.VARIABLES[lab]))
+            w("%-14s DS   %d" % (lab + ":", runtime.VARIABLES[lab]))
         for d in sorted(self.temps):
-            w("%-12s DS   %d" % ("TMP_%d:" % d, self.strcap + 1))
-        w("             DS   2")
+            w("%-14s DS   %d" % ("TMP_%d:" % d, self.strcap + 1))
+        w("               DS   2")
         w("VARS_END:")
         w("")
-        w("        END  START")
+        w("        END")
         return _add_x07_equ(out)
+
+    def _words(self):
+        return set(re.findall(r"\b[A-Z_][A-Z0-9_]*\b", "\n".join(self.code)))
+
+
+def _walk(e):
+    yield e
+    if e[0] in ("arr", "call", "fn"):
+        for x in e[2]:
+            yield from _walk(x)
+    elif e[0] == "un":
+        yield from _walk(e[2])
+    elif e[0] == "bin":
+        yield from _walk(e[2])
+        yield from _walk(e[3])
 
 
 def _add_x07_equ(out):
@@ -1651,7 +2136,7 @@ def _add_x07_equ(out):
                               ("variables système", x07sym.VARIABLES, "$%04X")):
         used = sorted((v, n, c) for n, (v, c) in table.items() if n in words)
         if used:
-            rows.append("; Canon X-07 : %s (« Les mystères du X-07 »)" % title)
+            rows.append("; Canon X-07 : %s" % title)
             rows += ["%-8s EQU  %-6s ; %s" % (n, fmt % v, c) for v, n, c in used]
             rows.append("")
     i = next(k for k, l in enumerate(out) if l.startswith("        ORG"))
@@ -1675,7 +2160,6 @@ def _db_string(s):
     return ",".join(parts)
 
 
-# RT_ASC est simple ; on l'ajoute à la bibliothèque ici
 runtime._r("RT_ASC", """
 RT_ASC:                         ; HL = code du 1er caractère de (HL), 0 si vide
         LD   A,(HL)

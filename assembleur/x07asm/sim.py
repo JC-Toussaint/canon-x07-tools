@@ -9,7 +9,7 @@ from . import z80
 from . import x07sym
 
 S, Z, H, PV, N, C = 0x80, 0x40, 0x10, 0x04, 0x02, 0x01
-EXIT = 0xB000                  # adresse de retour fictive (« retour au BASIC »)
+EXIT = 0xFFFF                  # adresse de retour fictive (« retour au BASIC ») ; $B000 sert au DIM de la ROM
 
 
 class SimError(Exception):
@@ -41,15 +41,23 @@ class CPU:
         self.cache = {}
         self.ports_out = []
         self.rom_start = 0xB000
+        self.has_rom = False
+        self.ram_top = 0xAFFF        # dernière adresse de RAM
+        self.strict = True           # erreur sur écriture hors RAM (aide à la mise au point)
 
     # ------------------------------------------------ mémoire
     def rd(self, a):
-        return self.mem[a & 0xFFFF]
+        a &= 0xFFFF
+        if self.ram_top < a < self.rom_start:
+            return 0xFF                         # pas de mémoire à cette adresse
+        return self.mem[a]
 
     def wr(self, a, v):
         a &= 0xFFFF
-        if a >= self.rom_start:
-            raise SimError("écriture en ROM à $%04X (PC=$%04X)" % (a, self.pc))
+        if a > self.ram_top:
+            if self.strict:
+                raise SimError("écriture hors de la RAM à $%04X (PC=$%04X)" % (a, self.pc))
+            return                              # ignorée, comme sur la machine
         self.mem[a] = v & 0xFF
         self.cache.pop(a, None)
 
@@ -68,6 +76,14 @@ class CPU:
         v = self.rd16(self.sp)
         self.sp = (self.sp + 2) & 0xFFFF
         return v
+
+    def load_rom(self, data):
+        """Charge la ROM BASIC ($B000-$FFFF) et recopie la table des vecteurs
+        en $0000, comme le démarrage à froid ($C3D8 : LDIR de $C6DB, $AE octets)."""
+        self.mem[0xB000:0x10000] = bytes(data[:0x5000]).ljust(0x5000, b"\xff")
+        self.mem[0:0xAE] = self.mem[0xC6DB:0xC6DB + 0xAE]
+        self.has_rom = True
+        self.cache.clear()
 
     def load(self, mem):
         for a, b in mem.items():
@@ -193,7 +209,7 @@ class CPU:
             if self.pc == pc:                 # le gestionnaire n'a pas sauté : RET
                 self.pc = self.pop()
             return
-        if pc >= self.rom_start:
+        if pc >= self.rom_start and not self.has_rom:
             raise SimError("appel d'une routine ROM non simulée : $%04X" % pc)
         d = self.cache.get(pc)
         if d is None:
@@ -627,11 +643,19 @@ class X07(CPU):
         T[sym["CHKBATT"]] = self._chkbatt
         T[sym["BATTMSG"]] = self._battmsg
         T[sym["T6FLUSH"]] = lambda c: None
+        T[sym["T6CMD"]] = lambda c: self.t6log.append((c.r["A"] & 0x7F, []))
+        T[sym["T6POKE"]] = lambda c: None
+        T[sym["T6PEEK"]] = lambda c: c.r.__setitem__("A", 0)
         self.brk = sym["BRKFLG"]
         self.powered_off = 0
         self._setcur(0, 0)
 
     # écran
+    # ports du HD61L202F : bus vers le T6834 toujours libre, UART prête
+    def port_in(self, port):
+        return {0xF0: 0x00, 0xF1: 0x00, 0xF2: 0x02, 0xF4: 0x00, 0xF6: 0x01,
+                0xF7: 0x00}.get(port, 0xFF)
+
     # Comme dans la ROM : $B8 = ligne, $B9 = colonne, comptées à partir de 1.
     def _cursor(self):
         return max(self.mem[self.CSRX] - 1, 0), max(self.mem[self.CSRY] - 1, 0)

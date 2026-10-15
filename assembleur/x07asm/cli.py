@@ -195,7 +195,7 @@ def cmd_basic(args):
     try:
         src, a, mem, comp = build_basic(
             args.source, args.org, args.ram, strcap=args.strlen, brk=not args.no_break,
-            debug=args.debug, bounds=not args.no_bounds)
+            debug=args.debug, bounds=not args.no_bounds, default=args.default)
     except basic.CompileError as e:
         print("erreur : %s" % e, file=sys.stderr)
         return 1
@@ -238,8 +238,27 @@ def cmd_basic(args):
     return 0
 
 
+def _exec(m, mem, entry, max_steps):
+    """Comme CLEAR 50,&H(org-1) puis EXEC &Hentry sur la machine démarrée."""
+    from . import sim
+    for a, b in mem.items():
+        m.mem[a] = b
+    m.cache.clear()
+    m.strict = True
+    org = min(mem)
+    if org >= 0x0600:
+        top = org - 1
+        for adr, v in ((0x01DF, top), (0x0204, top), (0x01DD, top - 50)):
+            m.mem[adr], m.mem[adr + 1] = v & 0xFF, v >> 8
+        m.sp = top - 50
+    m.push(sim.EXIT)
+    m.pc = entry
+    m.run(max_steps)
+    return 0
+
+
 def cmd_run(args):
-    from . import basic, sim
+    from . import basic, sim, emu
     try:
         if args.source.lower().endswith(".asm"):
             a = asmmod.Assembler()
@@ -248,7 +267,8 @@ def cmd_run(args):
                 raise basic.CompileError(str(a.errors[0]))
         else:
             _, a, mem, comp = build_basic(args.source, args.org, args.ram,
-                                          strcap=args.strlen, debug=args.debug)
+                                          strcap=args.strlen, debug=args.debug,
+                                          default=args.default)
             for w in comp.warnings:
                 print("attention : %s" % w, file=sys.stderr)
     except (basic.CompileError, asmmod.AsmError) as e:
@@ -268,13 +288,9 @@ def cmd_run(args):
 
     m = None
     try:
-        m = sim.X07(keys, args.input or [], echo, input_fn)
-        m.load(mem)
-        m.sp = 0x7FF0 if a.entry < 0x0600 else a.entry
-        m.push(sim.EXIT)
-        m.pc = a.entry
-        m.run(args.max)
-        status = 0
+        m = emu.boot(args.ram)
+        m.keys, m.lines, m.echo, m.input_fn = list(keys), list(args.input or []), echo, input_fn
+        status = _exec(m, mem, a.entry, args.max)
     except sim.SimError as e:
         print("\n[simulation arrêtée : %s]" % e, file=sys.stderr)
         status = 2
@@ -282,6 +298,34 @@ def cmd_run(args):
     print("Écran du X-07 à la fin :")
     print(m.screen_text())
     print("(%d instructions Z80 exécutées)" % m.steps)
+    return status
+
+
+def cmd_emu(args):
+    """Exécute un programme avec le vrai BASIC de la ROM (émulation)."""
+    from . import emu, sim
+    try:
+        with open(args.source, "rb") as f:
+            raw = f.read()
+        try:
+            src = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            src = raw.decode("latin-1")
+        keys = args.keys.encode().decode("unicode_escape") if args.keys else ""
+        out, m = emu.run_basic(src, inputs=args.input or [], keys=keys, ram=args.ram,
+                               max_steps=args.max)
+    except sim.SimError as e:
+        print("[émulation impossible : %s]" % e, file=sys.stderr)
+        return 2
+    sys.stdout.write(out)
+    status = 0
+    if m.error:
+        print("\n[émulation arrêtée : %s]" % m.error, file=sys.stderr)
+        status = 2
+    print()
+    print("Écran du X-07 à la fin :")
+    print(m.screen_text())
+    print("(%d instructions Z80 exécutées par la ROM)" % m.steps)
     return status
 
 
@@ -347,6 +391,8 @@ def main(argv=None):
                    help="pas de contrôle des indices de tableaux")
     b.add_argument("--debug", action="store_true",
                    help="les erreurs indiquent le numéro de ligne")
+    b.add_argument("--default", choices=("d", "f", "i"), default="d",
+                   help="type des variables sans suffixe : d double (X-07), f simple, i entier")
     b.set_defaults(func=cmd_basic)
 
     r = sub.add_parser("run", help="exécuter un programme sur le simulateur (PC)")
@@ -359,7 +405,16 @@ def main(argv=None):
     r.add_argument("--ram", type=int, choices=(8, 16, 24), default=8)
     r.add_argument("--strlen", type=int, default=80)
     r.add_argument("--debug", action="store_true")
+    r.add_argument("--default", choices=("d", "f", "i"), default="d")
     r.set_defaults(func=cmd_run)
+
+    e = sub.add_parser("emu", help="exécuter un programme BASIC avec la vraie ROM (émulation)")
+    e.add_argument("source", help="programme BASIC (.bas)")
+    e.add_argument("-k", "--keys", help="touches pour INKEY$")
+    e.add_argument("-i", "--input", action="append", help="ligne tapée pour INPUT (répétable)")
+    e.add_argument("--ram", type=int, choices=(8, 16, 24), default=16)
+    e.add_argument("--max", type=int, default=50_000_000, help="instructions au plus")
+    e.set_defaults(func=cmd_emu)
 
     args = p.parse_args(argv)
     if args.cmd == "dis" and args.entry:

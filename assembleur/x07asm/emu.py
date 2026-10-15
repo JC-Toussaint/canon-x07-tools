@@ -1,0 +1,160 @@
+"""Émulation du BASIC du Canon X-07 : la vraie ROM ($B000-$FFFF) s'exécute
+dans le simulateur Z80 ; seuls le sous-processeur T6834 (écran, clavier,
+graphismes) et la saisie d'une ligne sont imités (voir sim.X07).
+
+  boot(ram)            démarrage à froid ($C3C3), mémorisé une fois
+  run_basic(src, ...)  tape le programme, puis RUN ; renvoie l'affichage
+  run_binary(mem, ...) charge un programme machine et l'exécute par EXEC
+
+Sert de référence pour vérifier le compilateur, et de BASIC du X-07 sur PC.
+"""
+import os
+
+from .sim import X07, SimError, EXIT
+
+ROM_PATHS = (os.path.join(os.path.dirname(__file__), "..", "..", "ROM_x07", "x07.bin"),)
+RAM_TOP = {8: 0x1FFF, 16: 0x3FFF, 24: 0x5FFF}
+
+_rom = None
+_snapshots = {}
+
+
+def rom_path():
+    env = os.environ.get("X07_ROM")
+    for p in ((env,) if env else ()) + ROM_PATHS:
+        if p and os.path.exists(p):
+            return os.path.abspath(p)
+    return None
+
+
+def load_rom():
+    global _rom
+    if _rom is None:
+        p = rom_path()
+        if p is None:
+            raise SimError("ROM introuvable : placez x07.bin dans ROM_x07/ "
+                           "ou indiquez son chemin dans X07_ROM")
+        with open(p, "rb") as f:
+            _rom = f.read()
+    return _rom
+
+
+class Finished(Exception):
+    """Le BASIC attend une nouvelle ligne de commande : programme terminé."""
+
+
+def boot(ram=16):
+    """Machine démarrée à froid, prête à recevoir une commande (invite >)."""
+    if ram not in _snapshots:
+        m = X07()
+        m.load_rom(load_rom())
+        m.ram_top = RAM_TOP[ram]
+        m.strict = False
+        m.sp, m.pc = 0, 0xC3C3
+
+        def ready(c):
+            raise Finished()
+        m.traps[0xEBFF] = ready
+        try:
+            m.run(2_000_000)
+        except Finished:
+            pass
+        _snapshots[ram] = (bytes(m.mem), dict(m.r), m.sp, m.ix, m.iy, m.rd16(m.sp))
+    mem, regs, sp, ix, iy, ready = _snapshots[ram]
+    m = X07()
+    m.has_rom = True
+    m.ram_top = RAM_TOP[ram]
+    m.strict = False
+    m.mem[:] = mem
+    m.r.update(regs)
+    m.sp, m.ix, m.iy = sp, ix, iy
+    m.transcript = []
+    m.ready_ret = ready             # adresse de retour de la saisie d'une commande
+    m._cls(m)
+    return m
+
+
+def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None):
+    """Tape le programme puis RUN.  Renvoie (affichage du programme, machine).
+    L'affichage commence après « RUN » et s'arrête au retour à l'invite."""
+    m = boot(ram)
+    m.keys = list(keys)
+    m.echo = echo
+    lines = [l for l in src.splitlines() if l.strip()]
+    state = {"phase": "saisie"}
+    queue = list(lines) + ["RUN"]
+    user = list(inputs)
+    start = {}
+
+    def command(c):                    # invite > : on tape la ligne suivante
+        if c.rd16(c.sp) != m.ready_ret:    # INPUT "texte",V du programme (sans « ? »)
+            if not user:
+                raise SimError("INPUT : aucune ligne fournie")
+            _type_line(m, user.pop(0))
+            return
+        if not queue:
+            raise Finished()
+        line = queue.pop(0)
+        _type_line(m, line, echo=False)
+        if line == "RUN":                  # le programme démarre sur un écran vierge
+            state["phase"] = "exécution"
+            m._cls(m)
+            start["pos"] = len(m.transcript)
+
+    def program_input(c):              # INPUT du programme (avec « ? »)
+        for ch in "? ":
+            m.putc(ord(ch))
+        if not user:
+            raise SimError("INPUT : aucune ligne fournie")
+        _type_line(m, user.pop(0))
+
+    m.traps[0xEBFF] = command
+    m.traps[0xEBF2] = program_input
+    m.pc = 0xEBFF
+    m.error = None
+    try:
+        m.run(max_steps)
+    except Finished:
+        pass
+    except SimError as e:              # on garde ce qui a été affiché
+        m.error = str(e)
+    out = "".join(m.transcript)[start.get("pos", 0):]
+    if out.endswith(">"):
+        out = out[:-1]
+    return out, m
+
+
+def _type_line(m, line, echo=True):
+    """Simule la frappe d'une ligne : affichage puis HL = tampon-1."""
+    for ch in line:
+        m.putc(ord(ch) if ord(ch) < 256 else 63)
+    m.putc(13)
+    m.putc(10)
+    data = line.encode("latin-1", "replace")[:255]
+    m.mem[0xD5:0xD5 + len(data)] = data
+    m.mem[0xD5 + len(data)] = 0
+    m.set16("HL", 0xD4)
+    m.setf(0x01, False)
+
+
+def run_binary(mem, entry, keys="", inputs=(), ram=16, max_steps=50_000_000, echo=None):
+    """Charge un programme machine sur la machine démarrée et l'exécute
+    comme CLEAR 50,&H(org-1) puis EXEC &Hentry.  Renvoie la machine."""
+    m = boot(ram)
+    m.keys = list(keys)
+    m.lines = list(inputs)
+    m.echo = echo
+    for a, b in mem.items():
+        m.mem[a] = b
+    m.cache.clear()
+    m.strict = True
+    org = min(mem)
+    if org >= 0x0600:                       # comme CLEAR 50,&H(org-1)
+        top = org - 1
+        for adr, v in ((0x01DF, top), (0x0204, top), (0x01DD, top - 50)):
+            m.mem[adr], m.mem[adr + 1] = v & 0xFF, v >> 8
+        m.sp = top - 50
+    m.push(EXIT)
+    m.pc = entry
+    m.run(max_steps)
+    return m

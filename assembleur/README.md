@@ -8,7 +8,7 @@ Assembleur et désassembleur Z80 pour le **Canon X-07**, dont le processeur NSC8
 - **Chargeur BASIC** généré automatiquement, avec une somme de contrôle par ligne de DATA.
 - Le désassembleur produit un **source réassemblable à l'identique**. Il gère l'octet en ligne qui suit `RST 08`.
 
-Un **compilateur BASIC** et un **simulateur** complètent l'outil ; ils sont décrits dans [COMPILATEUR.md](COMPILATEUR.md).
+Un **compilateur BASIC** (entiers, simple et double précision, chaînes) et un **émulateur du BASIC du X-07** qui exécute la vraie ROM complètent l'outil ; ils sont décrits dans [COMPILATEUR.md](COMPILATEUR.md).
 
 ## Utilisation rapide
 
@@ -18,6 +18,7 @@ python3 x07asm.py dis exemples/caso.bin --org 1C00 -t    # désassembler
 python3 x07asm.py sym T6834                              # chercher un symbole
 python3 x07asm.py basic exemples/premiers.bas            # compiler du BASIC
 python3 x07asm.py run exemples/devine.bas                # l'essayer sur PC
+python3 x07asm.py emu exemples/devine.bas                # le BASIC du X-07 (vraie ROM)
 python3 -m unittest discover -s tests                    # tests
 ```
 
@@ -111,6 +112,7 @@ x07asm/formats.py   bin, Intel HEX, chargeur BASIC, vidage, DATA
 x07asm/basic.py     compilateur BASIC (voir COMPILATEUR.md)
 x07asm/runtime.py   bibliothèque d'exécution du compilateur
 x07asm/sim.py       simulateur Z80 pour essayer les programmes sur PC
+x07asm/emu.py       démarrage de la vraie ROM : le BASIC du X-07 sur PC
 exemples/           caso.asm (livre, p. 60), bonjour.asm, *.bas
 tests/              tests unitaires
 ```

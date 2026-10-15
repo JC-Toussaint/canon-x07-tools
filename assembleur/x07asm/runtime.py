@@ -10,8 +10,10 @@ Conventions :
 
 Seules les routines réellement utilisées (et leurs dépendances, repérées
 par les noms RT_xxx / MSG_xxx cités dans le texte) sont incluses.
-Routines du X-07 employées (voir x07sym) : LCDPUT, LCDCLS, INKEY, INPUTQ,
-INPUTL, T6CMDP, BEEPR ; variables CSRX, CSRY, BRKFLG, T6BUF.
+Nombres non entiers : ils sont dans l'accumulateur de la ROM (FAC, $044E)
+avec leur type réel en VALTYP ($01D9), exactement comme dans l'interpréteur ;
+les calculs passent par les routines de la ROM (vérifiées dans ROM_x07).
+Les erreurs ont le numéro et le message du X-07 (E = 6 OV, 9 BS, 11 /0...).
 """
 import re
 
@@ -26,6 +28,10 @@ def _r(name, text):
 # ------------------------------------------------------------- fin, erreurs
 _r("RT_END", """
 RT_END:
+        LD   HL,(RT_HSAV)       ; rétablit le crochet d'erreur ($00AB)
+        LD   (HKERROR),HL
+        LD   A,(RT_HSAV+2)
+        LD   (HKERROR+2),A
         LD   SP,(RT_SP)
         POP  IY
         POP  IX
@@ -36,26 +42,54 @@ RT_END:
         RET                     ; retour au BASIC (EXEC)
 """)
 
-_r("RT_ERR", """
-RT_ERR:                         ; HL = message ; affiche ?message et s'arrête
-        PUSH HL
+
+_r("RT_FERR", """
+RT_FERR:                        ; erreur numéro E (crochet $00AB de la ROM ou bibliothèque)
         LD   A,(CSRX)
         DEC  A
-        CALL NZ,RT_NL            ; à la ligne si le curseur n'est pas en colonne 1
-        LD   A,'?'
-        CALL LCDPUT
-        POP  HL
+        CALL NZ,CRLF            ; à la ligne si le curseur n'est pas en colonne 1
+        LD   A,E
+        DEC  A
+        ADD  A,A
+        LD   L,A
+        LD   H,0
+        LD   DE,ERRTAB          ; codes sur deux lettres, comme le X-07
+        ADD  HL,DE
+        LD   A,(HL)
+        RST  $28
+        INC  HL
+        LD   A,(HL)
+        RST  $28
+        LD   HL,MSG_ERR
         CALL RT_PRS
         @ERRLINE@
-        CALL RT_NL
+        CALL CRLF
         JP   RT_END
 """)
 
-_r("MSG_DIV0", 'MSG_DIV0:   DB 4,"DIV0"')
-_r("MSG_IDX", 'MSG_IDX:    DB 6,"INDICE"')
-_r("MSG_DATA", 'MSG_DATA:   DB 4,"DATA"')
-_r("MSG_BRK", 'MSG_BRK:    DB 5,"BREAK"')
-_r("MSG_LN", 'MSG_LN:     DB 6," LIGNE"')
+_r("RT_BREAK", """
+RT_BREAK:                       ; arrêt par BREAK : « Break », comme le X-07
+        LD   A,(CSRX)
+        DEC  A
+        CALL NZ,CRLF
+        LD   HL,MSG_BRK
+        CALL RT_PRS
+        @ERRLINE@
+        CALL CRLF
+        JP   RT_END
+""")
+
+_r("RT_OV", """
+RT_OV:                          ; dépassement de capacité
+        LD   E,6
+        JP   RT_FERR
+""")
+
+
+
+_r("MSG_ERR", 'MSG_ERR:    DB 6," Error"')
+_r("MSG_BRK", 'MSG_BRK:    DB 5,"Break"')
+_r("MSG_IN", 'MSG_IN:     DB 4," in "')
 
 _r("RT_BRK", """
 RT_BRK:                         ; comme l'interpréteur ($C000) : OFF, pause, piles, BREAK
@@ -88,8 +122,7 @@ RT_BRK:                         ; comme l'interpréteur ($C000) : OFF, pause, pi
         AND  $FA
         LD   (BRKFLG),A
         CALL T6FLUSH
-        LD   HL,MSG_BRK
-        JP   RT_ERR
+        JP   RT_BREAK
 """)
 
 
@@ -126,20 +159,63 @@ RT_SGN:
 """)
 
 _r("RT_MUL", """
-RT_MUL:                         ; HL = DE * HL (16 bits)
-        LD   B,H
-        LD   C,L
+RT_MUL:                         ; HL = DE * HL (signés), OV si dépassement
+        LD   A,D
+        XOR  H
+        PUSH AF                 ; signe du résultat
+        CALL RT_ABS
+        EX   DE,HL
+        CALL RT_ABS             ; HL, DE = valeurs absolues
+        LD   A,H
+        OR   A
+        JR   Z,.S
+        LD   A,D
+        OR   A
+        JP   NZ,RT_OV           ; les deux >= 256
+        EX   DE,HL
+.S:     LD   A,L                ; A = petit facteur, DE = grand
         LD   HL,0
-        LD   A,16
-.L:     ADD  HL,HL
-        SLA  C
-        RL   B
+        LD   B,8
+.M:     ADD  HL,HL
+        JP   C,RT_OV
+        RLA
         JR   NC,.N
         ADD  HL,DE
-.N:     DEC  A
-        JR   NZ,.L
+        JP   C,RT_OV
+.N:     DJNZ .M
+        POP  AF
+        JP   P,.P
+        LD   A,H                ; négatif : au plus 32768
+        CP   $80
+        JP   C,RT_NEG
+        JP   NZ,RT_OV
+        LD   A,L
+        OR   A
+        JP   NZ,RT_OV
         RET
+.P:     BIT  7,H
+        RET  Z
+        JP   RT_OV
 """)
+
+_r("RT_INEG", """
+RT_INEG:                        ; HL = -HL, OV pour -32768
+        LD   A,H
+        CP   $80
+        JP   NZ,RT_NEG
+        LD   A,L
+        OR   A
+        JP   Z,RT_OV
+        JP   RT_NEG
+""")
+
+_r("RT_IABS", """
+RT_IABS:                        ; ABS entier, OV pour -32768
+        BIT  7,H
+        RET  Z
+        JP   RT_INEG
+""")
+
 
 _r("RT_UDIV", """
 RT_UDIV:                        ; HL / DE non signés -> HL quotient, DE reste
@@ -169,8 +245,8 @@ RT_DIVMOD:                      ; DE / HL signés -> HL quotient, DE reste
         LD   A,H
         OR   L
         JR   NZ,.OK
-        LD   HL,MSG_DIV0
-        JP   RT_ERR
+        LD   E,11               ; /0
+        JP   RT_FERR
 .OK:    LD   A,D
         XOR  H
         LD   B,A                ; bit 7 : signe du quotient
@@ -192,7 +268,7 @@ RT_DIVMOD:                      ; DE / HL signés -> HL quotient, DE reste
 """)
 
 _r("RT_DIV", """
-RT_DIV:                         ; HL = DE / HL (troncature)
+RT_DIV:                         ; HL = DE \\ HL (troncature)
         JP   RT_DIVMOD
 """)
 
@@ -200,59 +276,6 @@ _r("RT_MOD", """
 RT_MOD:                         ; HL = DE MOD HL (signe du dividende)
         CALL RT_DIVMOD
         EX   DE,HL
-        RET
-""")
-
-_r("RT_POW", """
-RT_POW:                         ; HL = DE ^ HL
-        BIT  7,H
-        JR   Z,.P
-        LD   HL,0
-        RET
-.P:     LD   B,H
-        LD   C,L
-        LD   HL,1
-.L:     LD   A,B
-        OR   C
-        RET  Z
-        PUSH BC
-        PUSH DE
-        CALL RT_MUL
-        POP  DE
-        POP  BC
-        DEC  BC
-        JR   .L
-""")
-
-_r("RT_RND", """
-RT_RND:                         ; HL = n -> 0..n-1 (n <= 0 : 0..32767)
-        PUSH HL
-        LD   HL,(RT_SEED)       ; xorshift 16 bits
-        LD   A,H
-        RRA
-        LD   A,L
-        RRA
-        XOR  H
-        LD   H,A
-        LD   A,L
-        RRA
-        LD   A,H
-        RRA
-        XOR  L
-        LD   L,A
-        XOR  H
-        LD   H,A
-        LD   (RT_SEED),HL
-        RES  7,H
-        EX   DE,HL
-        POP  HL
-        BIT  7,H
-        JR   NZ,.R
-        LD   A,H
-        OR   L
-        JR   Z,.R
-        JP   RT_MOD
-.R:     EX   DE,HL
         RET
 """)
 
@@ -469,56 +492,6 @@ RT_MID:                         ; (DE) <- MID$((DE),BC,HL)
         RET
 """)
 
-_r("RT_STR", """
-RT_STR:                         ; (DE) <- STR$(HL)
-        PUSH DE
-        INC  DE
-        LD   A,' '
-        BIT  7,H
-        JR   Z,.P
-        CALL RT_NEG
-        LD   A,'-'
-.P:     LD   (DE),A
-        INC  DE
-        XOR  A
-        LD   (RT_NZ),A
-        LD   BC,10000
-        CALL .D
-        LD   BC,1000
-        CALL .D
-        LD   BC,100
-        CALL .D
-        LD   BC,10
-        CALL .D
-        LD   A,L
-        ADD  A,'0'
-        LD   (DE),A
-        INC  DE
-        POP  HL
-        LD   A,E
-        SUB  L
-        DEC  A
-        LD   (HL),A
-        RET
-.D:     LD   A,'0'-1
-.DL:    INC  A
-        OR   A
-        SBC  HL,BC
-        JR   NC,.DL
-        ADD  HL,BC
-        CP   '0'
-        JR   NZ,.W
-        LD   A,(RT_NZ)
-        OR   A
-        RET  Z
-        LD   A,'0'
-.W:     LD   (DE),A
-        INC  DE
-        LD   A,1
-        LD   (RT_NZ),A
-        RET
-""")
-
 _r("RT_HEX", """
 RT_HEX:                         ; (DE) <- HEX$(HL)
         PUSH DE
@@ -598,168 +571,102 @@ RT_INKEY:                       ; (HL) <- INKEY$
         RET
 """)
 
-_r("RT_ATOI", """
-RT_ATOI:                        ; HL = texte, C = longueur -> DE = valeur
-        LD   DE,0
-.S:     CALL .CH
-        CP   ' '
-        JR   NZ,.S1
-        CALL .AV
-        JR   .S
-.S1:    LD   B,0
-        CP   '+'
-        JR   Z,.SG
-        CP   '-'
-        JR   NZ,.S2
-        INC  B
-.SG:    CALL .AV
-        CALL .CH
-.S2:    CP   '&'
-        JR   Z,.HX
-.DL:    CALL .CH
-        SUB  '0'
-        CP   10
-        JR   NC,.F
-        PUSH HL
-        LD   H,D
-        LD   L,E
-        ADD  HL,HL
-        ADD  HL,HL
-        ADD  HL,DE
-        ADD  HL,HL
-        LD   E,A
-        LD   D,0
-        ADD  HL,DE
-        EX   DE,HL
-        POP  HL
-        CALL .AV
-        JR   .DL
-.HX:    CALL .AV
-        CALL .CH
-        AND  $DF
-        CP   'H'
-        JR   NZ,.F
-        CALL .AV
-.HE:    CALL .CH
-        CP   'a'
-        JR   C,.HU
-        AND  $DF
-.HU:    SUB  '0'
-        CP   10
-        JR   C,.HD
-        SUB  7
-        CP   10
-        JR   C,.F
-        CP   16
-        JR   NC,.F
-.HD:    PUSH HL
-        EX   DE,HL
-        ADD  HL,HL
-        ADD  HL,HL
-        ADD  HL,HL
-        ADD  HL,HL
-        LD   E,A
-        LD   D,0
-        ADD  HL,DE
-        EX   DE,HL
-        POP  HL
-        CALL .AV
-        JR   .HE
-.F:     LD   A,B
-        OR   A
-        RET  Z
-        EX   DE,HL
-        CALL RT_NEG
-        EX   DE,HL
-        RET
-.CH:    LD   A,C
-        OR   A
-        RET  Z
-        LD   A,(HL)
-        RET
-.AV:    LD   A,C
-        OR   A
-        RET  Z
-        INC  HL
-        DEC  C
-        RET
-""")
-
-_r("RT_VAL", """
-RT_VAL:                         ; HL = VAL((HL))
-        LD   C,(HL)
-        INC  HL
-        CALL RT_ATOI
-        EX   DE,HL
-        RET
-""")
-
 # ------------------------------------------------------------- affichage
 _r("RT_PRS", """
-RT_PRS:                         ; affiche la chaîne (HL)
+RT_PRS:                         ; affiche la chaîne (HL) sur le périphérique courant
         LD   B,(HL)
         INC  B
 .L:     DEC  B
         RET  Z
         INC  HL
         LD   A,(HL)
-        CALL LCDPUT
+        RST  $28
         JR   .L
 """)
 
-_r("RT_PRN", """
-RT_PRN:                         ; affiche HL comme PRINT (espace avant et après)
-        LD   DE,RT_NBUF
-        CALL RT_STR
-        LD   HL,RT_NBUF
-        CALL RT_PRS
-        LD   A,' '
-        JP   LCDPUT
-""")
 
 _r("RT_NL", """
-RT_NL:                          ; retour à la ligne
-        LD   A,13
-        CALL LCDPUT
-        LD   A,10
-        JP   LCDPUT
+RT_NL:                          ; retour à la ligne (CR LF de la ROM)
+        JP   CRLF
 """)
 
+
 _r("RT_COMMA", """
-RT_COMMA:                       ; virgule de PRINT : zone suivante (10 colonnes)
-        LD   A,' '
-        CALL LCDPUT
-        LD   A,(CSRX)           ; colonne, à partir de 1
-        DEC  A
-.M:     SUB  10
+RT_COMMA:                       ; virgule de PRINT, copie de la ROM ($EA4D) : zones de 14
+        LD   BC,0
+        CALL DEVPOS             ; A = position, B = largeur
+        PUSH AF
+        LD   A,B
+        AND  A
+        JR   Z,.T
+.M:     SUB  14
         JR   NC,.M
-        ADD  A,10
-        JR   NZ,RT_COMMA
+        ADD  A,28
+        NEG
+        ADD  A,B
+        LD   C,A                ; début de la dernière zone complète
+        POP  AF
+        CP   C
+        JP   NC,CRLF
+.S:     SUB  14
+        JR   NC,.S
+        CPL
+        INC  A
+        RET  Z
+        LD   B,A
+        LD   A,' '
+.L:     RST  $28
+        DJNZ .L
+        RET
+.T:     LD   A,9
+        RST  $28
+        POP  AF
         RET
 """)
 
 
+
 _r("RT_TAB", """
-RT_TAB:                         ; TAB(HL) : colonnes comptées à partir de 0
+RT_TAB:                         ; TAB(HL), copie de la ROM ($EA81)
         LD   A,H
         OR   A
-        JR   NZ,.C
+        JR   Z,.K
+        LD   L,255
+.K:     LD   E,L
+        LD   BC,$FFFF
+        CALL DEVPOS             ; C = position, B = largeur
+        DEC  B
+        LD   A,B
+        CP   E
+        JR   NC,.D
+        LD   E,B                ; au plus largeur-1
+.D:     LD   L,0
+        RST  $38                ; fonction $8F du périphérique : se placer en colonne E
+        DB   $8F                ; (l'écran déplace le curseur et rend L<>0)
         LD   A,L
-        CP   20
-        JR   C,.K
-.C:     LD   L,19
-.K:     INC  L                  ; CSRX compte à partir de 1
-.L:     LD   A,(CSRX)
-        CP   L
-        RET  NC
+        AND  A
+        RET  NZ
+        LD   A,C                ; sinon : espaces jusqu'à la colonne E
+        CPL
+        ADD  A,E
+        JR   C,.S
+        LD   A,13
+        RST  $28
+        LD   A,E
+        DEC  A
+.S:     INC  A
+        RET  Z
+        LD   B,A
         LD   A,' '
-        CALL LCDPUT
-        JR   .L
+.L:     RST  $28
+        DJNZ .L
+        RET
 """)
 
 
+
 _r("RT_SPC", """
-RT_SPC:                         ; SPC(HL)
+RT_SPC:                         ; SPC(HL) (extension : absent du BASIC du X-07)
         LD   A,H
         OR   A
         RET  NZ
@@ -768,9 +675,10 @@ RT_SPC:                         ; SPC(HL)
 .L:     DEC  B
         RET  Z
         LD   A,' '
-        CALL LCDPUT
+        RST  $28
         JR   .L
 """)
+
 
 # ------------------------------------------------------------- tableaux, ON
 _r("RT_CHK", """
@@ -780,8 +688,8 @@ RT_CHK:                         ; erreur si HL >= DE (non signés)
         SBC  HL,DE
         POP  HL
         RET  C
-        LD   HL,MSG_IDX
-        JP   RT_ERR
+        LD   E,9                ; BS : indice hors du tableau
+        JP   RT_FERR
 """)
 
 _r("RT_ONSEL", """
@@ -815,6 +723,237 @@ RT_JPHL:                        ; EXEC adresse
         JP   (HL)
 """)
 
+# ------------------------------------------------------------- nombres (ROM)
+_r("RT_PRNUM", """
+RT_PRNUM:                       ; PRINT d'un nombre (FAC), copie de la ROM ($EA2C)
+        CALL FOUT               ; HL = texte terminé par 00
+        PUSH HL
+        LD   B,1                ; longueur + espace final
+.C:     LD   A,(HL)
+        OR   A
+        JR   Z,.D
+        INC  HL
+        INC  B
+        JR   .C
+.D:     PUSH BC
+        LD   BC,$FF00
+        CALL DEVPOS             ; A = position, B = largeur
+        POP  DE                 ; D = longueur
+        AND  A
+        JR   Z,.P
+        ADD  A,D
+        DEC  A
+        CP   B
+        CALL NC,CRLF            ; ne tient pas sur la ligne
+.P:     POP  HL
+.O:     LD   A,(HL)
+        OR   A
+        JR   Z,.S
+        RST  $28
+        INC  HL
+        JR   .O
+.S:     LD   A,' '
+        RST  $28
+        RET
+""")
+
+_r("RT_STRX", """
+RT_STRX:                        ; (DE) <- STR$(FAC)
+        PUSH DE
+        CALL FOUT
+        POP  DE
+        PUSH DE
+        INC  DE
+        LD   B,0
+.L:     LD   A,(HL)
+        OR   A
+        JR   Z,.E
+        LD   (DE),A
+        INC  HL
+        INC  DE
+        INC  B
+        JR   .L
+.E:     POP  HL
+        LD   (HL),B
+        RET
+""")
+
+_r("RT_ZSTR", """
+RT_ZSTR:                        ; RT_FBUF <- chaîne (HL), terminée par 00 ; HL = RT_FBUF
+        LD   A,(HL)
+        CP   63
+        JR   C,.K
+        LD   A,63
+.K:     LD   C,A
+        LD   B,0
+        INC  HL
+        LD   DE,RT_FBUF
+        OR   A
+        JR   Z,.Z
+        LDIR
+.Z:     XOR  A
+        LD   (DE),A
+        LD   HL,RT_FBUF
+.S:     LD   A,(HL)             ; espaces de tête
+        CP   ' '
+        RET  NZ
+        INC  HL
+        JR   .S
+""")
+
+_r("RT_VALX", """
+RT_VALX:                        ; FAC = VAL((HL))
+        CALL RT_ZSTR
+        JP   FIN
+""")
+
+_r("RT_LDF4", """
+RT_LDF4:                        ; FAC <- simple précision en (HL)
+        LD   DE,FAC
+        LD   BC,4
+        LDIR
+        LD   A,4
+        LD   (VALTYP),A
+        RET
+""")
+
+_r("RT_LDF8", """
+RT_LDF8:                        ; FAC <- double précision en (HL)
+        LD   DE,FAC
+        LD   BC,8
+        LDIR
+        LD   A,8
+        LD   (VALTYP),A
+        RET
+""")
+
+_r("RT_STF4", """
+RT_STF4:                        ; (HL) <- FAC simple précision
+        EX   DE,HL
+        LD   HL,FAC
+        LD   BC,4
+        LDIR
+        RET
+""")
+
+_r("RT_STF8", """
+RT_STF8:                        ; (HL) <- FAC double précision
+        EX   DE,HL
+        LD   HL,FAC
+        LD   BC,8
+        LDIR
+        RET
+""")
+
+_r("RT_FPUSHL", """
+RT_FPUSHL:                      ; empile l'opérande gauche comme l'évaluateur ($F976)
+        POP  IX                 ; C = opération (0 + 1 - 2 * 3 / 4 ^)
+        LD   HL,(FACINT)
+        PUSH HL
+        LD   A,(VALTYP)
+        CP   4
+        JR   C,.T
+        LD   HL,(FAC)
+        PUSH HL
+        CP   8
+        JR   NZ,.T
+        LD   HL,(FAC+6)
+        PUSH HL
+        LD   HL,(FAC+4)
+        PUSH HL
+.T:     LD   B,A                ; B = type
+        PUSH BC
+        JP   (IX)
+""")
+
+_r("RT_FPUSH8", """
+RT_FPUSH8:                      ; empile les 8 octets de FAC
+        POP  IX
+        LD   HL,(FAC+6)
+        PUSH HL
+        LD   HL,(FAC+4)
+        PUSH HL
+        LD   HL,(FAC+2)
+        PUSH HL
+        LD   HL,(FAC)
+        PUSH HL
+        JP   (IX)
+""")
+
+_r("RT_FPOPARG", """
+RT_FPOPARG:                     ; ARG <- FAC ; FAC <- valeur dépilée (double)
+        POP  IX
+        LD   HL,FAC
+        LD   DE,ARG
+        LD   BC,8
+        LDIR
+        POP  HL
+        LD   (FAC),HL
+        POP  HL
+        LD   (FAC+2),HL
+        POP  HL
+        LD   (FAC+4),HL
+        POP  HL
+        LD   (FAC+6),HL
+        LD   A,8
+        LD   (VALTYP),A
+        JP   (IX)
+""")
+
+_r("RT_INFLD", """
+RT_INFLD:                       ; champ suivant de la saisie -> RT_FBUF (00) ; HL = RT_FBUF
+        LD   HL,(RT_IP)
+        LD   A,(RT_IC)
+        LD   C,A
+        LD   DE,RT_FBUF
+        LD   B,63
+.S:     LD   A,C
+        OR   A
+        JR   Z,.E
+        LD   A,(HL)
+        CP   ' '
+        JR   NZ,.L
+        INC  HL
+        DEC  C
+        JR   .S
+.L:     LD   A,C
+        OR   A
+        JR   Z,.E
+        LD   A,(HL)
+        INC  HL
+        DEC  C
+        CP   ','
+        JR   Z,.E
+        LD   (DE),A
+        INC  DE
+        DJNZ .L
+.E:     XOR  A
+        LD   (DE),A
+        LD   (RT_IP),HL
+        LD   A,C
+        LD   (RT_IC),A
+        LD   HL,RT_FBUF
+        RET
+""")
+
+_r("RT_RDX", """
+RT_RDX:                         ; FAC <- élément DATA suivant (texte lu par FIN)
+        CALL RT_DNEXT
+        CALL RT_ZSTR
+        CALL FIN
+.S:     LD   A,(HL)             ; le nombre doit occuper tout l'élément
+        CP   ' '
+        JR   NZ,.F
+        INC  HL
+        JR   .S
+.F:     OR   A
+        RET  Z
+        LD   HL,(RT_DLINE)      ; sinon SN Error, à la ligne du DATA (comme le X-07)
+        LD   (RT_LINE),HL
+        LD   E,2
+        JP   RT_FERR
+""")
+
 # ------------------------------------------------------------- INPUT
 _r("RT_INPUT", """
 RT_INPUT:                       ; saisie d'une ligne (A=1 : avec « ? »)
@@ -823,10 +962,8 @@ RT_INPUT:                       ; saisie d'une ligne (A=1 : avec « ? »)
         CALL INPUTQ
         JR   .G
 .N:     CALL INPUTL
-.G:     JR   NC,.K              ; CY=1 : BREAK pendant la saisie
-        LD   HL,MSG_BRK
-        JP   RT_ERR
-.K:     INC  HL
+.G:     JP   C,RT_BREAK         ; CY=1 : BREAK pendant la saisie
+        INC  HL
         LD   (RT_IP),HL
         LD   B,0
 .L:     LD   A,(HL)
@@ -852,24 +989,6 @@ RT_SKIPC:                       ; avance après la prochaine virgule
         CP   ','
         RET  Z
         JR   RT_SKIPC
-""")
-
-_r("RT_INN", """
-RT_INN:                         ; lit un entier saisi -> (HL)
-        PUSH HL
-        LD   HL,(RT_IP)
-        LD   A,(RT_IC)
-        LD   C,A
-        CALL RT_ATOI
-        CALL RT_SKIPC
-        LD   (RT_IP),HL
-        LD   A,C
-        LD   (RT_IC),A
-        POP  HL
-        LD   (HL),E
-        INC  HL
-        LD   (HL),D
-        RET
 """)
 
 _r("RT_INS", """
@@ -910,34 +1029,26 @@ RT_INS:                         ; lit une chaîne saisie (jusqu'à la virgule) -
 
 # ------------------------------------------------------------- DATA / READ
 _r("RT_DNEXT", """
-RT_DNEXT:                       ; HL = élément DATA suivant
+RT_DNEXT:                       ; HL = élément DATA suivant (ligne dans RT_DLINE)
         LD   HL,(RT_DPTR)
-        LD   A,(HL)
-        CP   $FF
+        LD   E,(HL)
+        INC  HL
+        LD   D,(HL)
+        INC  HL
+        LD   A,D
+        AND  E
+        INC  A
         JR   NZ,.K
-        LD   HL,MSG_DATA
-        JP   RT_ERR
-.K:     PUSH HL
-        LD   E,A
+        LD   E,4                ; OD : plus de DATA
+        JP   RT_FERR
+.K:     LD   (RT_DLINE),DE
+        PUSH HL
+        LD   E,(HL)
         LD   D,0
         INC  DE
         ADD  HL,DE
         LD   (RT_DPTR),HL
         POP  HL
-        RET
-""")
-
-_r("RT_RDN", """
-RT_RDN:                         ; READ entier -> (HL)
-        PUSH HL
-        CALL RT_DNEXT
-        LD   C,(HL)
-        INC  HL
-        CALL RT_ATOI
-        POP  HL
-        LD   (HL),E
-        INC  HL
-        LD   (HL),D
         RET
 """)
 
@@ -959,8 +1070,7 @@ RT_T6:                          ; commande A au T6834, paramètres dans RT_GB
 """)
 
 VARIABLES.update({
-    "RT_NZ": 1, "RT_SEED": 2, "RT_DPTR": 2, "RT_IP": 2, "RT_IC": 1,
-    "RT_NBUF": 8, "RT_GB": 5, "RT_LINE": 2,
+    "RT_DPTR": 2, "RT_IP": 2, "RT_IC": 1, "RT_GB": 5, "RT_LINE": 2, "RT_FBUF": 64, "RT_DLINE": 2,
 })
 
 _NAME = re.compile(r"\b((?:RT|MSG)_[A-Z0-9_]+)\b")
@@ -990,7 +1100,7 @@ def routine(name, debug=False):
     if "@ERRLINE@" in text:
         text = text.replace(
             "@ERRLINE@",
-            "LD   HL,MSG_LN\n        CALL RT_PRS\n        LD   HL,(RT_LINE)\n"
-            "        CALL RT_PRN" if debug else "")
+            "LD   HL,MSG_IN\n        CALL RT_PRS\n        LD   HL,(RT_LINE)\n"
+            "        CALL PRTHL" if debug else "")
         text = "\n".join(l for l in text.split("\n") if l.strip())
     return text

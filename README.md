@@ -6,7 +6,7 @@ Outils de développement et documentation pour le **Canon X-07**, ordinateur de 
 
 | Dossier | Contenu |
 |---|---|
-| [`assembleur/`](assembleur/) | **x07asm** : assembleur et désassembleur Z80, compilateur BASIC → Z80 et simulateur, en Python 3 sans dépendance |
+| [`assembleur/`](assembleur/) | **x07asm** : assembleur et désassembleur Z80, compilateur BASIC → Z80 (entiers, flottants BCD, chaînes), simulateur et émulateur du BASIC du X-07, en Python 3 sans dépendance |
 | [`ref_docs/`](ref_docs/) | documentation : notes de référence en LaTeX/PDF tirées des livres, liaison série par FT232RL, documents d'origine numérisés |
 | [`ROM_x07/`](ROM_x07/) | vidage de la ROM BASIC (`x07.bin`, à implanter en `$B000`) et jeu de caractères (`charset.rom`) |
 
@@ -19,6 +19,7 @@ python3 x07asm.py dis ../ROM_x07/x07.bin --org B000 \
         --start C1BE --end C1F8 -l                         # désassembler la ROM
 python3 x07asm.py basic exemples/premiers.bas              # compiler du BASIC
 python3 x07asm.py run exemples/devine.bas                  # l'essayer sur PC
+python3 x07asm.py emu exemples/devine.bas                  # le BASIC du X-07 (vraie ROM)
 python3 -m unittest discover -s tests                      # tests
 ```
 
