@@ -62,6 +62,7 @@ def boot(ram=16):
         _snapshots[ram] = (bytes(m.mem), dict(m.r), m.sp, m.ix, m.iy, m.rd16(m.sp))
     mem, regs, sp, ix, iy, ready = _snapshots[ram]
     m = X07()
+    m._use_rom_routines()
     m.has_rom = True
     m.ram_top = RAM_TOP[ram]
     m.strict = False
@@ -74,12 +75,14 @@ def boot(ram=16):
     return m
 
 
-def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None):
+def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, setup=None):
     """Tape le programme puis RUN.  Renvoie (affichage du programme, machine).
     L'affichage commence après « RUN » et s'arrête au retour à l'invite."""
     m = boot(ram)
     m.keys = list(keys)
     m.echo = echo
+    if setup:
+        setup(m)
     lines = [l for l in src.splitlines() if l.strip()]
     state = {"phase": "saisie"}
     queue = list(lines) + ["RUN"]

@@ -134,3 +134,22 @@ Si vous trouvez ces deux tensions là où le dessin les place, l'orientation est
 - La **vitesse**, la **parité** et la **longueur des données** doivent être identiques sur le X-07 et sur le terminal du PC (recommandation du guide de dépannage du X-722).
 - Pour tester, le guide cite le programme de vérification **`JSERI.X07`**.
 - Côté PC : port COM virtuel du FTDI, sans contrôle de flux (*none*).
+
+### Réglages du port série du X-07 (vérifiés dans la ROM)
+
+- **Ouverture en BASIC :** `INIT#1,"COM:",vitesse,"mode"`. La vitesse et le mode sont facultatifs (4800 bauds et mode `B` par défaut). On lit ensuite par `INP(#1)` et on écrit par `OUT#1,octet`.
+- **Vitesse :** de 100 à 8000 bauds, avec un diviseur de 24000/vitesse − 1. Les vitesses exactes sont 1200, 2400, 4800 et 8000 bauds ; **9600 est refusé**.
+- **Mode :** une lettre de `A` à `H`. Elle règle la longueur des données et la parité : `B` = 8 bits sans parité, `G` = 7 bits parité paire (Minitel). Le nombre de bits d'arrêt n'est pas établi ; le PC envoie donc avec 2 bits d'arrêt, que le X-07 accepte dans les deux cas.
+- **Réception :** sous interruption, dans un tampon de **32 octets**. La ROM coupe RTS dès 6 octets en attente. Avec le câblage minimal ci-dessus (RTS non relié), le PC doit donc se régler lui-même sur le X-07.
+
+### Envoyer un programme : `x07asm.py send`
+
+Le dossier `assembleur/` fournit le transfert complet. Le protocole par blocs de 16 octets, avec accusé de réception, convient au câblage minimal ; le détail est dans `assembleur/COMPILATEUR.md`.
+
+1. **Une seule fois, tapez le récepteur sur le X-07.** Affichez-le avec `python3 x07asm.py recepteur`. Il reste en mémoire, même machine éteinte.
+2. **Sur le PC :** `python3 x07asm.py send monprog.bas --port /dev/ttyUSB0 --ram 16`. Un `.bas` est compilé au passage ; un `.bin`, un `.hex` ou un `.asm` sont aussi acceptés.
+3. **Sur le X-07 :** `CLEAR 50,&H…` (la commande exacte est affichée par le PC), puis `RUN`. À la fin, le X-07 affiche `OK. EXEC &H…`.
+
+**Sous WSL2,** le module USB n'est pas visible par défaut. Deux possibilités :
+- l'attacher depuis Windows avec `usbipd attach --wsl --busid <n°>` (outil usbipd-win), puis utiliser `/dev/ttyUSB0` ;
+- lancer `python x07asm.py send … --port COM3` depuis Windows, avec pyserial installé (`pip install pyserial`).

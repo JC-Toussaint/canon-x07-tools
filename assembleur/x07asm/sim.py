@@ -41,6 +41,7 @@ class CPU:
         self.cache = {}
         self.ports_out = []
         self.rom_start = 0xB000
+        self.iff = False             # interruptions autorisées (EI)
         self.has_rom = False
         self.ram_top = 0xAFFF        # dernière adresse de RAM
         self.strict = True           # erreur sur écriture hors RAM (aide à la mise au point)
@@ -78,6 +79,14 @@ class CPU:
         return v
 
     def load_rom(self, data):
+        self._use_rom_routines()
+        self._load_rom(data)
+
+    def _use_rom_routines(self):
+        """Avec la ROM, ces routines s'exécutent pour de vrai (pas d'imitation)."""
+        pass
+
+    def _load_rom(self, data):
         """Charge la ROM BASIC ($B000-$FFFF) et recopie la table des vecteurs
         en $0000, comme le démarrage à froid ($C3D8 : LDIR de $C6DB, $AE octets)."""
         self.mem[0xB000:0x10000] = bytes(data[:0x5000]).ljust(0x5000, b"\xff")
@@ -202,7 +211,17 @@ class CPU:
         return r & 0xFF
 
     # ------------------------------------------------ exécution
+    def irq(self):
+        """Vecteur d'une interruption en attente, ou None (voir X07)."""
+        return None
+
     def step(self):
+        if self.iff:
+            vec = self.irq()
+            if vec is not None:                # interruption acceptée (RST A/B/C du NSC800)
+                self.iff = False
+                self.push(self.pc)
+                self.pc = vec
         pc = self.pc
         if pc in self.traps:
             self.traps[pc](self)
@@ -241,9 +260,13 @@ class CPU:
         raise SimError("HALT en $%04X" % ((self.pc - 1) & 0xFFFF))
 
     def x_DI(self, t, o, v):
-        pass
+        self.iff = False
 
-    x_EI = x_IM = x_DI
+    def x_EI(self, t, o, v):
+        self.iff = True
+
+    def x_IM(self, t, o, v):
+        pass
 
     def x_LD(self, t, o, v):
         dst, src = o
@@ -648,13 +671,64 @@ class X07(CPU):
         T[sym["T6PEEK"]] = lambda c: c.r.__setitem__("A", 0)
         self.brk = sym["BRKFLG"]
         self.powered_off = 0
+        from collections import deque
+        self.serial_in = deque()      # octets envoyés par le PC, pas encore arrivés
+        self.serial_out = []          # octets émis par le X-07
+        self.on_serial = None         # fonction appelée à chaque octet émis
+        self.rx_latch = None
+        self.rx_next = 0
+        self.rx_err = 0
+        self.overruns = 0
+        self.int_mask = 0
+        self.byte_steps = 1500        # ~ un octet à 4800 bauds
         self._setcur(0, 0)
 
     # écran
-    # ports du HD61L202F : bus vers le T6834 toujours libre, UART prête
+    def _use_rom_routines(self):
+        for name in ("BATTMSG",):
+            self.traps.pop(x07sym.all_symbols()[name], None)
+
+    # ports du HD61L202F : bus vers le T6834 toujours libre ; UART émulée
     def port_in(self, port):
-        return {0xF0: 0x00, 0xF1: 0x00, 0xF2: 0x02, 0xF4: 0x00, 0xF6: 0x01,
-                0xF7: 0x00}.get(port, 0xFF)
+        if port == 0xF6:                      # état UART : TXRDY, RXRDY, TXE, CTS=0
+            self._uart_tick()
+            return 0x05 | (0x02 if self.rx_latch is not None else 0) | self.rx_err
+        if port == 0xF7:                      # donnée reçue
+            v = self.rx_latch if self.rx_latch is not None else 0
+            self.rx_latch = None
+            self.rx_next = self.steps + self.byte_steps
+            return v
+        return {0xF0: 0x00, 0xF1: 0x00, 0xF2: 0x02, 0xF4: 0x00}.get(port, 0xFF)
+
+    def x_OUT(self, t, o, v):
+        port = v[z80.PORT] if o[0] == z80.PORT else self.r["C"]
+        val = self.r[o[1]]
+        self.ports_out.append((port, val))
+        if port == 0xF0:
+            self.int_mask = val
+        elif port == 0xF7:                    # octet émis vers le PC
+            self.serial_out.append(val)
+            if self.on_serial:
+                self.on_serial(val)
+
+    def _uart_tick(self):
+        """Fait arriver l'octet suivant de la ligne série au rythme du débit."""
+        if self.rx_latch is None and self.serial_in and self.steps >= self.rx_next:
+            self.rx_latch = self.serial_in.popleft()
+            self.rx_next = self.steps + self.byte_steps
+        elif self.rx_latch is not None and self.serial_in and \
+                self.steps >= self.rx_next + self.byte_steps:
+            self.serial_in.popleft()           # octet non lu à temps : perdu (débordement)
+            self.rx_err |= 0x10
+            self.overruns += 1
+            self.rx_next = self.steps
+
+    def irq(self):
+        if self.serial_in or self.rx_latch is not None:
+            self._uart_tick()
+            if self.rx_latch is not None and self.int_mask & 0x01:
+                return 0x34                   # INTERRUPT B : interruptions série
+        return None
 
     # Comme dans la ROM : $B8 = ligne, $B9 = colonne, comptées à partir de 1.
     def _cursor(self):
@@ -706,7 +780,8 @@ class X07(CPU):
             self.mem[self.brk] = 0
             self.powered_off += 1
             a = 0
-        c.r["A"] = a
+        c.r["A"] = a                       # comme $C5A6 : OR A puis RET P
+        c.r["F"] = _szp(a) & ~PV
 
     def _battmsg(self, c):
         a = self.mem[self.brk]

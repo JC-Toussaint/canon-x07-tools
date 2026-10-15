@@ -1,0 +1,488 @@
+                      1  ; FLOTTANTS - compilé par x07basic (BASIC du Canon X-07)
+                      2  ; Chargement : CLEAR 50,&H1CEF  puis  EXEC &H1CF0
+                      3  
+0050                  4  STRCAP  EQU  80               ; capacité des chaînes
+                      5  
+                      6  ; Canon X-07 : routines de la ROM
+B5AC                  7  FATN     EQU  $B5AC  ; ATN (vérifié ROM)
+B694                  8  FSQR     EQU  $B694  ; SQR (vérifié ROM)
+BBAB                  9  FOUT     EQU  $BBAB  ; FAC -> texte libre, HL = début, fin 00 (vérifié ROM)
+C06C                 10  BATTMSG  EQU  $C06C  ; messages piles faibles (BREAKFLAG bits 1 et 3) (vérifié ROM)
+C0BD                 11  T6FLUSH  EQU  $C0BD  ; vide les tampons clavier et T6834
+C5A6                 12  CHKBATT  EQU  $C5A6  ; si BREAKFLAG bit 7 (OFF) : éteint la machine (vérifié ROM)
+C90A                 13  INKEY    EQU  $C90A  ; lit une touche (INKEY$) -> A ; Z=1 si aucune (vérifié ROM)
+CAD9                 14  DCMP     EQU  $CAD9  ; compare acc et acc2 (double)
+CAEF                 15  HL2FAC   EQU  $CAEF  ; HL -> accumulateur (entier)
+CB08                 16  FCSNG    EQU  $CB08  ; accumulateur -> simple précision (CSNG)
+CB90                 17  FCDBL    EQU  $CB90  ; accumulateur -> double précision (CDBL)
+CE9E                 18  LCDCLS   EQU  $CE9E  ; efface l'écran (CLS)
+E8EE                 19  DEVPOS   EQU  $E8EE  ; position (A) et largeur (B) du périphérique courant (vérifié ROM)
+E929                 20  CRLF     EQU  $E929  ; envoie CR LF au périphérique courant (vérifié ROM)
+F123                 21  ERRTAB   EQU  $F123  ; codes d'erreur sur 2 lettres : NF SN RG OD FC OV... (vérifié ROM)
+F9E4                 22  FOPDISP  EQU  $F9E4  ; répartiteur des opérateurs + - * / ^ (pile : opérande gauche, BC = type/op) (vérifié ROM)
+                     23  
+                     24  ; Canon X-07 : variables système
+002B                 25  BRKFLG   EQU  $002B  ; BREAKFLAG
+00AB                 26  HKERROR  EQU  $00AB  ; hook ERREUR
+00B9                 27  CSRX     EQU  $00B9  ; colonne du curseur, à partir de 1 (vérifié ROM)
+01D9                 28  VALTYP   EQU  $01D9  ; type de donnée (2,3,4,8)
+044E                 29  FAC      EQU  $044E  ; accumulateur flottant
+0450                 30  FACINT   EQU  $0450  ; entier dans l'accumulateur
+049F                 31  ARG      EQU  $049F  ; accumulateur 2
+                     32  
+1CF0                 33          ORG  $1CF0
+                     34  
+1CF0  F5             35  START:  PUSH AF                  ; sauvegarde pour le retour au BASIC
+1CF1  C5             36          PUSH BC
+1CF2  D5             37          PUSH DE
+1CF3  E5             38          PUSH HL
+1CF4  DD E5          39          PUSH IX
+1CF6  FD E5          40          PUSH IY
+1CF8  ED 73 D5 1F    41          LD   (RT_SP),SP
+1CFC  2A AB 00       42          LD   HL,(HKERROR)        ; détourne le crochet d'erreur de la ROM
+1CFF  22 D7 1F       43          LD   (RT_HSAV),HL
+1D02  3A AD 00       44          LD   A,(HKERROR+2)
+1D05  32 D9 1F       45          LD   (RT_HSAV+2),A
+1D08  3E C3          46          LD   A,$C3               ; JP RT_FERR
+1D0A  32 AB 00       47          LD   (HKERROR),A
+1D0D  21 79 1E       48          LD   HL,RT_FERR
+1D10  22 AC 00       49          LD   (HKERROR+1),HL
+1D13  21 DA 1F       50          LD   HL,VARS
+1D16  11 DB 1F       51          LD   DE,VARS+1
+1D19  01 25 00       52          LD   BC,VARS_END-VARS-1
+1D1C  36 00          53          LD   (HL),0
+1D1E  ED B0          54          LDIR                     ; variables à zéro
+                     55  
+                     56  ; 10 REM CALCULS EN VIRGULE FLOTTANTE (DOUBLE PRECISION PAR DEFAUT, COMME LE X-07)
+                     57  
+                     58  ; 20 CLS:PRINT "PI=";4*ATN(1)
+1D20  CD 9E CE       59          CALL LCDCLS
+1D23  21 B6 1F       60          LD   HL,LIT_1
+1D26  CD F8 1E       61          CALL RT_PRS
+1D29  21 47 1D       62          LD   HL,G_1
+1D2C  E5             63          PUSH HL
+1D2D  21 04 00       64          LD   HL,4
+1D30  CD EF CA       65          CALL HL2FAC
+1D33  0E 02          66          LD   C,2
+1D35  CD 5D 1F       67          CALL RT_FPUSHL
+1D38  21 01 00       68          LD   HL,1
+1D3B  CD EF CA       69          CALL HL2FAC
+1D3E  CD 90 CB       70          CALL FCDBL
+1D41  CD AC B5       71          CALL FATN
+1D44  C3 E4 F9       72          JP   FOPDISP
+1D47                 73  G_1:
+1D47  CD 01 1F       74          CALL RT_PRNUM
+1D4A  CD 29 E9       75          CALL CRLF
+                     76  
+                     77  ; 30 PRINT "RACINE 2=";SQR(2)
+1D4D  21 BA 1F       78          LD   HL,LIT_2
+1D50  CD F8 1E       79          CALL RT_PRS
+1D53  21 02 00       80          LD   HL,2
+1D56  CD EF CA       81          CALL HL2FAC
+1D59  CD 90 CB       82          CALL FCDBL
+1D5C  CD 94 B6       83          CALL FSQR
+1D5F  CD 01 1F       84          CALL RT_PRNUM
+1D62  CD 29 E9       85          CALL CRLF
+                     86  
+                     87  ; 40 A!=1/3:PRINT "1/3 SIMPLE=";A!
+1D65  21 7D 1D       88          LD   HL,G_2
+1D68  E5             89          PUSH HL
+1D69  21 01 00       90          LD   HL,1
+1D6C  CD EF CA       91          CALL HL2FAC
+1D6F  0E 03          92          LD   C,3
+1D71  CD 5D 1F       93          CALL RT_FPUSHL
+1D74  21 03 00       94          LD   HL,3
+1D77  CD EF CA       95          CALL HL2FAC
+1D7A  C3 E4 F9       96          JP   FOPDISP
+1D7D                 97  G_2:
+1D7D  CD 08 CB       98          CALL FCSNG
+1D80  21 EA 1F       99          LD   HL,V_A_F
+1D83  CD 49 1F      100          CALL RT_STF4
+1D86  21 C4 1F      101          LD   HL,LIT_3
+1D89  CD F8 1E      102          CALL RT_PRS
+1D8C  21 EA 1F      103          LD   HL,V_A_F
+1D8F  CD 2D 1F      104          CALL RT_LDF4
+1D92  CD 01 1F      105          CALL RT_PRNUM
+1D95  CD 29 E9      106          CALL CRLF
+                    107  
+                    108  ; 50 S=0:FOR I=1 TO 10:S=S+1/I:NEXT
+1D98  21 00 00      109          LD   HL,0
+1D9B  CD EF CA      110          CALL HL2FAC
+1D9E  CD 90 CB      111          CALL FCDBL
+1DA1  21 F6 1F      112          LD   HL,V_S_D
+1DA4  CD 53 1F      113          CALL RT_STF8
+1DA7  21 01 00      114          LD   HL,1
+1DAA  CD EF CA      115          CALL HL2FAC
+1DAD  CD 90 CB      116          CALL FCDBL
+1DB0  21 EE 1F      117          LD   HL,V_I_D
+1DB3  CD 53 1F      118          CALL RT_STF8
+1DB6  21 0A 00      119          LD   HL,10
+1DB9  CD EF CA      120          CALL HL2FAC
+1DBC  CD 90 CB      121          CALL FCDBL
+1DBF  21 DA 1F      122          LD   HL,G_3_L
+1DC2  CD 53 1F      123          CALL RT_STF8
+1DC5  21 01 00      124          LD   HL,1
+1DC8  CD EF CA      125          CALL HL2FAC
+1DCB  CD 90 CB      126          CALL FCDBL
+1DCE  21 E2 1F      127          LD   HL,G_3_S
+1DD1  CD 53 1F      128          CALL RT_STF8
+1DD4                129  G_3:
+1DD4  21 FE 1D      130          LD   HL,G_4
+1DD7  E5            131          PUSH HL
+1DD8  21 F6 1F      132          LD   HL,V_S_D
+1DDB  CD 3B 1F      133          CALL RT_LDF8
+1DDE  0E 00         134          LD   C,0
+1DE0  CD 5D 1F      135          CALL RT_FPUSHL
+1DE3  21 FB 1D      136          LD   HL,G_5
+1DE6  E5            137          PUSH HL
+1DE7  21 01 00      138          LD   HL,1
+1DEA  CD EF CA      139          CALL HL2FAC
+1DED  0E 03         140          LD   C,3
+1DEF  CD 5D 1F      141          CALL RT_FPUSHL
+1DF2  21 EE 1F      142          LD   HL,V_I_D
+1DF5  CD 3B 1F      143          CALL RT_LDF8
+1DF8  C3 E4 F9      144          JP   FOPDISP
+1DFB                145  G_5:
+1DFB  C3 E4 F9      146          JP   FOPDISP
+1DFE                147  G_4:
+1DFE  CD 90 CB      148          CALL FCDBL
+1E01  21 F6 1F      149          LD   HL,V_S_D
+1E04  CD 53 1F      150          CALL RT_STF8
+1E07  CD BB 1E      151          CALL RT_BRK
+1E0A  21 22 1E      152          LD   HL,G_6
+1E0D  E5            153          PUSH HL
+1E0E  21 EE 1F      154          LD   HL,V_I_D
+1E11  CD 3B 1F      155          CALL RT_LDF8
+1E14  0E 00         156          LD   C,0
+1E16  CD 5D 1F      157          CALL RT_FPUSHL
+1E19  21 E2 1F      158          LD   HL,G_3_S
+1E1C  CD 3B 1F      159          CALL RT_LDF8
+1E1F  C3 E4 F9      160          JP   FOPDISP
+1E22                161  G_6:
+1E22  CD 90 CB      162          CALL FCDBL
+1E25  21 EE 1F      163          LD   HL,V_I_D
+1E28  CD 53 1F      164          CALL RT_STF8
+1E2B  21 EE 1F      165          LD   HL,V_I_D
+1E2E  CD 3B 1F      166          CALL RT_LDF8
+1E31  CD 90 CB      167          CALL FCDBL
+1E34  CD 7E 1F      168          CALL RT_FPUSH8
+1E37  21 DA 1F      169          LD   HL,G_3_L
+1E3A  CD 3B 1F      170          CALL RT_LDF8
+1E3D  CD 90 CB      171          CALL FCDBL
+1E40  CD 92 1F      172          CALL RT_FPOPARG
+1E43  CD D9 CA      173          CALL DCMP
+1E46  FE FF         174          CP   $FF
+1E48  C2 D4 1D      175          JP   NZ,G_3
+1E4B                176  G_3_X:
+                    177  
+                    178  ; 60 PRINT "H10=";S
+1E4B  21 D0 1F      179          LD   HL,LIT_4
+1E4E  CD F8 1E      180          CALL RT_PRS
+1E51  21 F6 1F      181          LD   HL,V_S_D
+1E54  CD 3B 1F      182          CALL RT_LDF8
+1E57  CD 01 1F      183          CALL RT_PRNUM
+1E5A  CD 29 E9      184          CALL CRLF
+                    185  
+1E5D  C3 60 1E      186          JP   RT_END
+                    187  
+                    188  ; ------------------------------------------------ bibliothèque
+                    189  
+1E60                190  RT_END:
+1E60  2A D7 1F      191          LD   HL,(RT_HSAV)       ; rétablit le crochet d'erreur ($00AB)
+1E63  22 AB 00      192          LD   (HKERROR),HL
+1E66  3A D9 1F      193          LD   A,(RT_HSAV+2)
+1E69  32 AD 00      194          LD   (HKERROR+2),A
+1E6C  ED 7B D5 1F   195          LD   SP,(RT_SP)
+1E70  FD E1         196          POP  IY
+1E72  DD E1         197          POP  IX
+1E74  E1            198          POP  HL
+1E75  D1            199          POP  DE
+1E76  C1            200          POP  BC
+1E77  F1            201          POP  AF
+1E78  C9            202          RET                     ; retour au BASIC (EXEC)
+                    203  
+1E79                204  RT_FERR:                        ; erreur numéro E (crochet $00AB de la ROM ou bibliothèque)
+1E79  3A B9 00      205          LD   A,(CSRX)
+1E7C  3D            206          DEC  A
+1E7D  C4 29 E9      207          CALL NZ,CRLF            ; à la ligne si le curseur n'est pas en colonne 1
+1E80  7B            208          LD   A,E
+1E81  3D            209          DEC  A
+1E82  87            210          ADD  A,A
+1E83  6F            211          LD   L,A
+1E84  26 00         212          LD   H,0
+1E86  11 23 F1      213          LD   DE,ERRTAB          ; codes sur deux lettres, comme le X-07
+1E89  19            214          ADD  HL,DE
+1E8A  7E            215          LD   A,(HL)
+1E8B  EF            216          RST  $28
+1E8C  23            217          INC  HL
+1E8D  7E            218          LD   A,(HL)
+1E8E  EF            219          RST  $28
+1E8F  21 AE 1E      220          LD   HL,MSG_ERR
+1E92  CD F8 1E      221          CALL RT_PRS
+1E95  CD 29 E9      222          CALL CRLF
+1E98  C3 60 1E      223          JP   RT_END
+                    224  
+1E9B                225  RT_BREAK:                       ; arrêt par BREAK : « Break », comme le X-07
+1E9B  3A B9 00      226          LD   A,(CSRX)
+1E9E  3D            227          DEC  A
+1E9F  C4 29 E9      228          CALL NZ,CRLF
+1EA2  21 B5 1E      229          LD   HL,MSG_BRK
+1EA5  CD F8 1E      230          CALL RT_PRS
+1EA8  CD 29 E9      231          CALL CRLF
+1EAB  C3 60 1E      232          JP   RT_END
+                    233  
+1EAE  06 20 45 72   234  MSG_ERR:    DB 6," Error"
+1EB2  72 6F 72   
+                    235  
+1EB5  05 42 72 65   236  MSG_BRK:    DB 5,"Break"
+1EB9  61 6B      
+                    237  
+1EBB                238  RT_BRK:                         ; comme l'interpréteur ($C000) : OFF, pause, piles, BREAK
+1EBB  3A 2B 00      239          LD   A,(BRKFLG)
+1EBE  B7            240          OR   A
+1EBF  C8            241          RET  Z                  ; cas courant : rien à faire
+1EC0  E5            242          PUSH HL
+1EC1  D5            243          PUSH DE
+1EC2  C5            244          PUSH BC
+1EC3  CD A6 C5      245          CALL CHKBATT            ; bit 7 : extinction demandée
+1EC6  CB 57         246          BIT  2,A                ; bit 2 : pause jusqu'à une touche
+1EC8  28 13         247          JR   Z,.P
+1ECA  CB 97         248          RES  2,A
+1ECC  32 2B 00      249          LD   (BRKFLG),A
+1ECF  CD BD C0      250          CALL T6FLUSH
+1ED2  CD 0A C9      251  .W:     CALL INKEY
+1ED5  20 06         252          JR   NZ,.P
+1ED7  3A 2B 00      253          LD   A,(BRKFLG)
+1EDA  B7            254          OR   A
+1EDB  28 F5         255          JR   Z,.W
+1EDD  CD 6C C0      256  .P:     CALL BATTMSG            ; bits 1 et 3 : piles faibles
+1EE0  3A 2B 00      257          LD   A,(BRKFLG)
+1EE3  0F            258          RRCA                    ; bit 0 : BREAK
+1EE4  38 04         259          JR   C,.B
+1EE6  C1            260          POP  BC
+1EE7  D1            261          POP  DE
+1EE8  E1            262          POP  HL
+1EE9  C9            263          RET
+1EEA  3A 2B 00      264  .B:     LD   A,(BRKFLG)
+1EED  E6 FA         265          AND  $FA
+1EEF  32 2B 00      266          LD   (BRKFLG),A
+1EF2  CD BD C0      267          CALL T6FLUSH
+1EF5  C3 9B 1E      268          JP   RT_BREAK
+                    269  
+1EF8                270  RT_PRS:                         ; affiche la chaîne (HL) sur le périphérique courant
+1EF8  46            271          LD   B,(HL)
+1EF9  04            272          INC  B
+1EFA  05            273  .L:     DEC  B
+1EFB  C8            274          RET  Z
+1EFC  23            275          INC  HL
+1EFD  7E            276          LD   A,(HL)
+1EFE  EF            277          RST  $28
+1EFF  18 F9         278          JR   .L
+                    279  
+1F01                280  RT_PRNUM:                       ; PRINT d'un nombre (FAC), copie de la ROM ($EA2C)
+1F01  CD AB BB      281          CALL FOUT               ; HL = texte terminé par 00
+1F04  E5            282          PUSH HL
+1F05  06 01         283          LD   B,1                ; longueur + espace final
+1F07  7E            284  .C:     LD   A,(HL)
+1F08  B7            285          OR   A
+1F09  28 04         286          JR   Z,.D
+1F0B  23            287          INC  HL
+1F0C  04            288          INC  B
+1F0D  18 F8         289          JR   .C
+1F0F  C5            290  .D:     PUSH BC
+1F10  01 00 FF      291          LD   BC,$FF00
+1F13  CD EE E8      292          CALL DEVPOS             ; A = position, B = largeur
+1F16  D1            293          POP  DE                 ; D = longueur
+1F17  A7            294          AND  A
+1F18  28 06         295          JR   Z,.P
+1F1A  82            296          ADD  A,D
+1F1B  3D            297          DEC  A
+1F1C  B8            298          CP   B
+1F1D  D4 29 E9      299          CALL NC,CRLF            ; ne tient pas sur la ligne
+1F20  E1            300  .P:     POP  HL
+1F21  7E            301  .O:     LD   A,(HL)
+1F22  B7            302          OR   A
+1F23  28 04         303          JR   Z,.S
+1F25  EF            304          RST  $28
+1F26  23            305          INC  HL
+1F27  18 F8         306          JR   .O
+1F29  3E 20         307  .S:     LD   A,' '
+1F2B  EF            308          RST  $28
+1F2C  C9            309          RET
+                    310  
+1F2D                311  RT_LDF4:                        ; FAC <- simple précision en (HL)
+1F2D  11 4E 04      312          LD   DE,FAC
+1F30  01 04 00      313          LD   BC,4
+1F33  ED B0         314          LDIR
+1F35  3E 04         315          LD   A,4
+1F37  32 D9 01      316          LD   (VALTYP),A
+1F3A  C9            317          RET
+                    318  
+1F3B                319  RT_LDF8:                        ; FAC <- double précision en (HL)
+1F3B  11 4E 04      320          LD   DE,FAC
+1F3E  01 08 00      321          LD   BC,8
+1F41  ED B0         322          LDIR
+1F43  3E 08         323          LD   A,8
+1F45  32 D9 01      324          LD   (VALTYP),A
+1F48  C9            325          RET
+                    326  
+1F49                327  RT_STF4:                        ; (HL) <- FAC simple précision
+1F49  EB            328          EX   DE,HL
+1F4A  21 4E 04      329          LD   HL,FAC
+1F4D  01 04 00      330          LD   BC,4
+1F50  ED B0         331          LDIR
+1F52  C9            332          RET
+                    333  
+1F53                334  RT_STF8:                        ; (HL) <- FAC double précision
+1F53  EB            335          EX   DE,HL
+1F54  21 4E 04      336          LD   HL,FAC
+1F57  01 08 00      337          LD   BC,8
+1F5A  ED B0         338          LDIR
+1F5C  C9            339          RET
+                    340  
+1F5D                341  RT_FPUSHL:                      ; empile l'opérande gauche comme l'évaluateur ($F976)
+1F5D  DD E1         342          POP  IX                 ; C = opération (0 + 1 - 2 * 3 / 4 ^)
+1F5F  2A 50 04      343          LD   HL,(FACINT)
+1F62  E5            344          PUSH HL
+1F63  3A D9 01      345          LD   A,(VALTYP)
+1F66  FE 04         346          CP   4
+1F68  38 10         347          JR   C,.T
+1F6A  2A 4E 04      348          LD   HL,(FAC)
+1F6D  E5            349          PUSH HL
+1F6E  FE 08         350          CP   8
+1F70  20 08         351          JR   NZ,.T
+1F72  2A 54 04      352          LD   HL,(FAC+6)
+1F75  E5            353          PUSH HL
+1F76  2A 52 04      354          LD   HL,(FAC+4)
+1F79  E5            355          PUSH HL
+1F7A  47            356  .T:     LD   B,A                ; B = type
+1F7B  C5            357          PUSH BC
+1F7C  DD E9         358          JP   (IX)
+                    359  
+1F7E                360  RT_FPUSH8:                      ; empile les 8 octets de FAC
+1F7E  DD E1         361          POP  IX
+1F80  2A 54 04      362          LD   HL,(FAC+6)
+1F83  E5            363          PUSH HL
+1F84  2A 52 04      364          LD   HL,(FAC+4)
+1F87  E5            365          PUSH HL
+1F88  2A 50 04      366          LD   HL,(FAC+2)
+1F8B  E5            367          PUSH HL
+1F8C  2A 4E 04      368          LD   HL,(FAC)
+1F8F  E5            369          PUSH HL
+1F90  DD E9         370          JP   (IX)
+                    371  
+1F92                372  RT_FPOPARG:                     ; ARG <- FAC ; FAC <- valeur dépilée (double)
+1F92  DD E1         373          POP  IX
+1F94  21 4E 04      374          LD   HL,FAC
+1F97  11 9F 04      375          LD   DE,ARG
+1F9A  01 08 00      376          LD   BC,8
+1F9D  ED B0         377          LDIR
+1F9F  E1            378          POP  HL
+1FA0  22 4E 04      379          LD   (FAC),HL
+1FA3  E1            380          POP  HL
+1FA4  22 50 04      381          LD   (FAC+2),HL
+1FA7  E1            382          POP  HL
+1FA8  22 52 04      383          LD   (FAC+4),HL
+1FAB  E1            384          POP  HL
+1FAC  22 54 04      385          LD   (FAC+6),HL
+1FAF  3E 08         386          LD   A,8
+1FB1  32 D9 01      387          LD   (VALTYP),A
+1FB4  DD E9         388          JP   (IX)
+                    389  
+                    390  ; ------------------------------------------------ chaînes
+1FB6  03 50 49 3D   391  LIT_1:   DB   3,"PI="
+1FBA  09 52 41 43   392  LIT_2:   DB   9,"RACINE 2="
+1FBE  49 4E 45 20
+1FC2  32 3D      
+1FC4  0B 31 2F 33   393  LIT_3:   DB   11,"1/3 SIMPLE="
+1FC8  20 53 49 4D
+1FCC  50 4C 45 3D
+1FD0  04 48 31 30   394  LIT_4:   DB   4,"H10="
+1FD4  3D         
+                    395  
+1FD5  00 00         396  RT_SP:   DW   0
+1FD7  00 00 00      397  RT_HSAV: DB   0,0,0
+                    398  
+                    399  ; ------------------------------------------------ variables (non chargées)
+1FDA                400  VARS:
+1FDA                401  G_3_L:         DS   8
+1FE2                402  G_3_S:         DS   8
+1FEA                403  V_A_F:         DS   4
+1FEE                404  V_I_D:         DS   8
+1FF6                405  V_S_D:         DS   8
+1FFE                406                 DS   2
+2000                407  VARS_END:
+                    408  
+                    409          END
+
+Symboles :
+  ARG                  $049F
+  BATTMSG              $C06C
+  BRKFLG               $002B
+  CHKBATT              $C5A6
+  CRLF                 $E929
+  CSRX                 $00B9
+  DCMP                 $CAD9
+  DEVPOS               $E8EE
+  ERRTAB               $F123
+  FAC                  $044E
+  FACINT               $0450
+  FATN                 $B5AC
+  FCDBL                $CB90
+  FCSNG                $CB08
+  FOPDISP              $F9E4
+  FOUT                 $BBAB
+  FSQR                 $B694
+  G_1                  $1D47
+  G_2                  $1D7D
+  G_3                  $1DD4
+  G_3_L                $1FDA
+  G_3_S                $1FE2
+  G_3_X                $1E4B
+  G_4                  $1DFE
+  G_5                  $1DFB
+  G_6                  $1E22
+  HKERROR              $00AB
+  HL2FAC               $CAEF
+  INKEY                $C90A
+  LCDCLS               $CE9E
+  LIT_1                $1FB6
+  LIT_2                $1FBA
+  LIT_3                $1FC4
+  LIT_4                $1FD0
+  MSG_BRK              $1EB5
+  MSG_ERR              $1EAE
+  RT_BREAK             $1E9B
+  RT_BRK               $1EBB
+  RT_BRK.B             $1EEA
+  RT_BRK.P             $1EDD
+  RT_BRK.W             $1ED2
+  RT_END               $1E60
+  RT_FERR              $1E79
+  RT_FPOPARG           $1F92
+  RT_FPUSH8            $1F7E
+  RT_FPUSHL            $1F5D
+  RT_FPUSHL.T          $1F7A
+  RT_HSAV              $1FD7
+  RT_LDF4              $1F2D
+  RT_LDF8              $1F3B
+  RT_PRNUM             $1F01
+  RT_PRNUM.C           $1F07
+  RT_PRNUM.D           $1F0F
+  RT_PRNUM.O           $1F21
+  RT_PRNUM.P           $1F20
+  RT_PRNUM.S           $1F29
+  RT_PRS               $1EF8
+  RT_PRS.L             $1EFA
+  RT_SP                $1FD5
+  RT_STF4              $1F49
+  RT_STF8              $1F53
+  START                $1CF0
+  STRCAP               $0050
+  T6FLUSH              $C0BD
+  VALTYP               $01D9
+  VARS                 $1FDA
+  VARS_END             $2000
+  V_A_F                $1FEA
+  V_I_D                $1FEE
+  V_S_D                $1FF6

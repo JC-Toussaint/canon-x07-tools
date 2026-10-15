@@ -19,6 +19,7 @@ python3 x07asm.py sym T6834                              # chercher un symbole
 python3 x07asm.py basic exemples/premiers.bas            # compiler du BASIC
 python3 x07asm.py run exemples/devine.bas                # l'essayer sur PC
 python3 x07asm.py emu exemples/devine.bas                # le BASIC du X-07 (vraie ROM)
+python3 x07asm.py send exemples/devine.bas -p /dev/ttyUSB0   # envoi par le câble FT232RL
 python3 -m unittest discover -s tests                    # tests
 ```
 

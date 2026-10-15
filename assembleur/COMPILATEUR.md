@@ -39,6 +39,33 @@ python3 x07asm.py run devine.bas -i 50 -i 25     # lignes pour INPUT
 python3 x07asm.py emu jeu.bas -k "ZZQ\r"         # touches pour INKEY$
 ```
 
+### `send` : envoyer au X-07 par le câble série
+
+Câble FT232RL décrit dans `ref_docs/X07_FT232RL_liaison_serie.md`.
+
+```sh
+python3 x07asm.py recepteur                                # récepteur à taper une fois sur le X-07
+python3 x07asm.py send jeu.bas --port /dev/ttyUSB0 --ram 16
+python3 x07asm.py send jeu.bas --emu                       # essai complet sans câble
+```
+
+1. **Une seule fois,** tapez sur le X-07 le petit programme BASIC `RECEPTEUR`, affiché par `recepteur`. Il reste en mémoire, même machine éteinte.
+2. **Sur le PC,** lancez `send`. Un `.bas` est compilé au passage ; un `.asm`, un `.hex`, ou un `.bin` avec `--org` sont aussi acceptés.
+3. **Sur le X-07,** tapez la commande `CLEAR 50,&H…` affichée par le PC, puis `RUN`. Le transfert se termine par `OK. EXEC &H…`.
+
+**Protocole.** Les pilotes série de la ROM n'ont qu'un tampon de 32 octets, et RTS n'est pas câblé. Le PC envoie donc par blocs de 16 octets et attend l'accusé « K » du X-07 après chacun. Le débit s'adapte ainsi seul à la vitesse du BASIC (environ 70 octets par seconde). Une somme de contrôle vérifie l'ensemble.
+
+| Option | Rôle |
+|---|---|
+| `--baud` | vitesse : 1200, 2400, 4800 (défaut), 8000. 9600 n'existe pas sur le X-07 |
+| `--emu` | transfert complet avec le X-07 émulé : vraie ROM, UART émulée, octets perdus comptés |
+
+Le transfert a été vérifié de deux façons :
+- dans l'émulateur, avec les vrais pilotes série de la ROM et une UART émulée ;
+- par un pseudo-port série, qui exerce le vrai code d'envoi (pyserial ou termios).
+
+Il reste à l'essayer avec le câble réel.
+
 ## Types et calcul
 
 Les types sont **ceux du X-07**, ce qui a été vérifié dans la ROM :
@@ -158,6 +185,7 @@ x07asm/basic.py     analyse lexicale, analyse syntaxique, génération de code
 x07asm/runtime.py   bibliothèque d'exécution (assembleur Z80)
 x07asm/sim.py       simulateur Z80, écran/clavier/T6834 imités
 x07asm/emu.py       démarrage de la vraie ROM, interpréteur BASIC sur PC
+x07asm/serie.py     transfert par le câble série (récepteur BASIC, protocole, port)
 tests/test_basic.py comparaisons avec l'interpréteur de la ROM
 exemples/           devine.bas, premiers.bas, flottants.bas, test_x07.bas
 ```

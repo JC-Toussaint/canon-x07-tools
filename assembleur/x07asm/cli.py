@@ -329,6 +329,80 @@ def cmd_emu(args):
     return status
 
 
+def _load_program(args):
+    """Programme à envoyer : .bas (compilé), .hex, ou .bin avec --org."""
+    src = args.source
+    low = src.lower()
+    if low.endswith(".bas"):
+        _, a, mem, comp = build_basic(src, args.org or "auto", args.ram)
+        for w in comp.warnings:
+            print("attention : %s" % w, file=sys.stderr)
+        return mem, a.entry
+    if low.endswith(".asm"):
+        a = asmmod.Assembler()
+        mem = a.assemble_file(src)
+        if a.errors:
+            raise asmmod.AsmError(str(a.errors[0]))
+        return mem, a.entry
+    mem = formats.load_any(src, _num(args.org) if args.org and args.org != "auto" else None)
+    if low.endswith((".bin", ".rom")) and not args.org:
+        raise ValueError("pour un .bin, indiquez l'adresse de chargement : --org 1C00")
+    entry = _num(args.entry) if args.entry else min(mem)
+    return mem, entry
+
+
+def cmd_recepteur(args):
+    from . import serie
+    text = serie.receiver_program(args.baud)
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(text)
+        print("->", args.output)
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def cmd_send(args):
+    from . import serie, basic, sim
+    try:
+        mem, entry = _load_program(args)
+    except (basic.CompileError, asmmod.AsmError, ValueError, OSError) as e:
+        print("erreur : %s" % e, file=sys.stderr)
+        return 1
+    org, end = min(mem), max(mem)
+    print("%d octets, $%04X-$%04X, lancement EXEC &H%X" % (end - org + 1, org, end, entry))
+    if args.emu:
+        out, snd, m = serie.send_emulated(mem, entry, args.baud, args.ram)
+        sys.stdout.write(out)
+        ok = snd.result == "ok" and all(m.mem[k] == v for k, v in mem.items())
+        print("[émulation : %s, %d octets perdus par l'UART]" % (
+            "transfert correct" if ok else "ÉCHEC (%s)" % (snd.result or m.error), m.overruns))
+        return 0 if ok else 2
+    if not args.port:
+        print("erreur : indiquez le port série (--port /dev/ttyUSB0 ou COM3)", file=sys.stderr)
+        return 1
+    print("Sur le X-07 : CLEAR 50,&H%X  puis lancez RECEPTEUR (RUN)" % (org - 1))
+    try:
+        port = serie.SerialPort(args.port, args.baud)
+    except (OSError, serie.TransferError) as e:
+        print("erreur : port %s : %s" % (args.port, e), file=sys.stderr)
+        return 1
+    try:
+        serie.send(port, mem, entry, timeout=args.timeout,
+                   log=lambda *a, **k: print(*a, **k, flush=True))
+    except serie.TransferError as e:
+        print("\nerreur : %s" % e, file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("\ninterrompu", file=sys.stderr)
+        return 2
+    finally:
+        port.close()
+    print("Transfert correct. Sur le X-07 : EXEC &H%X" % entry)
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(
         prog="x07asm",
@@ -415,6 +489,23 @@ def main(argv=None):
     e.add_argument("--ram", type=int, choices=(8, 16, 24), default=16)
     e.add_argument("--max", type=int, default=50_000_000, help="instructions au plus")
     e.set_defaults(func=cmd_emu)
+
+    rc = sub.add_parser("recepteur", help="programme BASIC de réception série, à taper sur le X-07")
+    rc.add_argument("-o", "--output", help="fichier .bas produit (défaut : écran)")
+    rc.add_argument("--baud", type=int, default=4800, choices=(1200, 2400, 4800, 8000))
+    rc.set_defaults(func=cmd_recepteur)
+
+    sd = sub.add_parser("send", help="envoyer un programme au X-07 par le câble série (FT232RL)")
+    sd.add_argument("source", help=".bas (compilé au passage), .asm, .hex, ou .bin avec --org")
+    sd.add_argument("-p", "--port", help="port série : /dev/ttyUSB0, COM3...")
+    sd.add_argument("--baud", type=int, default=4800, choices=(1200, 2400, 4800, 8000))
+    sd.add_argument("--org", help="adresse (hexa) d'un .bin, ou implantation d'un .bas")
+    sd.add_argument("--entry", help="adresse de lancement (hexa) d'un .bin")
+    sd.add_argument("--ram", type=int, choices=(8, 16, 24), default=8)
+    sd.add_argument("--timeout", type=float, default=60, help="attente maximale du X-07 (s)")
+    sd.add_argument("--emu", action="store_true",
+                    help="essai complet avec le X-07 émulé (vraie ROM), sans câble")
+    sd.set_defaults(func=cmd_send)
 
     args = p.parse_args(argv)
     if args.cmd == "dis" and args.entry:
