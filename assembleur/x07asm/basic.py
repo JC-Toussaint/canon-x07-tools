@@ -214,7 +214,7 @@ NUM_FUNCS = {   # nom : types des arguments ('n' nombre, 's' chaîne)
 }
 STR_FUNCS = {
     "CHR$": "n", "STR$": "n", "HEX$": "n", "LEFT$": "sn", "RIGHT$": "sn",
-    "MID$": "sn", "STRING$": "n?", "INKEY$": "",
+    "MID$": "sn", "STRING$": "n?", "INKEY$": "", "FONT$": "n",
 }
 OPTIONAL_LAST = {"MID$": "n"}       # MID$(s,p[,n])
 X_FUNCS = {"CSNG": "FCSNG", "CDBL": "FCDBL", "SQR": "FSQR", "LOG": "FLOG", "EXP": "FEXP",
@@ -2003,6 +2003,11 @@ class Compiler:
                 self.gen_i(args[0], d)
                 self.emit("LD   DE,%s" % t)
                 self.emit("CALL RT_HEX")
+            elif name == "FONT$":
+                self.gen_i(args[0], d)
+                self.emit("LD   A,L")
+                self.emit("LD   HL,%s" % t)
+                self.emit("CALL RT_FONTR")
             elif name in ("LEFT$", "RIGHT$"):
                 self.gen_s(args[0], d)
                 self.gen_i(args[1], d + 1)

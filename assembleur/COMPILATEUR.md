@@ -77,7 +77,7 @@ Les règles de calcul sont celles de la ROM, puisque c'est elle qui calcule :
 - `DEFINT`, `DEFSNG`, `DEFDBL`, `DEFSTR`, `END`, `STOP`, `REM`, `'`
 - `CLS`, `LOCATE x,y`, `BEEP [ton,durée]`
 - `PSET(x,y)`, `PRESET(x,y)`, `LINE(x1,y1)-(x2,y2)`, `CIRCLE(x,y),r`
-- `FONT$(code)=chaîne` : caractère redéfini (codes `&H80`-`&H9F` et `&HE0`-`&HFF`). La chaîne contient **8 nombres** séparés par des virgules, un par ligne de 6 points (bit 7 à gauche), lus par la ROM comme sur la machine. Écrivez-les en décimal ou avec `&H` : `"F8"` serait lu comme la variable F8. La lecture `FONT$(code)` n'est pas gérée.
+- `FONT$(code)=chaîne` : caractère redéfini (codes `&H80`-`&H9F` et `&HE0`-`&HFF`). La chaîne contient **8 nombres** séparés par des virgules, un par ligne de 6 points (bit 7 à gauche), lus par la ROM comme sur la machine. Écrivez-les en décimal ou avec `&H` : `"F8"` serait lu comme la variable F8.
 - `POKE`, `OUT`, `EXEC adr`
 
 `CLEAR` est ignoré.
@@ -85,7 +85,9 @@ Les règles de calcul sont celles de la ROM, puisque c'est elle qui calcule :
 **Fonctions :**
 
 - numériques : `ABS SGN INT FIX CINT CSNG CDBL SQR LOG EXP SIN COS TAN ATN RND PEEK INP LEN ASC VAL POINT STICK STRIG CSRLIN POS`
-- chaînes : `LEFT$ RIGHT$ MID$ CHR$ STR$ HEX$ STRING$ INKEY$`
+- chaînes : `LEFT$ RIGHT$ MID$ CHR$ STR$ HEX$ STRING$ INKEY$ FONT$`
+
+`FONT$(code)` rend le motif d'un caractère (code `&H20` à `&HFF`) sous la forme `[xx,xx,xx,xx,xx,xx,xx,xx]` : 25 caractères, en hexadécimal **sans** `&H`. On ne peut donc pas le réutiliser tel quel dans `FONT$(code)=`. Comme la ROM, si le premier octet est inférieur à `&H10`, son zéro de tête est `CHR$(0)` et non `"0"` : `PRINT` montre alors `[5,10,…]`.
 
 **Opérateurs :** `+ - * / \ MOD ^`, comparaisons, `NOT AND OR XOR EQV IMP`, concaténation `+`.
 

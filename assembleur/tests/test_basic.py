@@ -56,6 +56,12 @@ class OracleCase(unittest.TestCase):
 
 @needs_rom
 class TestAgainstRom(OracleCase):
+    def test_font_read(self):
+        # « [xx,...,xx] » ; la ROM met CHR$(0) à la place d'un premier chiffre 0
+        self.same('10 FOR K=0 TO 3:FONT$(128+K)=STR$(K*5)+",16,1,2,3,4,5,&HFF":NEXT\n'
+                  '20 FOR K=0 TO 3:A$=FONT$(128+K):PRINT LEN(A$);ASC(MID$(A$,2,1));'
+                  'MID$(A$,3,23):NEXT\n30 PRINT FONT$(65)\n40 PRINT FONT$(31)')
+
     def test_numbers_and_types(self):
         self.same('''10 PRINT 1/3;2/3;10/4;1E10;123456789#
 20 A!=1/3:PRINT A!,CSNG(1234567)

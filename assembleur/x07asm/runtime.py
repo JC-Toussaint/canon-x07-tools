@@ -1141,6 +1141,46 @@ RT_FONT:                        ; FONT$((RT_GB))=(HL), comme la ROM ($D770)
         JP   $DB1C
 """)
 
+_r("RT_FONTR", """
+RT_FONTR:                       ; (HL) <- FONT$(A), comme la ROM ($D737) :
+        CP   $20                ; « [xx,xx,...,xx] », 25 caractères
+        JR   NC,.K
+        LD   E,5                ; FC
+        JP   RT_FERR
+.K:     PUSH HL
+        LD   (T6BUF),A
+        LD   HL,T6BUF
+        LD   DE,T6BUF
+        LD   BC,$0108           ; UDC READ : 1 paramètre, 8 octets en retour
+        LD   A,$1B
+        CALL T6CMDP
+        LD   HL,RT_FBUF
+        LD   (HL),25
+        INC  HL
+        LD   (HL),'['
+        INC  HL
+        LD   DE,T6BUF
+        LD   B,8
+.L:     PUSH BC
+        PUSH DE
+        LD   A,(DE)
+        LD   D,A
+        CALL $DB7E              ; 2 chiffres hexadécimaux en (HL), par la ROM
+        POP  DE
+        INC  DE
+        POP  BC
+        LD   A,B
+        CP   1
+        JR   Z,.E
+        LD   (HL),','
+        INC  HL
+        DJNZ .L
+.E:     LD   (HL),']'
+        POP  HL
+        LD   DE,RT_FBUF
+        JP   RT_SCOPY
+""")
+
 VARIABLES.update({
     "RT_DPTR": 2, "RT_IP": 2, "RT_IC": 1, "RT_GB": 5, "RT_LINE": 2, "RT_FBUF": 64, "RT_DLINE": 2,
     "RT_CMD": 64, "RT_CMDP": 2,
