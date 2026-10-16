@@ -685,7 +685,7 @@ class X07(CPU):
 
     # écran
     def _use_rom_routines(self):
-        for name in ("BATTMSG",):
+        for name in ("BATTMSG", "BEEPR"):     # BEEPR : on y entre aussi sans CALL ($C2DE)
             self.traps.pop(x07sym.all_symbols()[name], None)
 
     # ports du HD61L202F : bus vers le T6834 toujours libre ; UART émulée

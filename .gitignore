@@ -11,3 +11,6 @@ __pycache__/
 *.synctex.gz
 *.fls
 *.fdb_latexmk
+# fichiers d'échange des éditeurs
+*.swp
+*~
