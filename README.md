@@ -10,6 +10,8 @@ Outils de développement et documentation pour le **Canon X-07**, ordinateur de 
 | [`ref_docs/`](ref_docs/) | documentation : notes de référence en LaTeX/PDF tirées des livres, liaison série par FT232RL, documents d'origine numérisés |
 | [`ROM_x07/`](ROM_x07/) | vidage de la ROM BASIC (`x07.bin`, à implanter en `$B000`) et jeu de caractères (`charset.rom`) |
 
+**Pour commencer : le [guide de démarrage](DEMARRAGE.md)**, d'un programme BASIC jusqu'au X-07.
+
 ## x07asm en bref
 
 ```sh
@@ -20,12 +22,21 @@ python3 x07asm.py dis ../ROM_x07/x07.bin --org B000 \
 python3 x07asm.py basic exemples/premiers.bas              # compiler du BASIC
 python3 x07asm.py run exemples/devine.bas                  # l'essayer sur PC
 python3 x07asm.py emu exemples/devine.bas                  # le BASIC du X-07 (vraie ROM)
+python3 x07asm.py send exemples/devine.bas --emu           # transfert série (ici émulé)
 python3 -m unittest discover -s tests                      # tests
 ```
 
-- **Assembleur et désassembleur** : décrits dans [assembleur/README.md](assembleur/README.md).
-- **Compilateur BASIC et simulateur** : décrits dans [assembleur/COMPILATEUR.md](assembleur/COMPILATEUR.md).
-- Les adresses de la ROM utilisées par les outils ont été **vérifiées dans le vidage de la ROM**. Les erreurs relevées dans les livres sont signalées par des notes dans `ref_docs/*.tex`.
+| Document | Sujet |
+|---|---|
+| [DEMARRAGE.md](DEMARRAGE.md) | guide de démarrage, de bout en bout |
+| [assembleur/README.md](assembleur/README.md) | assembleur et désassembleur |
+| [assembleur/COMPILATEUR.md](assembleur/COMPILATEUR.md) | compilateur BASIC : langage, types, vitesse |
+| [assembleur/EMULATEUR.md](assembleur/EMULATEUR.md) | émulateur : la vraie ROM sur PC (`emu`, `run`) |
+| [assembleur/TRANSFERT.md](assembleur/TRANSFERT.md) | envoi au X-07 par le câble série (`send`) |
+| [assembleur/ROM.md](assembleur/ROM.md) | carte des routines et variables de la ROM (109 sur 161 vérifiées) |
+| [ref_docs/ERRATA.md](ref_docs/ERRATA.md) | **errata** des *Mystères du X-07* et des *Applications en assembleur* |
+
+Les adresses de la ROM utilisées par les outils ont été vérifiées dans le vidage de la ROM. Tout a été essayé dans l'émulateur, **pas encore sur une machine réelle**.
 
 ## Documentation de référence
 

@@ -6,8 +6,6 @@ Il reproduit le BASIC du X-07 **à l'identique**, nombres décimaux compris. Les
 
 ```sh
 python3 x07asm.py basic exemples/premiers.bas        # -> .asm et .bin
-python3 x07asm.py run   exemples/devine.bas          # programme compilé, sur PC
-python3 x07asm.py emu   exemples/devine.bas          # même programme, interprété par la vraie ROM
 ```
 
 ## Commandes
@@ -27,50 +25,12 @@ python3 x07asm.py emu   exemples/devine.bas          # même programme, interpr�
 
 L'outil affiche ensuite les deux commandes à taper sur le X-07, par exemple `CLEAR 50,&H1A3F` puis `EXEC &H1A40`.
 
-### `run` et `emu` : essayer sur PC
+### Essayer, puis envoyer au X-07
 
-Les deux commandes utilisent le simulateur Z80 et **la vraie ROM** (`ROM_x07/x07.bin`). Le X-07 y est démarré à froid comme à la mise sous tension. Seul le sous-processeur T6834 (écran 20×4, clavier, graphismes) est imité.
+- **Essayer sur le PC :** `run` lance le programme compilé sur le X-07 émulé. `emu` fait exécuter le même programme par l'interpréteur de la ROM, pour comparer. Voir [EMULATEUR.md](EMULATEUR.md).
+- **Envoyer à la machine :** `send` passe par le câble série FT232RL. Voir [TRANSFERT.md](TRANSFERT.md).
 
-- **`run`** exécute le programme **compilé**.
-- **`emu`** fait exécuter le même programme par **l'interpréteur BASIC de la ROM**. Le programme est tapé, puis `RUN`. Vous disposez ainsi du BASIC du X-07 sur votre PC.
-
-```sh
-python3 x07asm.py run devine.bas -i 50 -i 25     # lignes pour INPUT
-python3 x07asm.py emu jeu.bas -k "ZZQ\r"         # touches pour INKEY$
-```
-
-### `send` : envoyer au X-07 par le câble série
-
-Câble FT232RL décrit dans `ref_docs/X07_FT232RL_liaison_serie.md`.
-
-```sh
-python3 x07asm.py recepteur                                # récepteur à taper une fois sur le X-07
-python3 x07asm.py send jeu.bas --port /dev/ttyUSB0 --ram 16
-python3 x07asm.py send jeu.bas --emu                       # essai complet sans câble
-```
-
-1. **Une seule fois,** tapez sur le X-07 le petit programme BASIC `RECEPTEUR`, produit par la commande `recepteur` :
-   ```sh
-   python3 x07asm.py recepteur                       # à l'écran
-   python3 x07asm.py recepteur -o recepteur.bas      # dans un fichier
-   python3 x07asm.py recepteur --baud 1200           # pour une autre vitesse (1200, 2400, 4800, 8000)
-   ```
-   Utilisez la même vitesse ici et dans `send --baud`. Le X-07 garde ce programme en mémoire, même éteint ; vous pouvez aussi le sauvegarder sur cassette (`CSAVE"RECEPT"`).
-2. **Sur le PC,** lancez `send`. Un `.bas` est compilé au passage ; un `.asm`, un `.hex`, ou un `.bin` avec `--org` sont aussi acceptés.
-3. **Sur le X-07,** tapez la commande `CLEAR 50,&H…` affichée par le PC, puis `RUN`. Le transfert se termine par `OK. EXEC &H…`.
-
-**Protocole.** Les pilotes série de la ROM n'ont qu'un tampon de 32 octets, et RTS n'est pas câblé. Le PC envoie donc par blocs de 16 octets et attend l'accusé « K » du X-07 après chacun. Le débit s'adapte ainsi seul à la vitesse du BASIC (environ 70 octets par seconde). Une somme de contrôle vérifie l'ensemble.
-
-| Option | Rôle |
-|---|---|
-| `--baud` | vitesse : 1200, 2400, 4800 (défaut), 8000. 9600 n'existe pas sur le X-07 |
-| `--emu` | transfert complet avec le X-07 émulé : vraie ROM, UART émulée, octets perdus comptés |
-
-Le transfert a été vérifié de deux façons :
-- dans l'émulateur, avec les vrais pilotes série de la ROM et une UART émulée ;
-- par un pseudo-port série, qui exerce le vrai code d'envoi (pyserial ou termios).
-
-Il reste à l'essayer avec le câble réel.
+Le parcours complet, de l'écriture au lancement sur la machine, est décrit dans le [guide de démarrage](../DEMARRAGE.md).
 
 ## Types et calcul
 
@@ -163,15 +123,9 @@ Les tests couvrent :
 - 150 expressions flottantes et 144 expressions entières tirées au hasard ;
 - le comportement de la machine : BREAK, OFF, registres et crochet d'erreur rétablis.
 
-Les routines de la ROM utilisées, et leur façon d'être appelées, ont été établies en désassemblant la ROM puis confirmées par ces essais. Elles sont marquées « vérifié ROM » dans `x07asm/x07sym.py`. En chemin, plusieurs erreurs des *Mystères du X-07* sont apparues :
+Les routines de la ROM utilisées, et leur façon d'être appelées, ont été établies en désassemblant la ROM, puis confirmées par ces essais. Elles sont marquées « vérifié ROM » dans `x07asm/x07sym.py` et listées dans [ROM.md](ROM.md). Les erreurs des livres découvertes en chemin sont rassemblées dans [l'errata](../ref_docs/ERRATA.md).
 
-- `$B8` est la ligne et `$B9` la colonne (et non l'inverse) ;
-- pour un entier, `RST 30` rend C=1 et Z=0 ;
-- `$BBAB` est la conversion libre d'un nombre en texte, pas `PRINT USING` ;
-- RST 18 donne le signe de l'accumulateur ;
-- les opérations « simple précision » (`$CDA9`…) calculent en double.
-
-Il reste à confirmer le tout sur la machine. `exemples/test_x07.bas` est fait pour cela.
+Il reste à confirmer le tout sur la machine ; `exemples/test_x07.bas` est fait pour cela.
 
 ## Organisation en mémoire
 
@@ -189,9 +143,6 @@ VARS  variables, tableaux, tampons (non chargés, remis à zéro au lancement)
 ```
 x07asm/basic.py     analyse lexicale, analyse syntaxique, génération de code
 x07asm/runtime.py   bibliothèque d'exécution (assembleur Z80)
-x07asm/sim.py       simulateur Z80, écran/clavier/T6834 imités
-x07asm/emu.py       démarrage de la vraie ROM, interpréteur BASIC sur PC
-x07asm/serie.py     transfert par le câble série (récepteur BASIC, protocole, port)
 tests/test_basic.py comparaisons avec l'interpréteur de la ROM
-exemples/           devine.bas, premiers.bas, flottants.bas, test_x07.bas
+exemples/           devine.bas, premiers.bas, flottants.bas, table.bas, test_x07.bas
 ```

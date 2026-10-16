@@ -230,6 +230,22 @@ class TestDisassembler(unittest.TestCase):
         self.assertIn("DB    $28", src)
         self.assertIn("RET", src)
 
+    def test_rst38_inline(self):
+        """RST 38 est suivi d'un octet en ligne, comme RST 08 (vérifié ROM : $E906)."""
+        mem = {0x100: 0xFF, 0x101: 0x81, 0x102: 0x79, 0x103: 0xC9}
+        d = Disassembler(mem)
+        d.analyse()
+        src = d.source()
+        self.assertIn("DB    $81", src)
+        self.assertIn("LD    A,C", src)
+
+    def test_rom_map_up_to_date(self):
+        """ROM.md doit être régénéré après toute modification de x07sym.py."""
+        from x07asm import x07sym
+        with open(os.path.join(ROOT, "ROM.md"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), x07sym.markdown(),
+                             "lancez : python3 x07asm.py sym --md > ROM.md")
+
     def test_data_ranges(self):
         mem = {0x200 + i: b for i, b in enumerate(
             [0xC9, 0x34, 0x12, 0x00, 0x02] + [ord(c) for c in "HELLO"])}

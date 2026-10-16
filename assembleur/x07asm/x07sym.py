@@ -14,10 +14,10 @@ la ROM (ROM_x07/x07.bin) ; le livre inverse notamment $B8 (ligne) et $B9
 
 ROUTINES = {
     # RST
-    "SYNCHR":      (0xF52F, "RST 08 : compare (HL) à l'octet suivant le RST, sinon SN ERROR"),
-    "CHRGET":      (0xF537, "RST 10 : A=(HL), HL+1 ; CY si chiffre/lettre"),
-    "CPHLDE":      (0xEE45, "RST 20 : compare HL et DE"),
-    "GETYPE":      (0xFC2F, "RST 30 : teste le type (01D9)"),
+    "SYNCHR":      (0xF52F, "RST 08 : compare (HL) à l'octet suivant le RST, sinon SN ERROR (vérifié ROM)"),
+    "CHRGET":      (0xF537, "RST 10 : A=(HL), HL+1 ; CY si chiffre/lettre (vérifié ROM)"),
+    "CPHLDE":      (0xEE45, "RST 20 : compare HL et DE (vérifié ROM)"),
+    "GETYPE":      (0xFC2F, "RST 30 : teste le type (01D9) (vérifié ROM)"),
     # calcul flottant BCD (vérifié ROM ; FAC = $044E, ARG = $049F, type en $01D9)
     "FOPDISP":     (0xF9E4, "répartiteur des opérateurs + - * / ^ (pile : opérande gauche, BC = type/op) (vérifié ROM)"),
     "FIN":         (0xBA21, "texte (HL) -> FAC, type selon l'écriture (vérifié ROM)"),
@@ -38,17 +38,17 @@ ROUTINES = {
     "CRLF":        (0xE929, "envoie CR LF au périphérique courant (vérifié ROM)"),
     "ERRTAB":      (0xF123, "codes d'erreur sur 2 lettres : NF SN RG OD FC OV... (vérifié ROM)"),
     "FSIGN":       (0xC9C7, "RST 18 : signe de l'accumulateur -> A = 0, 1 ou FF ; Z si nul (vérifié ROM)"),
-    "ARRADR":      (0xE906, "RST 38 : adresse d'un élément de tableau"),
+    "ARRADR":      (0xE906, "RST 38 + octet n : n < $80 -> DE = mot en HL+n ; n >= $80 -> fonction n du pilote courant (vérifié ROM)"),
     # buzzer
-    "BEEPR":       (0xC2DF, "bip : IY=tonalité, H=durée, L=0"),
+    "BEEPR":       (0xC2DF, "bip : IY=tonalité, H=durée, L=0 (vérifié ROM)"),
     "SPEAKER":     (0xC331, "haut-parleur : IY=tonalité, HL=durée, C=FF/00"),
     # clavier
-    "KBWAIT":      (0xC8C5, "lit le clavier avec curseur -> A"),
+    "KBWAIT":      (0xC8C5, "lit le clavier avec curseur -> A (vérifié ROM)"),
     "INKEY":       (0xC90A, "lit une touche (INKEY$) -> A ; Z=1 si aucune (vérifié ROM)"),
     # écran LCD
     "LCDPUT":      (0xC1BE, "écrit A à l'écran, codes de contrôle admis, registres conservés (vérifié ROM)"),
     "LCDPUTXY":    (0xC231, "écrit C en X=H, Y=L, curseur immobile"),
-    "LCDCLS":      (0xCE9E, "efface l'écran (CLS)"),
+    "LCDCLS":      (0xCE9E, "efface l'écran (CLS) (vérifié ROM)"),
     "LCDCHR":      (0xC18A, "affiche A au curseur, le curseur avance"),
     "CURSOR":      (0xC0A1, "A=0 affiche le curseur, A=1 le cache"),
     # imprimante
@@ -58,40 +58,40 @@ ROUTINES = {
     "PARPUT":      (0xCF11, "envoie A sur le port parallèle"),
     "PARWAIT":     (0xCF2A, "attend BUSY=0 sur le port parallèle"),
     # T6834
-    "T6CMD":       (0xE428, "commande T6834 sans paramètre (A)"),
-    "T6CMDP":      (0xC92F, "commande T6834 : A=cmd, HL=param, B=nb, C=nb rép., DE=tampon"),
-    "T6FLUSH":     (0xC0BD, "vide les tampons clavier et T6834"),
-    "T6PEEK":      (0xE348, "lit la RAM du T6834 : HL=adresse -> A"),
+    "T6CMD":       (0xE428, "commande T6834 sans paramètre (A) (vérifié ROM)"),
+    "T6CMDP":      (0xC92F, "commande T6834 : A=cmd, HL=param, B=nb, C=nb rép., DE=tampon (vérifié ROM)"),
+    "T6FLUSH":     (0xC0BD, "vide les tampons clavier et T6834 (vérifié ROM)"),
+    "T6PEEK":      (0xE348, "lit la RAM du T6834 : HL=adresse -> A (vérifié ROM)"),
     "T6POKE":      (0xE334, "écrit la RAM du T6834 : HL=adresse, A=donnée"),
     # général
     "IOINIT":      (0xC39D, "initialise les ports"),
     # conversions
-    "FCINT":       (0xCAE0, "accumulateur -> entier (CINT)"),
-    "FCSNG":       (0xCB08, "accumulateur -> simple précision (CSNG)"),
-    "INT2SNG":     (0xCB1E, "entier -> simple précision"),
-    "FCDBL":       (0xCB90, "accumulateur -> double précision (CDBL)"),
-    "ASC2INT":     (0xF595, "ASCII (HL) -> entier DE"),
-    "PRTHL":       (0xBB98, "affiche HL en décimal"),
+    "FCINT":       (0xCAE0, "accumulateur -> entier ; TRONQUE (CINT(2.6)=2), OV au-delà de 16 bits (vérifié ROM)"),
+    "FCSNG":       (0xCB08, "accumulateur -> simple précision (CSNG) (vérifié ROM)"),
+    "INT2SNG":     (0xCB1E, "entier -> simple précision (vérifié ROM)"),
+    "FCDBL":       (0xCB90, "accumulateur -> double précision (CDBL) (vérifié ROM)"),
+    "ASC2INT":     (0xF595, "lit un NUMÉRO DE LIGNE en (HL) -> DE : entier non signé 0-65535 seulement (vérifié ROM)"),
+    "PRTHL":       (0xBB98, "affiche HL en décimal (vérifié ROM)"),
     "INT2ASC":     (0xBE5F, "entier -> ASCII dans (HL)"),
     # arithmétique
-    "IADD":        (0xCCC6, "HL+DE (entier)"),
-    "ISUB":        (0xCCBB, "HL-DE (entier)"),
-    "IMUL":        (0xCCE7, "HL*DE (entier)"),
-    "IDIV":        (0xFA79, "DE/HL -> accumulateur double"),
-    "SADD":        (0xCDA9, "acc + BC:DE (simple)"),
-    "SSUB":        (0xCDB2, "acc - BC:DE (simple)"),
-    "SMUL":        (0xCDB7, "acc * BC:DE (simple)"),
-    "SDIV":        (0xCDC2, "BC:DE / acc (simple)"),
-    "DADD":        (0xB20E, "acc + acc2 (double)"),
-    "DSUB":        (0xB200, "acc - acc2 (double)"),
-    "DMUL":        (0xB376, "acc * acc2 (double)"),
-    "DDIV":        (0xB42F, "acc / acc2 (double)"),
-    "SCMP":        (0xCA7B, "compare BC:DE et acc (simple)"),
-    "ICMP":        (0xCAA5, "compare HL et DE (entier)"),
-    "DCMP":        (0xCAD9, "compare acc et acc2 (double)"),
+    "IADD":        (0xCCC6, "HL+DE (entier) (vérifié ROM)"),
+    "ISUB":        (0xCCBB, "HL-DE (entier) (vérifié ROM)"),
+    "IMUL":        (0xCCE7, "HL*DE (entier) (vérifié ROM)"),
+    "IDIV":        (0xFA79, "division entière DE / HL du répartiteur : le résultat est un double (comme 1/3) (vérifié ROM)"),
+    "SADD":        (0xCDA9, "« simple » : BC:DE + FAC, calculé en double (type 8) (vérifié ROM)"),
+    "SSUB":        (0xCDB2, "« simple » : BC:DE - FAC, calculé en double (type 8) (vérifié ROM)"),
+    "SMUL":        (0xCDB7, "« simple » : BC:DE * FAC, calculé en double (type 8) (vérifié ROM)"),
+    "SDIV":        (0xCDC2, "« simple » : BC:DE / FAC, calculé en double (type 8) (vérifié ROM)"),
+    "DADD":        (0xB20E, "acc + acc2 (double) (vérifié ROM)"),
+    "DSUB":        (0xB200, "acc - acc2 (double) (vérifié ROM)"),
+    "DMUL":        (0xB376, "acc * acc2 (double) (vérifié ROM)"),
+    "DDIV":        (0xB42F, "acc / acc2 (double) (vérifié ROM)"),
+    "SCMP":        (0xCA7B, "compare BC:DE et acc (simple) (vérifié ROM)"),
+    "ICMP":        (0xCAA5, "compare HL et DE (entier) (vérifié ROM)"),
+    "DCMP":        (0xCAD9, "compare FAC et ARG (double) : A = 1 si FAC < ARG, -1 si FAC > ARG, 0 si égaux (vérifié ROM)"),
     "DSIGN":       (0xC9FB, "signe de l'accumulateur double"),
-    "FABS":        (0xC9DC, "valeur absolue (ABS)"),
-    "FINT":        (0xCC23, "partie entière (INT)"),
+    "FABS":        (0xC9DC, "valeur absolue (ABS) (vérifié ROM)"),
+    "FINT":        (0xCC23, "partie entière (INT) (vérifié ROM)"),
     # transferts
     "PUSHFAC":     (0xCA0B, "empile l'accumulateur"),
     "BCDE2FAC":    (0xCA1B, "BC:DE -> accumulateur"),
@@ -99,7 +99,7 @@ ROUTINES = {
     "FAC2MEM":     (0xCA42, "accumulateur -> (HL)"),
     "MOVUP":       (0xCA51, "copie B octets (DE)->(HL), croissant"),
     "MOVDN":       (0xCA58, "copie B octets (DE)->(HL), décroissant"),
-    "HL2FAC":      (0xCAEF, "HL -> accumulateur (entier)"),
+    "HL2FAC":      (0xCAEF, "HL -> accumulateur (entier) (vérifié ROM)"),
     "ARG2FAC":     (0xCA5F, "acc2 -> accumulateur"),
     "FAC2ARG":     (0xCA67, "accumulateur -> acc2"),
     # système
@@ -117,30 +117,30 @@ ROUTINES = {
     "SLEEPR":      (0xC59B, "SLEEP"),
     "GETBRK":      (0xE8E8, "A = BREAKFLAG AND $83 ; NZ si BREAK, piles ou OFF (vérifié ROM)"),
     "PRTSTR":      (0xD5B0, "affiche la chaîne (HL) terminée par 00/0D"),
-    "PRTMSG":      (0xFEF7, "affiche le message (HL) terminé par 00"),
+    "PRTMSG":      (0xFEF7, "affiche le message (HL) terminé par 00 (vérifié ROM)"),
     "INPUTQ":      (0xEBF2, "saisie avec « ? » -> HL=$00D4, fin 00 ; CY=1 si BREAK (vérifié ROM)"),
     "INPUTL":      (0xEBFF, "saisie sans « ? » -> HL=$00D4, fin 00 ; CY=1 si BREAK (vérifié ROM)"),
-    "FNDLIN":      (0xF30D, "cherche la ligne BASIC DE"),
+    "FNDLIN":      (0xF30D, "cherche la ligne BASIC DE (vérifié ROM)"),
     "GETBYT":      (0xFE5E, "évalue une expression < 256"),
     "GETINT":      (0xFFCC, "évalue une expression entière"),
     "CONTSYS":     (0xF680, "CONT général du système"),
     "COPYRGT":     (0xC528, "message de copyright"),
-    "COLDST":      (0xC3C3, "démarrage à froid"),
+    "COLDST":      (0xC3C3, "démarrage à froid (vérifié ROM)"),
     "HEXENTRY":    (0xFB4F, "entrée d'une routine en hexadécimal"),
-    "CREATSYS":    (0xC4D1, "« CREATE SYSTEM ? »"),
-    "READY":       (0xF23D, "mode d'attente avec curseur"),
-    "SNERR":       (0xF1AA, "SN ERROR"),
-    "ERROR":       (0xF1C7, "erreur numéro E"),
+    "CREATSYS":    (0xC4D1, "« CREATE SYSTEM ? » (vérifié ROM)"),
+    "READY":       (0xF23D, "mode d'attente avec curseur (vérifié ROM)"),
+    "SNERR":       (0xF1AA, "SN ERROR (vérifié ROM)"),
+    "ERROR":       (0xF1C7, "erreur numéro E (vérifié ROM)"),
     # fichiers / périphériques
-    "DEVOPEN":     (0xE6A8, "INIT# : DE=table, IY=fichier, A=0"),
-    "DEVSEL":      (0xE827, "choisit le fichier courant (DE)"),
-    "DEVPUT":      (0xE88F, "RST 28 : envoie A au fichier courant"),
-    "DEVGET":      (0xE8D4, "lit un octet du fichier courant -> A"),
-    "DEV_KBD":     (0xE778, "table du dispositif KBD:"),
-    "DEV_CASI":    (0xE787, "table du dispositif CASI:"),
-    "DEV_CASO":    (0xE796, "table du dispositif CASO:"),
-    "DEV_COM":     (0xE7A4, "table du dispositif COM:"),
-    "DEV_GPR":     (0xE7B2, "table du dispositif GPR:"),
+    "DEVOPEN":     (0xE6A8, "INIT# : DE=table, IY=fichier, A=0 (vérifié ROM)"),
+    "DEVSEL":      (0xE827, "choisit le fichier courant (DE) (vérifié ROM)"),
+    "DEVPUT":      (0xE88F, "RST 28 : envoie A au fichier courant (vérifié ROM)"),
+    "DEVGET":      (0xE8D4, "lit un octet du fichier courant -> A (vérifié ROM)"),
+    "DEV_KBD":     (0xE778, "table du dispositif KBD: (vérifié ROM)"),
+    "DEV_CASI":    (0xE787, "table du dispositif CASI: (vérifié ROM)"),
+    "DEV_CASO":    (0xE796, "table du dispositif CASO: (vérifié ROM)"),
+    "DEV_COM":     (0xE7A4, "table du dispositif COM: (vérifié ROM)"),
+    "DEV_GPR":     (0xE7B2, "table du dispositif GPR: (vérifié ROM)"),
     "DEV_PRT":     (0xE7C0, "table du dispositif PRT:"),
     "DEV_RAM":     (0xE7CE, "table du dispositif RAM:"),
     "DEV_OPT":     (0xE7DC, "table du dispositif OPT:"),
@@ -149,50 +149,50 @@ ROUTINES = {
 }
 
 VARIABLES = {
-    "BRKFLG":   (0x002B, "BREAKFLAG"),
+    "BRKFLG":   (0x002B, "BREAKFLAG (vérifié ROM)"),
     "HKCONOUT": (0x009F, "hook sortie CONSOLE"),
     "HKCONIN":  (0x00A2, "hook entrée CONSOLE"),
     "HKABORT":  (0x00A8, "hook ABORT"),
-    "HKERROR":  (0x00AB, "hook ERREUR"),
-    "TXTTAB":   (0x00B2, "début du programme BASIC"),
+    "HKERROR":  (0x00AB, "hook ERREUR (vérifié ROM)"),
+    "TXTTAB":   (0x00B2, "début du programme BASIC (vérifié ROM)"),
     "CSRY":     (0x00B8, "ligne du curseur, à partir de 1 (vérifié ROM)"),
     "CSRX":     (0x00B9, "colonne du curseur, à partir de 1 (vérifié ROM)"),
-    "INPBUF":   (0x00D5, "tampon d'entrée"),
-    "VALTYP":   (0x01D9, "type de donnée (2,3,4,8)"),
-    "STKTOP":   (0x01DD, "fin de la pile"),
-    "MEMSIZ":   (0x01DF, "fin de la zone BASIC"),
-    "FRETOP":   (0x0204, "zone des chaînes libre"),
+    "INPBUF":   (0x00D5, "tampon d'entrée (vérifié ROM)"),
+    "VALTYP":   (0x01D9, "type de donnée (2,3,4,8) (vérifié ROM)"),
+    "STKTOP":   (0x01DD, "fin de la pile (vérifié ROM)"),
+    "MEMSIZ":   (0x01DF, "fin de la zone BASIC (vérifié ROM)"),
+    "FRETOP":   (0x0204, "zone des chaînes libre (vérifié ROM)"),
     "RAMSTR":   (0x0210, "début des fichiers RAM"),
     "RAMEND":   (0x0212, "fin des fichiers RAM"),
     "LCDIMG":   (0x0214, "image de l'écran LCD (80 octets)"),
-    "INTIMAG":  (0x026C, "image du port F0"),
-    "T6BUF":    (0x026E, "tampon T6834"),
-    "FILE1":    (0x02C5, "fichier #1 (table INIT#)"),
+    "INTIMAG":  (0x026C, "image du port F0 (vérifié ROM)"),
+    "T6BUF":    (0x026E, "tampon T6834 (vérifié ROM)"),
+    "FILE1":    (0x02C5, "fichier #1 (table INIT#) (vérifié ROM)"),
     "FILE2":    (0x02CD, "fichier #2 (table INIT#)"),
-    "CURDEV":   (0x02F5, "périphérique ouvert"),
+    "CURDEV":   (0x02F5, "périphérique ouvert (vérifié ROM)"),
     "CURLIN":   (0x0311, "ligne en cours"),
     "ERRLIN":   (0x0317, "ligne de l'erreur"),
     "ONERR":    (0x0319, "adresse ON ERROR"),
-    "VARTAB":   (0x0322, "table des variables"),
+    "VARTAB":   (0x0322, "table des variables (vérifié ROM)"),
     "ARYTAB":   (0x0324, "table des tableaux"),
     "STREND":   (0x0326, "début de la zone libre"),
-    "DATPTR":   (0x0328, "pointeur des DATA"),
-    "FAC":      (0x044E, "accumulateur flottant"),
-    "FACINT":   (0x0450, "entier dans l'accumulateur"),
-    "ARG":      (0x049F, "accumulateur 2"),
+    "DATPTR":   (0x0328, "pointeur des DATA (vérifié ROM)"),
+    "FAC":      (0x044E, "accumulateur flottant (vérifié ROM)"),
+    "FACINT":   (0x0450, "entier dans l'accumulateur (vérifié ROM)"),
+    "ARG":      (0x049F, "accumulateur 2 (vérifié ROM)"),
     "T6BUF2":   (0x0507, "2e tampon T6834"),
-    "BASTXT":   (0x0553, "début des programmes BASIC"),
+    "BASTXT":   (0x0553, "début des programmes BASIC (vérifié ROM)"),
 }
 
 PORTS = {
-    "P_INT":    (0xF0, "interruptions"),
-    "P_T6":     (0xF1, "donnée T6834"),
-    "P_STAT":   (0xF2, "bauds bas / indicateurs"),
-    "P_BAUDH":  (0xF3, "bauds haut"),
-    "P_MODE":   (0xF4, "modes (REM, BZON, MD0/1...)"),
-    "P_INTRST": (0xF5, "RAZ des interruptions"),
-    "P_UART":   (0xF6, "contrôle/état UART"),
-    "P_SER":    (0xF7, "donnée série"),
+    "P_INT":    (0xF0, "interruptions (vérifié ROM)"),
+    "P_T6":     (0xF1, "donnée T6834 (vérifié ROM)"),
+    "P_STAT":   (0xF2, "bauds bas / indicateurs (vérifié ROM)"),
+    "P_BAUDH":  (0xF3, "bauds haut (vérifié ROM)"),
+    "P_MODE":   (0xF4, "modes (REM, BZON, MD0/1...) (vérifié ROM)"),
+    "P_INTRST": (0xF5, "RAZ des interruptions (vérifié ROM)"),
+    "P_UART":   (0xF6, "contrôle/état UART (vérifié ROM)"),
+    "P_SER":    (0xF7, "donnée série (vérifié ROM)"),
 }
 
 T6834 = {
@@ -244,8 +244,62 @@ RST_COMMENT = {
     0x20: "CPHLDE : compare HL et DE",
     0x28: "DEVPUT : A vers le fichier courant",
     0x30: "GETYPE : type de donnée",
-    0x38: "ARRADR : adresse d'un élément de tableau",
+    0x38: "lecture dans une table ou fonction du pilote courant (octet en ligne)",
 }
 
 # Plages de la carte mémoire (pour la vérification d'implantation)
 RAM_TOP = {8: 0x1FFF, 16: 0x3FFF, 24: 0x5FFF}
+
+
+def markdown():
+    """Carte des symboles au format Markdown (assembleur/ROM.md)."""
+    def rows(table, fmt):
+        out = ["| Adresse | Nom | Rôle | Vérifié |", "|---|---|---|---|"]
+        for name, (v, c) in sorted(table.items(), key=lambda x: x[1][0]):
+            checked = "vérifié ROM" in c
+            role = c.replace(" (vérifié ROM)", "").replace("|", "\\|")
+            out.append("| `%s` | `%s` | %s | %s |" % (fmt % v, name, role, "✓" if checked else ""))
+        return out
+
+    n_ok = sum("vérifié ROM" in c for t in (ROUTINES, VARIABLES, PORTS) for _, c in t.values())
+    n = sum(len(t) for t in (ROUTINES, VARIABLES, PORTS))
+    lines = [
+        "# Carte de la ROM et de la zone système du Canon X-07",
+        "",
+        "Les symboles que l'assembleur connaît d'avance (`CALL INKEY`, `LD HL,(TXTTAB)`...) "
+        "et que le compilateur et le désassembleur utilisent. Ils viennent des *Mystères du X-07* "
+        "et ont été corrigés d'après la ROM (voir [l'errata](../ref_docs/ERRATA.md)).",
+        "",
+        "La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la ROM ou par "
+        "l'émulateur : %d sur %d. Les autres viennent du livre." % (n_ok, n),
+        "",
+        "> Fichier produit par `python3 x07asm.py sym --md > ROM.md` à partir de "
+        "`x07asm/x07sym.py` : ne pas le modifier à la main.",
+        "",
+        "## Routines de la ROM ($B000-$FFFF)",
+        "",
+    ] + rows(ROUTINES, "$%04X") + [
+        "",
+        "## Variables de la zone système",
+        "",
+    ] + rows(VARIABLES, "$%04X") + [
+        "",
+        "## Ports d'entrée/sortie (HD61L202F)",
+        "",
+    ] + rows(PORTS, "$%02X") + [
+        "",
+        "## Commandes du sous-processeur T6834",
+        "",
+        "Codes envoyés par `T6CMD` ou `T6CMDP` (les valeurs viennent du livre ; ajouter $80 "
+        "pour une commande sans paramètre).",
+        "",
+        "| Code | Nom |",
+        "|---|---|",
+    ] + ["| `$%02X` | `%s` |" % (v, n) for n, v in sorted(T6834.items(), key=lambda x: x[1])] + [
+        "",
+        "## Vecteurs RST",
+        "",
+        "| RST | Rôle |",
+        "|---|---|",
+    ] + ["| `$%02X` | %s |" % (v, c) for v, c in sorted(RST_COMMENT.items())]
+    return "\n".join(lines) + "\n"

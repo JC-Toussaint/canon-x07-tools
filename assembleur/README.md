@@ -8,7 +8,12 @@ Assembleur et désassembleur Z80 pour le **Canon X-07**, dont le processeur NSC8
 - **Chargeur BASIC** généré automatiquement, avec une somme de contrôle par ligne de DATA.
 - Le désassembleur produit un **source réassemblable à l'identique**. Il gère l'octet en ligne qui suit `RST 08`.
 
-Un **compilateur BASIC** (entiers, simple et double précision, chaînes) et un **émulateur du BASIC du X-07** qui exécute la vraie ROM complètent l'outil ; ils sont décrits dans [COMPILATEUR.md](COMPILATEUR.md).
+L'outil comprend aussi :
+- un **compilateur BASIC** (entiers, simple et double précision, chaînes) : [COMPILATEUR.md](COMPILATEUR.md) ;
+- un **émulateur** qui exécute la vraie ROM : [EMULATEUR.md](EMULATEUR.md) ;
+- le **transfert par le câble série** : [TRANSFERT.md](TRANSFERT.md).
+
+La carte des routines de la ROM est dans [ROM.md](ROM.md). Pour un premier parcours complet, voir le [guide de démarrage](../DEMARRAGE.md).
 
 ## Utilisation rapide
 
@@ -96,7 +101,7 @@ python3 x07asm.py dis ENTRÉE [--org ADR] [-t] [-e ADR]... [--data DEB-FIN[:b|w|
 - **`--data 1C61-1C67:b`** déclare une zone de données. Les types sont `b` (octets), `w` (mots, étiquetés s'ils pointent dans le programme) et `t` (texte).
 - **`-l`** : listage avec adresses et octets, pour la lecture (non réassemblable).
 - **`--labels`** : vos propres noms, sous la forme `NOM EQU $1C54` (une par ligne).
-- **`--no-rst8`** : ne traite pas l'octet qui suit `RST 08` comme une donnée. Dans la ROM du X-07, `RST 08` (SYNCHR) est suivi de l'octet à comparer.
+- **`--no-rst8`** : ne traite pas l'octet qui suit `RST 08` et `RST 38` comme une donnée. Dans la ROM du X-07, `RST 08` (SYNCHR) est suivi de l'octet à comparer, et `RST 38` du numéro d'une entrée de table ou d'une fonction du pilote courant.
 
 Le désassembleur nomme les cibles internes `Lxxxx` (code) et `Dxxxx` (données). Les appels à la ROM prennent leur nom symbolique (`CALL DEVOPEN`), avec une ligne `EQU` en tête et le rôle de la routine en commentaire.
 

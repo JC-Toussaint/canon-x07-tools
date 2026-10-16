@@ -94,7 +94,7 @@ class Disassembler:
             self.starts[a] = r
             covered.update(range(a, a + r[2]))
             t = r[0]
-            if (self.rst8 and t.mnem == "RST" and t.ops[0] == 8 and self.read(a + 1) is not None
+            if (self.rst8 and t.mnem == "RST" and t.ops[0] in (0x08, 0x38) and self.read(a + 1) is not None
                     and not self._in_data(a + 1)):
                 self.inline.add(a + 1)
                 covered.add(a + 1)
@@ -115,7 +115,7 @@ class Disassembler:
                 for k in range(size):
                     owner[a + k] = a
                 nxt = a + size
-                if (t.mnem == "RST" and self.rst8 and t.ops[0] == 8 and nxt in self.mem
+                if (t.mnem == "RST" and self.rst8 and t.ops[0] in (0x08, 0x38) and nxt in self.mem
                         and nxt not in owner and not self._in_data(nxt)):
                     self.inline.add(nxt)
                     owner[nxt] = a

@@ -925,6 +925,16 @@ RST 38 & E906 & calcul de l'adresse d'un élément de tableau \\
 l'accumulateur flottant (A = 0, 1 ou \hex{FF} ; Z = 1 si nul). Voir la note
 de la table des vecteurs (§\,\ref{sec:zone}).}
 
+\nota{Vérifié dans la ROM : RST 38 (\hex{E906}) n'est pas un calcul d'adresse
+dans un tableau. Il est toujours suivi d'un \textbf{octet en ligne} n, que la
+routine saute avant de revenir. Si n $<$ \hex{80}, il rend DE = mot lu en
+HL$+$n (lecture dans une table). Si n $\ge$ \hex{80}, il appelle la
+fonction n$-$\hex{80} du \textbf{pilote du périphérique courant} (table en
+\hex{0045}) : \texttt{PRINT} (\texttt{FF 83}), la position et la largeur pour
+\texttt{PRINT} et \texttt{TAB} (\hex{E8EE} : \texttt{FF 81}), le placement
+pour \texttt{TAB} (\texttt{FF 8F}), \texttt{INIT\#}\dots{} Un désassemblage
+qui ignore cet octet devient faux à partir de là.}
+
 \begin{center}\small
 \begin{tabular}{@{}clll@{}}
 \toprule

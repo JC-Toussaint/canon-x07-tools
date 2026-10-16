@@ -129,6 +129,9 @@ def cmd_dis(args):
 
 
 def cmd_sym(args):
+    if args.md:
+        sys.stdout.write(x07sym.markdown())
+        return 0
     q = (args.filter or "").upper()
     groups = (("Routines ROM", x07sym.ROUTINES, "$%04X"),
               ("Variables système", x07sym.VARIABLES, "$%04X"),
@@ -445,6 +448,7 @@ def main(argv=None):
 
     s = sub.add_parser("sym", help="liste les symboles du X-07")
     s.add_argument("filter", nargs="?", help="filtre (nom, texte ou valeur)")
+    s.add_argument("--md", action="store_true", help="carte complète au format Markdown (ROM.md)")
     s.set_defaults(func=cmd_sym)
 
     b = sub.add_parser("basic", help="compiler un programme BASIC")
