@@ -486,6 +486,45 @@ def cmd_send(args):
     return 0
 
 
+def cmd_qb(args):
+    """Traduit un programme QuickBASIC en BASIC du X-07 (puis le compile)."""
+    from . import qbasic
+    try:
+        with open(args.source, "rb") as f:
+            raw = f.read()
+    except OSError as e:
+        print("erreur : %s : %s" % (args.source, e.strerror), file=sys.stderr)
+        return 1
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+    try:
+        out, warns, names = qbasic.translate(text, args.largeur)
+    except qbasic.QBError as e:
+        print("erreur : %s" % e, file=sys.stderr)
+        return 1
+    for w in warns:
+        print("attention : %s" % w, file=sys.stderr)
+    root, ext = os.path.splitext(args.source)
+    # tri.qbas -> tri.bas ; une autre extension ne doit pas écraser la source
+    dest = args.output or root + (".bas" if ext.lower() == ".qbas" else "_x07.bas")
+    with open(dest, "w", encoding="utf-8") as f:
+        f.write(out)
+    print("%d lignes de BASIC du X-07 -> %s" % (out.count("\n"), dest))
+    if args.noms:
+        print("noms :")
+        for qb, x in names:
+            print("  %-24s %s" % (qb, x))
+    wanted = [f for f in (args.format or "").split(",") if f]
+    if wanted:
+        return main(["basic", dest, "-f", ",".join(wanted), "--ram", str(args.ram),
+                     "--org", args.org])
+    print("ensuite :  emu %s   (vrai BASIC du X-07)" % dest)
+    print("           basic %s --ram %d   (assembleur)" % (dest, args.ram))
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(
         prog="x07asm",
@@ -552,6 +591,20 @@ def main(argv=None):
     b.add_argument("--default", choices=("d", "f", "i"), default="d",
                    help="type des variables sans suffixe : d double (X-07), f simple, i entier")
     b.set_defaults(func=cmd_basic)
+
+    q = sub.add_parser("qb", help="traduire un programme QuickBASIC en BASIC du X-07")
+    q.add_argument("source", help="programme QuickBASIC (extension .qbas)")
+    q.add_argument("-o", "--output", help="programme X-07 produit (défaut : NOM.qbas -> NOM.bas)")
+    q.add_argument("-f", "--format", default=None,
+                   help="puis compiler : asm,bin,hex,lst,txt,bas (comme la commande basic)")
+    q.add_argument("--ram", type=int, choices=(8, 16, 24), default=8,
+                   help="mémoire du X-07 en Ko, pour la compilation (défaut : 8)")
+    q.add_argument("--org", default="auto", help="adresse d'implantation, pour la compilation")
+    q.add_argument("--largeur", type=int, default=72,
+                   help="longueur maximale d'une ligne produite (défaut : 72)")
+    q.add_argument("--noms", action="store_true",
+                   help="affiche la correspondance des noms de variables")
+    q.set_defaults(func=cmd_qb)
 
     r = sub.add_parser("run", help="exécuter un programme sur le simulateur (PC)")
     r.add_argument("source", help="programme BASIC (.bas) ou source assembleur (.asm)")

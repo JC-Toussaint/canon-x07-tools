@@ -1,0 +1,41 @@
+' Tri et moyenne : QuickBASIC adapté au Canon X-07
+' Traduction :  python3 x07asm.py qb exemples/qbasic/tri.qbas
+DECLARE SUB Trier (t%(), n%)
+DECLARE FUNCTION Moyenne! (t%(), n%)
+CONST NB = 8
+DIM notes%(1 TO NB)
+
+FOR i% = 1 TO NB
+    READ notes%(i%)
+NEXT i%
+DATA 12, 7, 15, 9, 18, 11, 6, 14
+
+Trier notes%(), NB
+CLS
+FOR i% = 1 TO NB
+    PRINT notes%(i%);
+NEXT i%
+PRINT
+PRINT "Moyenne :"; Moyenne!(notes%(), NB)
+END
+
+SUB Trier (t%(), n%)
+    ' tri à bulles
+    DO
+        echange% = 0
+        FOR i% = 1 TO n% - 1
+            IF t%(i%) > t%(i% + 1) THEN
+                SWAP t%(i%), t%(i% + 1)
+                echange% = -1
+            END IF
+        NEXT i%
+    LOOP WHILE echange%
+END SUB
+
+FUNCTION Moyenne! (t%(), n%)
+    s! = 0
+    FOR i% = 1 TO n%
+        s! = s! + t%(i%)
+    NEXT i%
+    Moyenne! = s! / n%
+END FUNCTION
