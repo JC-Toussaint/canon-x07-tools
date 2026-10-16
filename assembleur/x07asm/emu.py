@@ -85,15 +85,29 @@ def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, 
         setup(m)
     lines = [l for l in src.splitlines() if l.strip()]
     state = {"phase": "saisie"}
-    queue = list(lines) + ["RUN"]
+    queue = list(lines) + (["RUN"] if lines else [])
     user = list(inputs)
     start = {}
 
+    def live_line(c):                  # saisie dans la fenêtre (mode interactif)
+        line = m.read_line()
+        if line is None:                   # Échap : BREAK
+            m._store_line("")
+            c.setf(0x01, True)
+        else:
+            m._store_line(line)
+
     def command(c):                    # invite > : on tape la ligne suivante
         if c.rd16(c.sp) != m.ready_ret:    # INPUT "texte",V du programme (sans « ? »)
+            if not user and m.interactive:
+                return live_line(c)
             if not user:
                 raise SimError("INPUT : aucune ligne fournie")
             _type_line(m, user.pop(0))
+            return
+        if not queue and m.interactive:    # le BASIC du X-07, en direct
+            line = m.read_line()
+            m._store_line(line or "")
             return
         if not queue:
             raise Finished()
@@ -107,6 +121,8 @@ def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, 
     def program_input(c):              # INPUT du programme (avec « ? »)
         for ch in "? ":
             m.putc(ord(ch))
+        if not user and m.interactive:
+            return live_line(c)
         if not user:
             raise SimError("INPUT : aucune ligne fournie")
         _type_line(m, user.pop(0))

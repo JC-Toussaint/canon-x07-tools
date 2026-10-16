@@ -260,6 +260,32 @@ def _exec(m, mem, entry, max_steps):
     return 0
 
 
+def _show_screen(m, args):
+    """Écran final : texte, points dans le terminal (--ecran), image (--png)."""
+    print()
+    print("Écran du X-07 à la fin :")
+    if getattr(args, "ecran", False):
+        print(m.lcd.braille())
+    else:
+        print(m.screen_text())
+    if getattr(args, "png", None):
+        m.lcd.png(args.png, zoom=args.zoom)
+        print("image de l'écran ->", args.png)
+
+
+def _window(title, zoom, target):
+    """Ouvre la fenêtre de l'afficheur et y fait tourner target(setup)."""
+    from . import afficheur
+    try:
+        f = afficheur.Fenetre(title, zoom)
+    except Exception as e:                       # pas d'affichage graphique
+        print("erreur : fenêtre impossible (%s). Essayez --ecran ou --png." % e,
+              file=sys.stderr)
+        return 1
+    f.start(lambda: target(f.attach))
+    return 0
+
+
 def cmd_run(args):
     from . import basic, sim, emu
     try:
@@ -289,6 +315,15 @@ def cmd_run(args):
         sys.stdout.write(ch)
         sys.stdout.flush()
 
+    if args.fenetre:
+        def target(setup):
+            m = emu.boot(args.ram)
+            m.keys, m.lines = list(keys), list(args.input or [])
+            setup(m)
+            _exec(m, mem, a.entry, 10 ** 12)
+        return _window("Canon X-07 : %s (compilé)" % os.path.basename(args.source),
+                       args.zoom, target)
+
     m = None
     try:
         m = emu.boot(args.ram)
@@ -297,9 +332,7 @@ def cmd_run(args):
     except sim.SimError as e:
         print("\n[simulation arrêtée : %s]" % e, file=sys.stderr)
         status = 2
-    print()
-    print("Écran du X-07 à la fin :")
-    print(m.screen_text())
+    _show_screen(m, args)
     print("(%d instructions Z80 exécutées)" % m.steps)
     return status
 
@@ -307,14 +340,30 @@ def cmd_run(args):
 def cmd_emu(args):
     """Exécute un programme avec le vrai BASIC de la ROM (émulation)."""
     from . import emu, sim
-    try:
-        with open(args.source, "rb") as f:
-            raw = f.read()
+    src = ""
+    if args.source:
+        try:
+            with open(args.source, "rb") as f:
+                raw = f.read()
+        except OSError as e:
+            print("erreur : %s : %s" % (args.source, e.strerror), file=sys.stderr)
+            return 1
         try:
             src = raw.decode("utf-8")
         except UnicodeDecodeError:
             src = raw.decode("latin-1")
-        keys = args.keys.encode().decode("unicode_escape") if args.keys else ""
+    elif not args.fenetre:
+        print("erreur : indiquez un programme, ou --fenetre pour le BASIC en direct",
+              file=sys.stderr)
+        return 1
+    keys = args.keys.encode().decode("unicode_escape") if args.keys else ""
+    if args.fenetre:
+        name = os.path.basename(args.source) if args.source else "BASIC"
+        return _window("Canon X-07 : %s" % name, args.zoom,
+                       lambda setup: emu.run_basic(src, inputs=args.input or [], keys=keys,
+                                                   ram=args.ram, max_steps=10 ** 12,
+                                                   setup=setup))
+    try:
         out, m = emu.run_basic(src, inputs=args.input or [], keys=keys, ram=args.ram,
                                max_steps=args.max)
     except sim.SimError as e:
@@ -325,9 +374,7 @@ def cmd_emu(args):
     if m.error:
         print("\n[émulation arrêtée : %s]" % m.error, file=sys.stderr)
         status = 2
-    print()
-    print("Écran du X-07 à la fin :")
-    print(m.screen_text())
+    _show_screen(m, args)
     print("(%d instructions Z80 exécutées par la ROM)" % m.steps)
     return status
 
@@ -484,14 +531,27 @@ def main(argv=None):
     r.add_argument("--strlen", type=int, default=80)
     r.add_argument("--debug", action="store_true")
     r.add_argument("--default", choices=("d", "f", "i"), default="d")
+    r.add_argument("--fenetre", action="store_true",
+                   help="affichage graphique en direct, avec le clavier (Échap = BREAK)")
+    r.add_argument("--ecran", action="store_true",
+                   help="écran final en points (caractères braille) dans le terminal")
+    r.add_argument("--png", metavar="FICHIER", help="image PNG de l'écran final")
+    r.add_argument("--zoom", type=int, default=5, help="agrandissement (défaut : 5)")
     r.set_defaults(func=cmd_run)
 
     e = sub.add_parser("emu", help="exécuter un programme BASIC avec la vraie ROM (émulation)")
-    e.add_argument("source", help="programme BASIC (.bas)")
+    e.add_argument("source", nargs="?", help="programme BASIC (.bas) ; sans programme avec "
+                   "--fenetre : le BASIC du X-07 en direct")
     e.add_argument("-k", "--keys", help="touches pour INKEY$")
     e.add_argument("-i", "--input", action="append", help="ligne tapée pour INPUT (répétable)")
     e.add_argument("--ram", type=int, choices=(8, 16, 24), default=16)
     e.add_argument("--max", type=int, default=50_000_000, help="instructions au plus")
+    e.add_argument("--fenetre", action="store_true",
+                   help="affichage graphique en direct, avec le clavier (Échap = BREAK)")
+    e.add_argument("--ecran", action="store_true",
+                   help="écran final en points (caractères braille) dans le terminal")
+    e.add_argument("--png", metavar="FICHIER", help="image PNG de l'écran final")
+    e.add_argument("--zoom", type=int, default=5, help="agrandissement (défaut : 5)")
     e.set_defaults(func=cmd_emu)
 
     rc = sub.add_parser("recepteur", help="programme BASIC de réception série, à taper sur le X-07")

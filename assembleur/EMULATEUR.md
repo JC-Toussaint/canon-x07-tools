@@ -14,6 +14,35 @@ python3 x07asm.py run exemples/devine.bas      # le même programme, compilé, l
 
 À la fin, l'écran de 20 × 4 caractères est affiché, avec le nombre d'instructions Z80 exécutées.
 
+## L'afficheur graphique
+
+L'écran du X-07 peut être montré tel qu'il est vraiment : **120 × 32 points**, partagés par le texte (20 × 4 caractères de 6 × 8 points) et les graphismes. Le texte est dessiné avec **la police du X-07** (`ROM_x07/charset.rom`).
+
+```sh
+python3 x07asm.py emu exemples/devine.bas --fenetre    # fenêtre en direct, avec le clavier
+python3 x07asm.py emu --fenetre                        # le BASIC du X-07, sans programme
+python3 x07asm.py run jeu.bas --fenetre                # programme compilé
+python3 x07asm.py emu logo.bas --png logo.png          # image de l'écran final
+python3 x07asm.py emu logo.bas --ecran                 # écran final en points, dans le terminal
+```
+
+![Le logo CANON des Applications en assembleur, tracé par PSET](../ref_docs/images/logo_canon.png)
+
+**La fenêtre** montre l'écran en direct, à l'aspect d'un LCD (taille réglable par `--zoom`, 5 par défaut). Elle reçoit le clavier :
+
+| Touche du PC | Pour le X-07 |
+|---|---|
+| lettres | majuscules, comme le X-07 ; avec Maj, minuscules |
+| Entrée | RETURN |
+| flèches | codes du curseur (`$1C` à `$1F`), lus par `INKEY$` |
+| Échap | BREAK : arrête un programme, ou interrompt un `INPUT` |
+
+Un curseur clignote quand le X-07 attend une saisie. Avec `emu`, l'invite `>` revient en fin de programme : vous pouvez alors taper des commandes (`LIST`, `RUN`, `PRINT 2+2`, de nouvelles lignes…) comme sur la machine. Fermer la fenêtre arrête l'émulation.
+
+Sous WSL2, la fenêtre s'ouvre grâce à WSLg (Windows 11 ou Windows 10 récent). Sans affichage graphique, utilisez `--png` ou `--ecran`.
+
+**Graphismes reproduits :** `PSET`, `PRESET`, PEOR, `LINE`, `CIRCLE`, `POINT` (qui voit aussi le texte, comme sur la machine), les caractères redéfinis (UDC WRITE), le défilement et l'effacement d'une ligne. Les tracés de `LINE` et `CIRCLE` suivent les algorithmes classiques : ceux du T6834 ne sont pas dans la ROM, et un point peut donc différer en bout de tracé.
+
 ## Options
 
 | Option | `emu` | `run` | Rôle |
@@ -22,6 +51,8 @@ python3 x07asm.py run exemples/devine.bas      # le même programme, compilé, l
 | `-k TOUCHES` | oui | oui | touches lues par `INKEY$`, par exemple `-k "ZZQ\r"` |
 | `--ram 8\|16\|24` | oui (défaut 16) | oui (défaut 8) | mémoire de la machine, en Ko |
 | `--max N` | oui | oui | arrêt après N instructions (boucle sans fin) |
+| `--fenetre`, `--zoom N` | oui | oui | affichage graphique en direct |
+| `--png FICHIER`, `--ecran` | oui | oui | écran final en image, ou en points dans le terminal |
 | `--debug`, `--default`, `--strlen`, `--org` | — | oui | options du compilateur ([COMPILATEUR.md](COMPILATEUR.md)) |
 
 Si `run` n'a pas de réponse pour un `INPUT`, il la demande au clavier du PC. Si la liste est épuisée, `emu` s'arrête et affiche l'écran obtenu jusque-là.
@@ -45,16 +76,16 @@ Le **sous-processeur T6834**, qui gère l'écran, le clavier et les graphismes, 
 
 | Routine | Imitation |
 |---|---|
-| `$C1BE` affichage, `$CE9E` CLS, `$C164` curseur | écran de texte 20 × 4, codes de contrôle, défilement |
+| `$C1BE` affichage, `$CE9E` CLS, `$C164` curseur | écran de 120 × 32 points (police du X-07) et texte 20 × 4, codes de contrôle, défilement |
 | `$C90A` INKEY, `$C8C5` attente de touche | touches fournies par `-k` |
 | `$EBF2` / `$EBFF` saisie d'une ligne | lignes fournies par `-i`. Le tampon et HL sont rendus comme par la ROM |
-| `$C92F` commande avec paramètres | `PSET`/`PRESET` mémorisent les points, `POINT` y répond. `LINE` et `CIRCLE` sont seulement enregistrés |
+| `$C92F` commande avec paramètres | graphismes (`PSET`, `PRESET`, PEOR, `LINE`, `CIRCLE`, `POINT`), caractères redéfinis, effacement d'une ligne, défilement |
 | `$E428`, `$E334`, `$E348`, `$C0BD` | autres échanges avec le T6834 |
 | `$C5A6` | demande d'extinction (OFF) : comptée, la machine ne s'éteint pas |
 
 ## Limites
 
-- **Graphismes :** l'écran graphique n'est pas dessiné. Les points de `PSET` sont mémorisés, mais `LINE` et `CIRCLE` ne sont qu'enregistrés.
+- **Graphismes :** les tracés de `LINE` et `CIRCLE` sont des algorithmes classiques, pas ceux du T6834.
 - **Interruptions :** pas d'interruption clavier (INT A) ni d'horloge ; les touches arrivent par les routines imitées. Pas de NMI.
 - **Périphériques absents :** cassette, imprimante, table traçante X-710, interface vidéo X-720.
 - **Son :** les ports du buzzer sont écrits, mais rien n'est joué.
@@ -77,6 +108,8 @@ print(machine.screen_text())   # l'écran du X-07
 ## Fichiers
 
 ```
-x07asm/sim.py    processeur Z80, ports, UART, imitation du T6834
-x07asm/emu.py    démarrage de la ROM, frappe du programme, RUN, EXEC
+x07asm/sim.py        processeur Z80, ports, UART, imitation du T6834
+x07asm/emu.py        démarrage de la ROM, frappe du programme, RUN, EXEC
+x07asm/lcd.py        écran de 120 x 32 points, police, graphismes, PNG, braille
+x07asm/afficheur.py  fenêtre en direct (tkinter) et clavier
 ```

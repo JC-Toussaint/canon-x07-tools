@@ -42,6 +42,7 @@ class CPU:
         self.ports_out = []
         self.rom_start = 0xB000
         self.iff = False             # interruptions autorisées (EI)
+        self.stop_requested = False  # mis à True de l'extérieur pour arrêter run()
         self.has_rom = False
         self.ram_top = 0xAFFF        # dernière adresse de RAM
         self.strict = True           # erreur sur écriture hors RAM (aide à la mise au point)
@@ -244,6 +245,8 @@ class CPU:
 
     def run(self, max_steps=20_000_000):
         while self.pc != EXIT:
+            if self.stop_requested:
+                raise SimError("arrêt demandé")
             if self.steps >= max_steps:
                 raise SimError("limite de %d instructions atteinte (boucle sans fin ?)"
                                % max_steps)
@@ -647,6 +650,9 @@ class X07(CPU):
         self.input_fn = input_fn
         self.echo = echo              # fonction appelée pour chaque caractère affiché
         self.pixels = set()
+        from .lcd import LCD
+        self.lcd = LCD()              # écran à points 120 x 32 (texte et graphismes)
+        self.interactive = False      # touches et saisies fournies en direct (fenêtre)
         self.t6log = []
         self.beeps = []
         self.empty_polls = 0
@@ -740,6 +746,7 @@ class X07(CPU):
     def _scroll(self):
         self.screen.pop(0)
         self.screen.append([" "] * self.W)
+        self.lcd.scroll()
 
     def putc(self, ch):
         x, y = self._cursor()
@@ -757,6 +764,7 @@ class X07(CPU):
             return
         elif ch >= 32:
             self.screen[y][x] = chr(ch) if ch < 127 else "?"
+            self.lcd.put_char(x, y, ch)
             x += 1
             if x >= self.W:
                 x, y = 0, y + 1
@@ -796,6 +804,7 @@ class X07(CPU):
 
     def _cls(self, c):
         self.screen = [[" "] * self.W for _ in range(self.HGT)]
+        self.lcd.clear()
         self._setcur(0, 0)
 
     def screen_text(self):
@@ -807,6 +816,14 @@ class X07(CPU):
 
     # clavier
     def _inkey(self, c):
+        if self.interactive and not self.keys:
+            c.r["A"] = 0
+            c.setf(Z, True)
+            self.empty_polls += 1
+            if self.empty_polls % 200 == 0:
+                import time
+                time.sleep(0.002)             # pas la peine de tourner à vide
+            return
         if self.keys:
             k = self.keys.pop(0)
             c.r["A"] = ord(k)
@@ -820,9 +837,50 @@ class X07(CPU):
                 raise SimError("le programme attend une touche (aucune touche fournie)")
 
     def _kbwait(self, c):
+        if not self.keys and self.interactive:
+            c.r["A"] = ord(self._wait_key())
+            return
         if not self.keys:
             raise SimError("le programme attend une touche (aucune touche fournie)")
         c.r["A"] = ord(self.keys.pop(0))
+
+    def _wait_key(self):
+        """Attend une touche venue de la fenêtre (curseur affiché)."""
+        import time
+        self.lcd.cursor = self._cursor()
+        self.lcd.version += 1
+        while not self.keys:
+            if self.stop_requested:
+                raise SimError("arrêt demandé")
+            time.sleep(0.01)
+        self.lcd.cursor = None
+        self.lcd.version += 1
+        return self.keys.pop(0)
+
+    def read_line(self):
+        """Saisie d'une ligne au clavier de la fenêtre, avec écho.
+        Renvoie la ligne, ou None si BREAK (Échap)."""
+        line = []
+        while True:
+            k = self._wait_key()
+            if k == "\x1b":
+                return None
+            if k == "\r":
+                self.putc(13)
+                self.putc(10)
+                return "".join(line)
+            if k == "\x08":
+                if line:
+                    line.pop()
+                    x, y = self._cursor()
+                    if x > 0:
+                        self._setcur(x - 1, y)
+                        self.putc(32)
+                        self._setcur(x - 1, y)
+                continue
+            if 32 <= ord(k) < 256 and len(line) < 80:
+                line.append(k)
+                self.putc(ord(k))
 
     def _input(self, q):
         if q:
@@ -832,6 +890,14 @@ class X07(CPU):
             self.lines.pop(0)
             self.set16("HL", x07sym.VARIABLES["INPBUF"][0] - 1)
             self.setf(C, True)
+            return
+        if not self.lines and self.interactive:
+            line = self.read_line()
+            if line is None:                     # Échap : BREAK pendant la saisie
+                self.set16("HL", x07sym.VARIABLES["INPBUF"][0] - 1)
+                self.setf(C, True)
+                return
+            self._store_line(line)
             return
         if self.lines:
             line = self.lines.pop(0)
@@ -845,6 +911,10 @@ class X07(CPU):
             self.putc(ord(ch) if ord(ch) < 256 else 63)
         self.putc(13)
         self.putc(10)
+        self._store_line(line)
+
+    def _store_line(self, line):
+        """Range la ligne saisie dans le tampon, comme $EBFF (HL = tampon-1)."""
         buf = x07sym.VARIABLES["INPBUF"][0]
         data = line.encode("latin-1", "replace")[:255]
         for i, b in enumerate(data):
@@ -862,12 +932,39 @@ class X07(CPU):
         c.set16("HL", hl + n)
         self.t6log.append((cmd, params))
         resp = []
-        if cmd == 0x11:
+        lcd, p = self.lcd, params + [0] * 10
+        if cmd == 0x11:                          # PSET
             self.pixels.add(tuple(params[:2]))
-        elif cmd == 0x12:
+            lcd.pset(p[0], p[1])
+        elif cmd == 0x12:                        # PRESET
             self.pixels.discard(tuple(params[:2]))
-        elif cmd == 0x10:
-            resp = [0 if tuple(params[:2]) in self.pixels else 0xFF]
+            lcd.preset(p[0], p[1])
+        elif cmd == 0x13:                        # PEOR (inversion)
+            lcd.peor(p[0], p[1])
+        elif cmd == 0x10:                        # POINT : texte et graphismes
+            resp = [0 if lcd.get(p[0], p[1]) else 0xFF]
+        elif cmd == 0x14:                        # LINE
+            lcd.line(p[0], p[1], p[2], p[3])
+        elif cmd == 0x15:                        # CIRCLE
+            lcd.circle(p[0], p[1], p[2])
+        elif cmd == 0x1A:                        # UDC WRITE : code + 8 octets
+            lcd.udc_write(p[0], p[1:9])
+        elif cmd == 0x1C:                        # UDC INIT
+            lcd.udc_init()
+        elif cmd == 0x1B:                        # UDC READ
+            resp = list(lcd.font[p[0] * 8:p[0] * 8 + 8])
+        elif cmd == 0x2E:                        # CLS
+            self._cls(self)
+        elif cmd == 0x09:                        # LINE CLEAR
+            lcd.clear_row(p[0])
+        elif cmd == 0x08:                        # SCROLL EXEC
+            lcd.scroll()
+        elif cmd == 0x24:                        # LOCATE x,y + caractère (0 : aucun)
+            if p[2]:
+                lcd.put_char(p[0], p[1], p[2])
+        elif cmd == 0x41:                        # CHAR WRITE : motif au curseur
+            x, y = self._cursor()
+            lcd.put_pattern(x, y, p[0:8])
         elif cmd == 0x02:
             resp = [0x30]
         elif cmd in (0x03, 0x04):

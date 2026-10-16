@@ -45,6 +45,14 @@ La commande démarre la **ROM du X-07 dans un émulateur**, tape le programme et
 
 Une faute de frappe y donne le même message que sur la machine, par exemple `SN Error in 40`.
 
+**Pour voir l'écran tel qu'il est vraiment** (120 × 32 points, police du X-07) et jouer avec le clavier, ajoutez `--fenetre` :
+
+```sh
+python3 x07asm.py emu exemples/table.bas --fenetre
+```
+
+Le programme répond aux touches. En fin de programme, l'invite `>` du BASIC revient : `LIST`, `RUN`, Échap pour BREAK… Sans affichage graphique, `--ecran` dessine l'écran en points dans le terminal, et `--png image.png` l'enregistre. Voir [assembleur/EMULATEUR.md](assembleur/EMULATEUR.md).
+
 ## 3. Le compiler et vérifier qu'il se comporte pareil
 
 ```sh

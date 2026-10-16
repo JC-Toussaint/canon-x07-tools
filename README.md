@@ -22,6 +22,7 @@ python3 x07asm.py dis ../ROM_x07/x07.bin --org B000 \
 python3 x07asm.py basic exemples/premiers.bas              # compiler du BASIC
 python3 x07asm.py run exemples/devine.bas                  # l'essayer sur PC
 python3 x07asm.py emu exemples/devine.bas                  # le BASIC du X-07 (vraie ROM)
+python3 x07asm.py emu --fenetre                            # le X-07 dans une fenêtre, au clavier
 python3 x07asm.py send exemples/devine.bas --emu           # transfert série (ici émulé)
 python3 -m unittest discover -s tests                      # tests
 ```
@@ -31,7 +32,7 @@ python3 -m unittest discover -s tests                      # tests
 | [DEMARRAGE.md](DEMARRAGE.md) | guide de démarrage, de bout en bout |
 | [assembleur/README.md](assembleur/README.md) | assembleur et désassembleur |
 | [assembleur/COMPILATEUR.md](assembleur/COMPILATEUR.md) | compilateur BASIC : langage, types, vitesse |
-| [assembleur/EMULATEUR.md](assembleur/EMULATEUR.md) | émulateur : la vraie ROM sur PC (`emu`, `run`) |
+| [assembleur/EMULATEUR.md](assembleur/EMULATEUR.md) | émulateur : la vraie ROM sur PC (`emu`, `run`), afficheur graphique 120 × 32 points |
 | [assembleur/TRANSFERT.md](assembleur/TRANSFERT.md) | envoi au X-07 par le câble série (`send`) |
 | [assembleur/ROM.md](assembleur/ROM.md) | carte des routines et variables de la ROM (109 sur 161 vérifiées) |
 | [ref_docs/ERRATA.md](ref_docs/ERRATA.md) | **errata** des *Mystères du X-07* et des *Applications en assembleur* |
