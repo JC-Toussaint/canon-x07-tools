@@ -2024,7 +2024,11 @@ class Compiler:
 
     # ---------------------------------------------------- assemblage du texte
     def _assemble_text(self, name, org):
-        routines, rvars = runtime.closure(self.used | {"RT_END", "RT_FERR"}, self.debug)
+        base = self.used | {"RT_END", "RT_FERR"}
+        routines, rvars = runtime.closure(base, self.debug)
+        keep_cmd = "RT_INPUT" in routines       # INPUT écrase la ligne « EXEC &H... »
+        if keep_cmd:
+            routines, rvars = runtime.closure(base | {"RT_CSAV", "RT_CRST"}, self.debug)
         out = []
         w = out.append
         w("; %s - compilé par x07basic (BASIC du Canon X-07)" % name)
@@ -2054,6 +2058,8 @@ class Compiler:
         w("        LD   BC,VARS_END-VARS-1")
         w("        LD   (HL),0")
         w("        LDIR                     ; variables à zéro")
+        if keep_cmd:
+            w("        CALL RT_CSAV             ; ligne EXEC, que INPUT écrasera")
         if "RT_DPTR" in rvars:
             w("        LD   HL,DATA_0")
             w("        LD   (RT_DPTR),HL")
@@ -2064,7 +2070,10 @@ class Compiler:
         w("; ------------------------------------------------ bibliothèque")
         for r in routines:
             w("")
-            w(runtime.routine(r, self.debug))
+            text = runtime.routine(r, self.debug)
+            if r == "RT_END" and keep_cmd:
+                text = text.replace("RT_END:\n", "RT_END:\n        CALL RT_CRST\n", 1)
+            w(text)
         if self.lits:
             w("")
             w("; ------------------------------------------------ chaînes")

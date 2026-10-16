@@ -154,6 +154,12 @@ def cmd_sym(args):
 
 
 RAM_TOP = {8: 0x1FFF, 16: 0x3FFF, 24: 0x5FFF}
+RAM_RESERVED = 14       # haut de la RAM gardé par la ROM (MEMSIZ = $xFF1, signature 5A A5)
+
+
+def free_top(ram):
+    """Dernière adresse utilisable par un programme : MEMSIZ après démarrage."""
+    return RAM_TOP[ram] - RAM_RESERVED
 
 
 def build_basic(path, org="auto", ram=8, **opts):
@@ -176,7 +182,7 @@ def build_basic(path, org="auto", ram=8, **opts):
             raise basic.CompileError("erreur d'assemblage interne : %s" % a.errors[0])
         return src, a, mem, comp
 
-    top = RAM_TOP[ram]
+    top = free_top(ram)
     if org == "auto":
         src, a, mem, comp = once(0x1000)
         size = a.symbols["VARS_END"] - 0x1000
@@ -189,7 +195,7 @@ def build_basic(path, org="auto", ram=8, **opts):
     end = result[1].symbols["VARS_END"]
     if end - 1 > top:
         print("attention : le programme et ses variables finissent en $%04X, "
-              "au-delà de la RAM de %d Ko ($%04X)." % (end - 1, ram, top), file=sys.stderr)
+              "au-delà de la RAM libre de %d Ko ($%04X)." % (end - 1, ram, top), file=sys.stderr)
     return result
 
 
@@ -340,6 +346,9 @@ def cmd_run(args):
 def cmd_emu(args):
     """Exécute un programme avec le vrai BASIC de la ROM (émulation)."""
     from . import emu, sim
+    if args.charger and not args.fenetre:
+        print("erreur : --charger s'utilise avec --fenetre", file=sys.stderr)
+        return 1
     src = ""
     if args.source:
         try:
@@ -357,12 +366,34 @@ def cmd_emu(args):
               file=sys.stderr)
         return 1
     keys = args.keys.encode().decode("unicode_escape") if args.keys else ""
+    preload = None
+    if args.charger:
+        if not args.fenetre:
+            print("erreur : --charger s'utilise avec --fenetre", file=sys.stderr)
+            return 1
+        from . import basic
+        try:
+            preload, entry, end = _load_program(argparse.Namespace(
+                source=args.charger, org=args.org, entry=args.entry, ram=args.ram))
+        except (basic.CompileError, asmmod.AsmError, ValueError, OSError) as e:
+            print("erreur : %s" % e, file=sys.stderr)
+            return 1
+        org = min(preload)
+        if org < 0x0600 or end > free_top(args.ram):
+            print("erreur : %s occupe $%04X-$%04X, hors de la RAM libre de %d Ko "
+                  "($0600-$%04X ; voir --ram, --org)"
+                  % (args.charger, org, end, args.ram, free_top(args.ram)), file=sys.stderr)
+            return 1
+        print("%s : $%04X-$%04X (%d octets, variables comprises)."
+              % (args.charger, org, end, end - org + 1))
+        print("Dans la fenêtre, CLEAR 50,&H%X est tapé pour vous ; tapez ensuite :  EXEC &H%X"
+              % (org - 1, entry))
     if args.fenetre:
-        name = os.path.basename(args.source) if args.source else "BASIC"
+        name = os.path.basename(args.source or args.charger or "BASIC")
         return _window("Canon X-07 : %s" % name, args.zoom,
                        lambda setup: emu.run_basic(src, inputs=args.input or [], keys=keys,
                                                    ram=args.ram, max_steps=10 ** 12,
-                                                   setup=setup, live=True))
+                                                   setup=setup, live=True, preload=preload))
     try:
         out, m = emu.run_basic(src, inputs=args.input or [], keys=keys, ram=args.ram,
                                max_steps=args.max)
@@ -380,25 +411,27 @@ def cmd_emu(args):
 
 
 def _load_program(args):
-    """Programme à envoyer : .bas (compilé), .hex, ou .bin avec --org."""
+    """Programme à envoyer : .bas (compilé), .hex, ou .bin avec --org.
+    Renvoie (mémoire, entrée, dernière adresse occupée, variables comprises)."""
     src = args.source
     low = src.lower()
     if low.endswith(".bas"):
         _, a, mem, comp = build_basic(src, args.org or "auto", args.ram)
         for w in comp.warnings:
             print("attention : %s" % w, file=sys.stderr)
-        return mem, a.entry
+        return mem, a.entry, a.symbols["VARS_END"] - 1
     if low.endswith(".asm"):
         a = asmmod.Assembler()
         mem = a.assemble_file(src)
         if a.errors:
             raise asmmod.AsmError(str(a.errors[0]))
-        return mem, a.entry
+        return mem, a.entry, max([max(mem)] + [v - 1 for k, v in a.symbols.items()
+                                               if k == "VARS_END"])
     mem = formats.load_any(src, _num(args.org) if args.org and args.org != "auto" else None)
     if low.endswith((".bin", ".rom")) and not args.org:
         raise ValueError("pour un .bin, indiquez l'adresse de chargement : --org 1C00")
     entry = _num(args.entry) if args.entry else min(mem)
-    return mem, entry
+    return mem, entry, max(mem)
 
 
 def cmd_recepteur(args):
@@ -416,7 +449,7 @@ def cmd_recepteur(args):
 def cmd_send(args):
     from . import serie, basic, sim
     try:
-        mem, entry = _load_program(args)
+        mem, entry, _ = _load_program(args)
     except (basic.CompileError, asmmod.AsmError, ValueError, OSError) as e:
         print("erreur : %s" % e, file=sys.stderr)
         return 1
@@ -546,6 +579,11 @@ def main(argv=None):
     e.add_argument("-i", "--input", action="append", help="ligne tapée pour INPUT (répétable)")
     e.add_argument("--ram", type=int, choices=(8, 16, 24), default=16)
     e.add_argument("--max", type=int, default=50_000_000, help="instructions au plus")
+    e.add_argument("--charger", metavar="FICHIER",
+                   help="avec --fenetre : met un programme machine en mémoire, comme le câble "
+                        "(.bas compilé au passage, .asm, .hex, .bin avec --org) ; tapez ensuite EXEC")
+    e.add_argument("--org", help="adresse (hexa) d'un .bin, ou implantation d'un .bas pour --charger")
+    e.add_argument("--entry", help="adresse de lancement (hexa) d'un .bin pour --charger")
     e.add_argument("--fenetre", action="store_true",
                    help="affichage graphique en direct, avec le clavier (Échap = BREAK)")
     e.add_argument("--ecran", action="store_true",

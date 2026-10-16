@@ -108,7 +108,7 @@ class TestScreenEditor(unittest.TestCase):
     """Mode de la fenêtre : la ROM affiche elle-même, son éditeur plein écran
     reçoit les touches (flèches comprises)."""
 
-    def session(self, keys, src=""):
+    def session(self, keys, src="", preload=None):
         from x07asm.sim import SimError
 
         def setup(m):
@@ -119,7 +119,8 @@ class TestScreenEditor(unittest.TestCase):
                     raise SimError("fin des touches")
                 return m.keys.pop(0)
             m._wait_key = wait_key
-        _, m = emu.run_basic(src, setup=setup, live=True, max_steps=20_000_000)
+        _, m = emu.run_basic(src, setup=setup, live=True, max_steps=20_000_000,
+                             preload=preload)
         return m.lcd.text()
 
     def test_cold_boot_screen(self):
@@ -135,6 +136,17 @@ class TestScreenEditor(unittest.TestCase):
     def test_program_input(self):
         screen = self.session(list("7\r"), '10 INPUT "N";N:PRINT N*2')
         self.assertIn(" 14                 ", screen)
+
+    def test_preloaded_program_with_input(self):
+        """--charger : CLEAR tapé, programme en mémoire, EXEC ; après un INPUT,
+        le retour au BASIC ne doit pas donner SN Error (ligne EXEC rétablie)."""
+        asm, _ = compile_basic('10 INPUT "N";N:PRINT N*2', "T", 0x3000)
+        a = Assembler()
+        mem = a.assemble_text(asm)
+        screen = self.session(list("EXEC &H%X:PRINT 99\r7\r" % a.entry), preload=mem)
+        self.assertIn(" 14                 ", screen)
+        self.assertIn(" 99                 ", screen)
+        self.assertNotIn("Error", " ".join(screen))
 
 
 if __name__ == "__main__":

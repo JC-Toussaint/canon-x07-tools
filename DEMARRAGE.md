@@ -61,7 +61,15 @@ python3 x07asm.py run exemples/table.bas -i 7
 
 `run` compile le programme en langage machine et l'exécute sur le même X-07 émulé. L'écran doit être **identique** à celui de l'étape 2. Ici, il l'est.
 
-La version compilée exécute 34 581 instructions, contre 90 135 pour l'interpréteur. Avec des entiers (`DEFINT A-Z`), elle irait jusqu'à 30 fois plus vite ; voir [assembleur/COMPILATEUR.md](assembleur/COMPILATEUR.md).
+La version compilée exécute 34 662 instructions, contre 90 135 pour l'interpréteur. Avec des entiers (`DEFINT A-Z`), elle irait jusqu'à 30 fois plus vite ; voir [assembleur/COMPILATEUR.md](assembleur/COMPILATEUR.md).
+
+**Pour essayer le programme compilé comme sur la machine**, mettez-le en mémoire dans la fenêtre puis lancez-le vous-même :
+
+```sh
+python3 x07asm.py emu --fenetre --charger exemples/table.bas --ram 16
+```
+
+Le terminal indique la commande à taper dans la fenêtre, par exemple `EXEC &H3C40`.
 
 ## 4. Le compiler pour la machine
 
@@ -70,8 +78,8 @@ python3 x07asm.py basic exemples/table.bas --ram 16
 ```
 
 ```
-720 octets de code, 821 avec les variables : $3CC0-$3FF4
-sur le X-07 : CLEAR 50,&H3CBF  puis  EXEC &H3CC0
+773 octets de code, 940 avec les variables : $3C40-$3FEB
+sur le X-07 : CLEAR 50,&H3C3F  puis  EXEC &H3C40
   -> exemples/table.asm
   -> exemples/table.bin
 ```
@@ -95,12 +103,12 @@ python3 x07asm.py recepteur
    python3 x07asm.py send exemples/table.bas --ram 16 --port /dev/ttyUSB0
    ```
    Le PC compile le programme puis attend le X-07.
-2. **Sur le X-07 :** `CLEAR 50,&H3CBF`, puis `RUN`. Le transfert prend une dizaine de secondes et se termine par :
+2. **Sur le X-07 :** `CLEAR 50,&H3C3F`, puis `RUN`. Le transfert prend une dizaine de secondes et se termine par :
    ```
    RECEPTION...
-   OK. EXEC &H3CC0
+   OK. EXEC &H3C40
    ```
-3. **Sur le X-07 :** `EXEC &H3CC0`.
+3. **Sur le X-07 :** `EXEC &H3C40`.
 
 **Sous WSL2,** le module USB n'est pas visible par défaut. Attachez-le avec `usbipd attach --wsl --busid <n°>`, ou lancez `send` depuis Windows avec `--port COM3`.
 

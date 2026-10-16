@@ -978,6 +978,40 @@ RT_INPUT:                       ; saisie d'une ligne (A=1 : avec « ? »)
         RET
 """)
 
+_r("RT_CSAV", """
+RT_CSAV:                        ; garde la fin de la ligne directe « EXEC &H... »,
+        LD   HL,(RT_SP)         ; que la saisie d'un INPUT écrase dans le tampon
+        LD   DE,24              ; $00D5 : le BASIC la relit au retour (sinon SN Error)
+        ADD  HL,DE
+        LD   E,(HL)
+        INC  HL
+        LD   D,(HL)             ; DE = pointeur texte empilé par EXEC ($CEB8)
+        LD   HL,-$00D4
+        ADD  HL,DE
+        RET  NC                 ; avant le tampon
+        LD   A,H
+        OR   A
+        RET  NZ                 ; après le tampon : programme en mémoire
+        EX   DE,HL
+        LD   (RT_CMDP),HL
+        LD   DE,RT_CMD          ; 64 octets : la fin de ligne et les 00 qui suivent
+        LD   BC,64
+        LDIR
+        RET
+""")
+
+_r("RT_CRST", """
+RT_CRST:                        ; rétablit la fin de la ligne directe
+        LD   DE,(RT_CMDP)
+        LD   A,D
+        OR   E
+        RET  Z
+        LD   HL,RT_CMD
+        LD   BC,64
+        LDIR
+        RET
+""")
+
 _r("RT_SKIPC", """
 RT_SKIPC:                       ; avance après la prochaine virgule
         LD   A,C
@@ -1071,6 +1105,7 @@ RT_T6:                          ; commande A au T6834, paramètres dans RT_GB
 
 VARIABLES.update({
     "RT_DPTR": 2, "RT_IP": 2, "RT_IC": 1, "RT_GB": 5, "RT_LINE": 2, "RT_FBUF": 64, "RT_DLINE": 2,
+    "RT_CMD": 64, "RT_CMDP": 2,
 })
 
 _NAME = re.compile(r"\b((?:RT|MSG)_[A-Z0-9_]+)\b")

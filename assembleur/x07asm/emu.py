@@ -98,13 +98,18 @@ def boot(ram=16, real_display=False):
 
 
 def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, setup=None,
-              live=False):
+              live=False, preload=None):
     """Tape le programme puis RUN.  Renvoie (affichage du programme, machine).
     L'affichage commence après « RUN » et s'arrête au retour à l'invite.
 
     live=True (fenêtre) : vrai affichage de la ROM ; le programme, RUN et les
     réponses aux INPUT sont tapés au clavier dans l'éditeur plein écran de la
-    ROM, puis l'utilisateur a la main."""
+    ROM, puis l'utilisateur a la main.
+
+    preload=mem (avec live) : programme machine à mettre en mémoire comme par
+    le câble série.  « CLEAR 50,&H(org-1) » est d'abord tapé ; le programme est
+    chargé dès que le BASIC a exécuté ce CLEAR (sinon sa pile et ses chaînes,
+    encore en haut de la mémoire, l'écraseraient).  Reste à taper EXEC."""
     m = boot(ram, real_display=live)
     m.keys = list(keys)
     m.echo = echo
@@ -115,9 +120,22 @@ def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, 
         if typed:
             typed += "RUN\r"
         typed += "".join(str(x) + "\r" for x in inputs)
+        lines_in = {"n": 0}
+        if preload:
+            typed = "CLEAR 50,&H%X\r" % (min(preload) - 1) + typed
+
+        def editor_line(c):                # chaque ligne lue par l'éditeur de la ROM
+            lines_in["n"] += 1
+            if preload and lines_in["n"] == 2:     # le CLEAR vient d'être exécuté
+                for a, b in preload.items():
+                    m.mem[a] = b
+                m.cache.clear()
+                m.preloaded = True
+            return REAL
         m.keys[:0] = list(typed)
         m.interactive = True
-        m.traps[0xEBFF] = lambda c: REAL      # l'éditeur de la ROM, pour tout
+        m.preloaded = False
+        m.traps[0xEBFF] = editor_line         # l'éditeur de la ROM, pour tout
         m.traps[0xEBF2] = lambda c: REAL
         m.pc = 0xEBFF
         m.error = None

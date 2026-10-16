@@ -16,7 +16,7 @@ python3 x07asm.py basic exemples/premiers.bas        # -> .asm et .bin
 |---|---|
 | `-f asm,bin,hex,lst,txt,bas` | fichiers produits (défaut : `asm,bin`). `bas` crée `NOM_chargeur.bas`, sans écraser votre source |
 | `--ram 8\|16\|24` | mémoire du X-07 en Ko (défaut : 8) |
-| `--org auto\|ADR` | implantation. `auto` place le programme **en haut de la RAM**, ce qui laisse le maximum de place au BASIC |
+| `--org auto\|ADR` | implantation. `auto` place le programme **en haut de la RAM**, ce qui laisse le maximum de place au BASIC. Les 14 derniers octets (`$3FF2`-`$3FFF` avec 16 Ko) restent à la ROM, qui y garde une signature : le programme et ses variables finissent au plus en `$3FF1` |
 | `--default d\|f\|i` | type des variables sans suffixe : `d` double (défaut, comme le X-07), `f` simple, `i` entier |
 | `--strlen N` | longueur maximale des chaînes (défaut : 80, au plus 254) |
 | `--debug` | les erreurs indiquent la ligne, comme le X-07 (`/0 Error in 20`) |

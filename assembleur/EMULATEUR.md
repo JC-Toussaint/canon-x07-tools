@@ -42,6 +42,16 @@ Dans ce mode, **la ROM affiche elle-même** : elle démarre à froid (« Copyrig
 
 Un curseur clignote quand le X-07 attend une touche. Fermer la fenêtre arrête l'émulation.
 
+**Un programme machine en mémoire**, comme s'il venait d'arriver par le câble série :
+
+```sh
+python3 x07asm.py emu --fenetre --charger exemples/table.bas --ram 16   # compilé au passage
+python3 x07asm.py emu --fenetre --charger caso.asm
+python3 x07asm.py emu --fenetre --charger prog.bin --org 3000 --entry 3010
+```
+
+`CLEAR 50,&H…` est tapé pour vous, puis le programme est mis en mémoire juste après ce `CLEAR` (avant, la pile et les chaînes du BASIC, encore en haut de la mémoire, l'écraseraient). Il reste à taper la commande `EXEC &H…` indiquée dans le terminal ; vous pouvez la relancer autant de fois que vous voulez. Un `.bas` est placé en haut de la RAM choisie par `--ram`, sauf si `--org` est donné.
+
 Sous WSL2, la fenêtre s'ouvre grâce à WSLg (Windows 11 ou Windows 10 récent). Sans affichage graphique, utilisez `--png` ou `--ecran`.
 
 **Graphismes reproduits :** `PSET`, `PRESET`, PEOR, `LINE`, `CIRCLE`, `POINT` (qui voit aussi le texte, comme sur la machine), les caractères redéfinis (UDC WRITE), le défilement et l'effacement d'une ligne. Les tracés de `LINE` et `CIRCLE` suivent les algorithmes classiques : ceux du T6834 ne sont pas dans la ROM, et un point peut donc différer en bout de tracé.
@@ -55,6 +65,7 @@ Sous WSL2, la fenêtre s'ouvre grâce à WSLg (Windows 11 ou Windows 10 récent)
 | `--ram 8\|16\|24` | oui (défaut 16) | oui (défaut 8) | mémoire de la machine, en Ko |
 | `--max N` | oui | oui | arrêt après N instructions (boucle sans fin) |
 | `--fenetre`, `--zoom N` | oui | oui | affichage graphique en direct |
+| `--charger FICHIER` (`--org`, `--entry`) | oui, avec `--fenetre` | — | programme machine mis en mémoire, à lancer par `EXEC` |
 | `--png FICHIER`, `--ecran` | oui | oui | écran final en image, ou en points dans le terminal |
 | `--debug`, `--default`, `--strlen`, `--org` | — | oui | options du compilateur ([COMPILATEUR.md](COMPILATEUR.md)) |
 
