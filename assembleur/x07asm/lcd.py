@@ -134,6 +134,23 @@ class LCD:
     def udc_init(self):
         self.font = bytearray(self.font0)
 
+    def text(self):
+        """Texte affiché, reconnu d'après la police (« ? » si case inconnue)."""
+        glyphs = {}
+        for code in list(range(32, 127)) + list(range(127, 256)):
+            g = bytes(b & 0xFC for b in self.font[code * 8:code * 8 + 8])
+            glyphs.setdefault(g, chr(code) if code < 127 else "?")
+        rows = []
+        for r in range(ROWS):
+            line = []
+            for col in range(COLS):
+                g = bytes(sum(0x80 >> dx for dx in range(CW)
+                              if self.px[(r * CH + dy) * WIDTH + col * CW + dx])
+                          for dy in range(CH))
+                line.append(glyphs.get(g, "?"))
+            rows.append("".join(line))
+        return rows
+
     # -------------------------------------------------- sorties
     def rows_bits(self, cursor=True):
         """Lignes de points (listes de 0/1), curseur souligné compris."""

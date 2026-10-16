@@ -317,7 +317,7 @@ def cmd_run(args):
 
     if args.fenetre:
         def target(setup):
-            m = emu.boot(args.ram)
+            m = emu.boot(args.ram, real_display=True)
             m.keys, m.lines = list(keys), list(args.input or [])
             setup(m)
             _exec(m, mem, a.entry, 10 ** 12)
@@ -362,7 +362,7 @@ def cmd_emu(args):
         return _window("Canon X-07 : %s" % name, args.zoom,
                        lambda setup: emu.run_basic(src, inputs=args.input or [], keys=keys,
                                                    ram=args.ram, max_steps=10 ** 12,
-                                                   setup=setup))
+                                                   setup=setup, live=True))
     try:
         out, m = emu.run_basic(src, inputs=args.input or [], keys=keys, ram=args.ram,
                                max_steps=args.max)

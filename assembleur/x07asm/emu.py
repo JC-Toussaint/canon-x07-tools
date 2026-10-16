@@ -10,7 +10,7 @@ Sert de référence pour vérifier le compilateur, et de BASIC du X-07 sur PC.
 """
 import os
 
-from .sim import X07, SimError, EXIT
+from .sim import X07, SimError, EXIT, REAL
 
 ROM_PATHS = (os.path.join(os.path.dirname(__file__), "..", "..", "ROM_x07", "x07.bin"),)
 RAM_TOP = {8: 0x1FFF, 16: 0x3FFF, 24: 0x5FFF}
@@ -43,11 +43,25 @@ class Finished(Exception):
     """Le BASIC attend une nouvelle ligne de commande : programme terminé."""
 
 
-def boot(ram=16):
-    """Machine démarrée à froid, prête à recevoir une commande (invite >)."""
-    if ram not in _snapshots:
+DISPLAY_TRAPS = ("LCDPUT", "LCDCLS", "CURSET")
+
+
+def boot(ram=16, real_display=False):
+    """Machine démarrée à froid, prête à recevoir une commande (invite >).
+
+    real_display=False : l'affichage ($C1BE...) est imité en Python, ce qui
+    donne aussi un texte de l'écran (tests, mode texte).
+    real_display=True : la ROM affiche elle-même et ne parle qu'au T6834
+    imité, comme sur la machine ; son éditeur plein écran fonctionne
+    (flèches, correction d'une ligne affichée).  Mode de la fenêtre."""
+    from . import x07sym
+    key = (ram, real_display)
+    if key not in _snapshots:
         m = X07()
         m.load_rom(load_rom())
+        if real_display:
+            for n in DISPLAY_TRAPS:
+                m.traps.pop(x07sym.all_symbols()[n], None)
         m.ram_top = RAM_TOP[ram]
         m.strict = False
         m.sp, m.pc = 0, 0xC3C3
@@ -59,8 +73,9 @@ def boot(ram=16):
             m.run(2_000_000)
         except Finished:
             pass
-        _snapshots[ram] = (bytes(m.mem), dict(m.r), m.sp, m.ix, m.iy, m.rd16(m.sp))
-    mem, regs, sp, ix, iy, ready = _snapshots[ram]
+        _snapshots[key] = (bytes(m.mem), dict(m.r), m.sp, m.ix, m.iy, m.rd16(m.sp),
+                           bytes(m.lcd.px), getattr(m, "scroll_range", (0, 3)))
+    mem, regs, sp, ix, iy, ready, px, scroll = _snapshots[key]
     m = X07()
     m._use_rom_routines()
     m.has_rom = True
@@ -71,18 +86,46 @@ def boot(ram=16):
     m.sp, m.ix, m.iy = sp, ix, iy
     m.transcript = []
     m.ready_ret = ready             # adresse de retour de la saisie d'une commande
-    m._cls(m)
+    m.real_display = real_display
+    if real_display:
+        for n in DISPLAY_TRAPS:
+            m.traps.pop(x07sym.all_symbols()[n], None)
+        m.lcd.px[:] = px            # l'écran tel que la ROM l'a laissé
+        m.scroll_range = scroll
+    else:
+        m._cls(m)
     return m
 
 
-def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, setup=None):
+def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, setup=None,
+              live=False):
     """Tape le programme puis RUN.  Renvoie (affichage du programme, machine).
-    L'affichage commence après « RUN » et s'arrête au retour à l'invite."""
-    m = boot(ram)
+    L'affichage commence après « RUN » et s'arrête au retour à l'invite.
+
+    live=True (fenêtre) : vrai affichage de la ROM ; le programme, RUN et les
+    réponses aux INPUT sont tapés au clavier dans l'éditeur plein écran de la
+    ROM, puis l'utilisateur a la main."""
+    m = boot(ram, real_display=live)
     m.keys = list(keys)
     m.echo = echo
     if setup:
         setup(m)
+    if live:
+        typed = "".join(l.strip() + "\r" for l in src.splitlines() if l.strip())
+        if typed:
+            typed += "RUN\r"
+        typed += "".join(str(x) + "\r" for x in inputs)
+        m.keys[:0] = list(typed)
+        m.interactive = True
+        m.traps[0xEBFF] = lambda c: REAL      # l'éditeur de la ROM, pour tout
+        m.traps[0xEBF2] = lambda c: REAL
+        m.pc = 0xEBFF
+        m.error = None
+        try:
+            m.run(max_steps)
+        except SimError as e:
+            m.error = str(e)
+        return "", m
     lines = [l for l in src.splitlines() if l.strip()]
     state = {"phase": "saisie"}
     queue = list(lines) + (["RUN"] if lines else [])

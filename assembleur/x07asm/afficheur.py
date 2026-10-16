@@ -4,7 +4,8 @@ L'émulation tourne dans un fil d'exécution séparé ; la fenêtre redessine
 l'écran de 120 x 32 points dès qu'il change et transmet les touches :
   lettres     majuscules par défaut, comme le X-07 (Maj : minuscules)
   Entrée      RETURN
-  flèches     codes du curseur du X-07 ($1C à $1F)
+  flèches     déplacent le curseur (éditeur plein écran de la ROM)
+  Suppr, Inser, Origine   DEL, INS, HOME
   Échap       BREAK
 """
 import threading
@@ -15,8 +16,10 @@ from .sim import SimError
 
 ON, OFF = "#1b2a1b", "#9aa98c"            # points allumés / fond, aspect LCD
 BEZEL = "#2b2b2e"
+# DEL : la ROM change $7F en $16 ($C88A) avant l'éditeur ; on envoie directement $16
 KEYMAP = {"Return": "\r", "KP_Enter": "\r", "BackSpace": "\x08", "Left": "\x1d",
-          "Right": "\x1c", "Up": "\x1e", "Down": "\x1f", "Delete": "\x7f"}
+          "Right": "\x1c", "Up": "\x1e", "Down": "\x1f", "Delete": "\x16",
+          "Insert": "\x12", "Home": "\x0b"}
 
 
 class Fenetre:
@@ -43,7 +46,7 @@ class Fenetre:
         self.info = tk.Label(self.root, text="", fg="#d0d0d0", bg=BEZEL, anchor="w",
                              font=("Helvetica", 9))
         self.info.pack(fill="x", padx=18)
-        tk.Label(self.root, text="Échap = BREAK   ·   flèches = curseur   ·   "
+        tk.Label(self.root, text="Échap = BREAK   ·   flèches : édition plein écran   ·   "
                                  "Maj = minuscules", fg="#8a8a8a", bg=BEZEL,
                  font=("Helvetica", 8)).pack(pady=(0, 8))
         self.root.bind("<Key>", self._key)

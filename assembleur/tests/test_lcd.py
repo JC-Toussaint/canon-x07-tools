@@ -102,5 +102,40 @@ class TestScreenMatchesRom(unittest.TestCase):
         self.compare('10 CLS:FOR I=1 TO 6:PRINT "LIGNE";I:NEXT')
 
 
+@needs_rom
+@needs_font
+class TestScreenEditor(unittest.TestCase):
+    """Mode de la fenêtre : la ROM affiche elle-même, son éditeur plein écran
+    reçoit les touches (flèches comprises)."""
+
+    def session(self, keys, src=""):
+        from x07asm.sim import SimError
+
+        def setup(m):
+            m.keys = list(keys)
+
+            def wait_key():                       # plus de touches : fin de l'essai
+                if not m.keys:
+                    raise SimError("fin des touches")
+                return m.keys.pop(0)
+            m._wait_key = wait_key
+        _, m = emu.run_basic(src, setup=setup, live=True, max_steps=20_000_000)
+        return m.lcd.text()
+
+    def test_cold_boot_screen(self):
+        m = emu.boot(16, real_display=True)
+        self.assertEqual(m.lcd.text()[:3], ["Copyright(c) 1983 by", " Microsoft & Canon  ",
+                                            "14940 Bytes free    "])
+
+    def test_edit_listed_line_with_arrows(self):
+        keys = (list("10 PRINT 123\rLIST\r") + ["\x1e"] + ["\x1c"] * 9
+                + list("5\r") + list("RUN\r"))
+        self.assertEqual(self.session(keys)[-2:], [" 523                ", ">                   "])
+
+    def test_program_input(self):
+        screen = self.session(list("7\r"), '10 INPUT "N";N:PRINT N*2')
+        self.assertIn(" 14                 ", screen)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -28,16 +28,19 @@ python3 x07asm.py emu logo.bas --ecran                 # écran final en points,
 
 ![Le logo CANON des Applications en assembleur, tracé par PSET](../ref_docs/images/logo_canon.png)
 
-**La fenêtre** montre l'écran en direct, à l'aspect d'un LCD (taille réglable par `--zoom`, 5 par défaut). Elle reçoit le clavier :
+**La fenêtre** montre l'écran en direct, à l'aspect d'un LCD (taille réglable par `--zoom`, 5 par défaut).
+
+Dans ce mode, **la ROM affiche elle-même** : elle démarre à froid (« Copyright(c) 1983… »), et seul le sous-processeur T6834 est imité, au niveau de ses commandes (un caractère en x, y, le défilement, l'effacement…). Le **vrai éditeur plein écran** du X-07 reçoit donc les touches. Vous pouvez remonter avec les flèches sur une ligne affichée par `LIST`, la corriger et la valider par Entrée, comme sur la machine. Le programme, `RUN` et les réponses données par `-i` sont tapés au clavier, puis vous avez la main.
 
 | Touche du PC | Pour le X-07 |
 |---|---|
 | lettres | majuscules, comme le X-07 ; avec Maj, minuscules |
-| Entrée | RETURN |
-| flèches | codes du curseur (`$1C` à `$1F`), lus par `INKEY$` |
-| Échap | BREAK : arrête un programme, ou interrompt un `INPUT` |
+| Entrée | RETURN : valide la ligne où se trouve le curseur |
+| flèches | déplacent le curseur dans l'écran (`$1C` à `$1F`, lus aussi par `INKEY$`) |
+| Retour arrière, Suppr, Inser, Origine | BS, DEL, INS, HOME |
+| Échap | BREAK : arrête un programme, ou interrompt une saisie |
 
-Un curseur clignote quand le X-07 attend une saisie. Avec `emu`, l'invite `>` revient en fin de programme : vous pouvez alors taper des commandes (`LIST`, `RUN`, `PRINT 2+2`, de nouvelles lignes…) comme sur la machine. Fermer la fenêtre arrête l'émulation.
+Un curseur clignote quand le X-07 attend une touche. Fermer la fenêtre arrête l'émulation.
 
 Sous WSL2, la fenêtre s'ouvre grâce à WSLg (Windows 11 ou Windows 10 récent). Sans affichage graphique, utilisez `--png` ou `--ecran`.
 

@@ -12,6 +12,9 @@ S, Z, H, PV, N, C = 0x80, 0x40, 0x10, 0x04, 0x02, 0x01
 EXIT = 0xFFFF                  # adresse de retour fictive (« retour au BASIC ») ; $B000 sert au DIM de la ROM
 
 
+REAL = "rom"                  # valeur rendue par une imitation : « exécute la vraie routine »
+
+
 class SimError(Exception):
     pass
 
@@ -225,10 +228,10 @@ class CPU:
                 self.pc = vec
         pc = self.pc
         if pc in self.traps:
-            self.traps[pc](self)
-            if self.pc == pc:                 # le gestionnaire n'a pas sauté : RET
-                self.pc = self.pop()
-            return
+            if self.traps[pc](self) != REAL:  # REAL : exécuter le vrai code de la ROM
+                if self.pc == pc:             # le gestionnaire n'a pas sauté : RET
+                    self.pc = self.pop()
+                return
         if pc >= self.rom_start and not self.has_rom:
             raise SimError("appel d'une routine ROM non simulée : $%04X" % pc)
         d = self.cache.get(pc)
@@ -672,7 +675,7 @@ class X07(CPU):
         T[sym["CHKBATT"]] = self._chkbatt
         T[sym["BATTMSG"]] = self._battmsg
         T[sym["T6FLUSH"]] = lambda c: None
-        T[sym["T6CMD"]] = lambda c: self.t6log.append((c.r["A"] & 0x7F, []))
+        T[sym["T6CMD"]] = lambda c: self._t6_exec(c.r["A"] & 0x7F, [], None)
         T[sym["T6POKE"]] = lambda c: None
         T[sym["T6PEEK"]] = lambda c: c.r.__setitem__("A", 0)
         self.brk = sym["BRKFLG"]
@@ -837,8 +840,11 @@ class X07(CPU):
                 raise SimError("le programme attend une touche (aucune touche fournie)")
 
     def _kbwait(self, c):
-        if not self.keys and self.interactive:
-            c.r["A"] = ord(self._wait_key())
+        """$C8C5 : A = touche ; CY = 1 si BREAK (Échap dans la fenêtre)."""
+        if self.interactive:
+            k = self._wait_key() if not self.keys else self.keys.pop(0)
+            c.r["A"] = 0 if k == "\x1b" else ord(k)
+            c.setf(C, k == "\x1b")
             return
         if not self.keys:
             raise SimError("le programme attend une touche (aucune touche fournie)")
@@ -883,6 +889,8 @@ class X07(CPU):
                 self.putc(ord(k))
 
     def _input(self, q):
+        if self.interactive and getattr(self, "real_display", False):
+            return REAL                          # l'éditeur plein écran de la ROM
         if q:
             for ch in "? ":
                 self.putc(ord(ch))
@@ -925,11 +933,17 @@ class X07(CPU):
 
     # T6834
     def _t6(self, c):
+        """$C92F : commande A, B paramètres en (HL), réponse en (DE)."""
         cmd = c.r["A"] & 0x7F
-        n = c.r["B"]
+        n = 0 if c.r["A"] & 0x80 else c.r["B"]          # bit 7 de A : aucun paramètre
         hl, de = c.get16("HL"), c.get16("DE")
         params = [c.rd(hl + i) for i in range(n)]
         c.set16("HL", hl + n)
+        self._t6_exec(cmd, params, de)
+
+    def _t6_exec(self, cmd, params, de):
+        """Imitation des commandes du sous-processeur T6834."""
+        c = self
         self.t6log.append((cmd, params))
         resp = []
         lcd, p = self.lcd, params + [0] * 10
@@ -954,12 +968,16 @@ class X07(CPU):
         elif cmd == 0x1B:                        # UDC READ
             resp = list(lcd.font[p[0] * 8:p[0] * 8 + 8])
         elif cmd == 0x2E:                        # CLS
-            self._cls(self)
+            lcd.clear()
         elif cmd == 0x09:                        # LINE CLEAR
             lcd.clear_row(p[0])
+        elif cmd == 0x07:                        # SCROLL SET : première et dernière ligne
+            self.scroll_range = (p[0], p[1])
         elif cmd == 0x08:                        # SCROLL EXEC
-            lcd.scroll()
+            first, last = getattr(self, "scroll_range", (0, 3))
+            lcd.scroll(max(0, first), min(3, last))
         elif cmd == 0x24:                        # LOCATE x,y + caractère (0 : aucun)
+            self.t6_cursor = (p[0], p[1])
             if p[2]:
                 lcd.put_char(p[0], p[1], p[2])
         elif cmd == 0x41:                        # CHAR WRITE : motif au curseur
@@ -969,8 +987,9 @@ class X07(CPU):
             resp = [0x30]
         elif cmd in (0x03, 0x04):
             resp = [0xFF]
-        for i, b in enumerate(resp):
-            c.mem[de + i] = b
+        if de is not None:
+            for i, b in enumerate(resp):
+                c.mem[de + i] = b
 
     def _beep(self, c):
         self.beeps.append((c.iy, c.r["H"]))
