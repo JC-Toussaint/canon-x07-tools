@@ -1,5 +1,5 @@
 ' Tri et moyenne : QuickBASIC adapté au Canon X-07
-' Traduction :  python3 x07asm.py qb exemples/qbasic/tri.bas
+' Traduction :  python3 x07asm.py qb exemples/qbasic/tri.qbas
 DECLARE SUB Trier (t%(), n%)
 DECLARE FUNCTION Moyenne! (t%(), n%)
 CONST NB = 8

@@ -3,8 +3,12 @@
 Chaque programme est traduit, exécuté par la ROM du X-07 (émulateur) et
 comparé à la sortie qu'aurait donnée QuickBASIC ; quand le compilateur
 accepte le résultat, la version compilée doit afficher la même chose."""
+import contextlib
+import io
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -240,10 +244,10 @@ END SUB''', " 1  1  1  2  1  3 \n")
 
     def test_example_tri(self):
         # écran de 20 colonnes : un nombre qui ne tient plus passe à la ligne
-        self.qb(self.example("tri.bas"), " 6  7  9  11  12 \n 14  15  18 \nMoyenne : 11.5 \n")
+        self.qb(self.example("tri.qbas"), " 6  7  9  11  12 \n 14  15  18 \nMoyenne : 11.5 \n")
 
     def test_example_mystere(self):
-        src = self.example("mystere.bas")
+        src = self.example("mystere.qbas")
         out, _, _ = qbasic.translate(src)
         inputs = [str(i) for i in range(1, 101)]      # 1, 2, 3... jusqu'au nombre
         ref, m = emu.run_basic(out, inputs=inputs, keys="X")
@@ -254,6 +258,16 @@ END SUB''', " 1  1  1  2  1  3 \n")
         a = Assembler()
         mc = emu.run_binary(a.assemble_text(asm), a.entry, inputs=inputs, keys="X")
         self.assertEqual(mc.output().rstrip(), ref.rstrip())
+
+    def test_command_output_name(self):
+        from x07asm.cli import main
+        with tempfile.TemporaryDirectory() as d:
+            for name, out in (("jeu.qbas", "jeu.bas"), ("jeu2.bas", "jeu2_x07.bas")):
+                shutil.copy(os.path.join(ROOT, "exemples", "qbasic", "tri.qbas"),
+                            os.path.join(d, name))
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(main(["qb", os.path.join(d, name)]), 0)
+                self.assertTrue(os.path.exists(os.path.join(d, out)), out)
 
     def test_refused(self):
         for src, msg in (

@@ -21,16 +21,18 @@ Aucun essai n'a été fait avec un vrai QuickBASIC : les sorties attendues ont �
 
 ## Utilisation
 
+Les programmes QuickBASIC portent l'extension **`.qbas`**, pour les distinguer du BASIC du X-07 (`.bas`). La traduction de `NOM.qbas` s'écrit dans `NOM.bas`, à côté.
+
 ```sh
-python3 x07asm.py qb exemples/qbasic/tri.bas                 # -> exemples/qbasic/tri_x07.bas
-python3 x07asm.py emu exemples/qbasic/tri_x07.bas            # par la ROM du X-07
-python3 x07asm.py qb exemples/qbasic/tri.bas -f asm,bin --ram 16   # traduit puis compile
-python3 x07asm.py qb exemples/qbasic/tri.bas --noms          # correspondance des noms
+python3 x07asm.py qb exemples/qbasic/tri.qbas                # -> exemples/qbasic/tri.bas
+python3 x07asm.py emu exemples/qbasic/tri.bas                # par la ROM du X-07
+python3 x07asm.py qb exemples/qbasic/tri.qbas -f asm,bin --ram 16   # traduit puis compile
+python3 x07asm.py qb exemples/qbasic/tri.qbas --noms         # correspondance des noms
 ```
 
 | Option | Rôle |
 |---|---|
-| `-o FICHIER` | programme X-07 produit (défaut : `SOURCE_x07.bas`) |
+| `-o FICHIER` | programme X-07 produit (défaut : `NOM.qbas` donne `NOM.bas`) |
 | `-f FORMATS` | compile ensuite le résultat (`asm,bin,hex,lst,txt,bas`, comme `basic`) |
 | `--ram`, `--org` | pour la compilation |
 | `--largeur N` | longueur maximale d'une ligne produite (72 par défaut) |
@@ -38,7 +40,7 @@ python3 x07asm.py qb exemples/qbasic/tri.bas --noms          # correspondance de
 
 ## Exemple
 
-`exemples/qbasic/tri.bas` (extrait) :
+`exemples/qbasic/tri.qbas` (extrait) :
 
 ```basic
 DECLARE SUB Trier (t%(), n%)
@@ -167,5 +169,5 @@ Mais cette voie ne produirait plus de BASIC du X-07, n'aurait plus la ROM pour r
 ```
 x07asm/qbasic.py          traducteur : analyse, renommage, génération numérotée
 tests/test_qbasic.py      20 tests (ROM + version compilée)
-exemples/qbasic/          tri.bas, mystere.bas
+exemples/qbasic/          tri.qbas, mystere.qbas
 ```

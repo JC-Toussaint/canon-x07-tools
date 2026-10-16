@@ -1,5 +1,5 @@
 ' Nombre mystère : QuickBASIC adapté au Canon X-07 (écran 20 x 4)
-' Traduction :  python3 x07asm.py qb exemples/qbasic/mystere.bas
+' Traduction :  python3 x07asm.py qb exemples/qbasic/mystere.qbas
 DECLARE FUNCTION Tirage% (plafond%)
 DECLARE SUB Reponse (essai%, secret%, fini%)
 CONST MAXI = 100

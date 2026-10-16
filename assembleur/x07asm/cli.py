@@ -506,7 +506,9 @@ def cmd_qb(args):
         return 1
     for w in warns:
         print("attention : %s" % w, file=sys.stderr)
-    dest = args.output or os.path.splitext(args.source)[0] + "_x07.bas"
+    root, ext = os.path.splitext(args.source)
+    # tri.qbas -> tri.bas ; une autre extension ne doit pas écraser la source
+    dest = args.output or root + (".bas" if ext.lower() == ".qbas" else "_x07.bas")
     with open(dest, "w", encoding="utf-8") as f:
         f.write(out)
     print("%d lignes de BASIC du X-07 -> %s" % (out.count("\n"), dest))
@@ -591,8 +593,8 @@ def main(argv=None):
     b.set_defaults(func=cmd_basic)
 
     q = sub.add_parser("qb", help="traduire un programme QuickBASIC en BASIC du X-07")
-    q.add_argument("source")
-    q.add_argument("-o", "--output", help="programme X-07 produit (défaut : SOURCE_x07.bas)")
+    q.add_argument("source", help="programme QuickBASIC (extension .qbas)")
+    q.add_argument("-o", "--output", help="programme X-07 produit (défaut : NOM.qbas -> NOM.bas)")
     q.add_argument("-f", "--format", default=None,
                    help="puis compiler : asm,bin,hex,lst,txt,bas (comme la commande basic)")
     q.add_argument("--ram", type=int, choices=(8, 16, 24), default=8,
