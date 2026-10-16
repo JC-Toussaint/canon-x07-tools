@@ -77,6 +77,7 @@ Les règles de calcul sont celles de la ROM, puisque c'est elle qui calcule :
 - `DEFINT`, `DEFSNG`, `DEFDBL`, `DEFSTR`, `END`, `STOP`, `REM`, `'`
 - `CLS`, `LOCATE x,y`, `BEEP [ton,durée]`
 - `PSET(x,y)`, `PRESET(x,y)`, `LINE(x1,y1)-(x2,y2)`, `CIRCLE(x,y),r`
+- `FONT$(code)=chaîne` : caractère redéfini (codes `&H80`-`&H9F` et `&HE0`-`&HFF`). La chaîne contient **8 nombres** séparés par des virgules, un par ligne de 6 points (bit 7 à gauche), lus par la ROM comme sur la machine. Écrivez-les en décimal ou avec `&H` : `"F8"` serait lu comme la variable F8. La lecture `FONT$(code)` n'est pas gérée.
 - `POKE`, `OUT`, `EXEC adr`
 
 `CLEAR` est ignoré.

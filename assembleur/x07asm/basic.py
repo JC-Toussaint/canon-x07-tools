@@ -716,6 +716,16 @@ class Parser:
         self.expect_op(",")
         return ("t6", 0x15, list(a) + [self.nexpr()])
 
+    def st_FONTS(self):
+        self.expect_op("(")
+        code = self.nexpr()
+        self.expect_op(")")
+        self.expect_op("=")
+        e = self.expr()
+        if self.et(e) != "s":
+            self.err("FONT$(code) attend une chaîne : 8 nombres séparés par des virgules")
+        return ("font", code, e)
+
     def st_INPUT(self):
         prompt, q = None, True
         if self.cur.kind == "str":
@@ -1464,6 +1474,13 @@ class Compiler:
         self.emit("LD   A,$%02X" % cmd)
         self.emit("LD   BC,$%02X00" % len(args))
         self.emit("CALL RT_T6")
+
+    def s_font(self, s):
+        self.gen_i(_fold(s[1]), 0)
+        self.emit("LD   A,L")
+        self.emit("LD   (RT_GB),A")
+        self.emit("LD   HL,%s" % self.sptr(s[2], 0))
+        self.emit("CALL RT_FONT")
 
     def _t6_params(self, args):
         for k, e in enumerate(args):

@@ -98,6 +98,38 @@ class TestScreenMatchesRom(unittest.TestCase):
     def test_user_defined_character(self):
         self.compare('10 CLS:LOCATE 3,1:PRINT CHR$(128);CHR$(65)')
 
+    def test_font_redefinition(self):
+        m = self.compare('10 CLS:FONT$(128)="&H50,&HF8,&HF8,&H70,&H20,0,0,0"\n'
+                         '20 FONT$(&HE0)="1,2,3,4,5,6,7,&H08":PRINT CHR$(128);CHR$(224)')
+        self.assertEqual(cell(m.lcd, 0, 0)[:5], [".#.#..", "#####.", "#####.",
+                                                ".###..", "..#..."])
+
+    def test_font_errors(self):
+        for src, msg in (('10 FONT$(65)="1,2,3,4,5,6,7,8"', "FC Error"),
+                         ('10 FONT$(128)="1,2,3"', "SN Error"),
+                         ('10 FONT$(128)="1,2,3,4,5,6,7,8,9"', "SN Error"),
+                         ('10 FONT$(128)="1,2,3,4,5,6,7,256"', "FC Error")):
+            ref, _ = emu.run_basic(src)
+            self.assertIn(msg, ref)
+            asm, _ = compile_basic(src, "T", 0x3000)
+            a = Assembler()
+            m = emu.run_binary(a.assemble_text(asm), a.entry)
+            self.assertIn(msg, m.screen_text(), src)
+
+    def test_example_graphisme(self):
+        with open(os.path.join(ROOT, "exemples", "graphisme.bas")) as f:
+            src = f.read()
+        ref, mr = emu.run_basic(src, keys=" ")
+        asm, _ = compile_basic(src, "T", 0x3000)
+        a = Assembler()
+        m = emu.run_binary(a.assemble_text(asm), a.entry, keys=" ")
+        for x in range(6):                          # invite « > » de la ROM en bas à gauche
+            for y in range(24, 32):
+                mr.lcd.set(x, y, 0)
+                m.lcd.set(x, y, 0)
+        self.assertEqual(bytes(m.lcd.px), bytes(mr.lcd.px))
+        self.assertTrue(m.lcd.get(96, 15))         # centre allumé grâce à POINT
+
     def test_scrolling(self):
         self.compare('10 CLS:FOR I=1 TO 6:PRINT "LIGNE";I:NEXT')
 

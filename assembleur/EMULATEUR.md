@@ -22,6 +22,7 @@ L'écran du X-07 peut être montré tel qu'il est vraiment : **120 × 32 points*
 python3 x07asm.py emu exemples/devine.bas --fenetre    # fenêtre en direct, avec le clavier
 python3 x07asm.py emu --fenetre                        # le BASIC du X-07, sans programme
 python3 x07asm.py run jeu.bas --fenetre                # programme compilé
+python3 x07asm.py emu exemples/graphisme.bas --fenetre  # texte, lignes, cercles, caractères redéfinis
 python3 x07asm.py emu logo.bas --png logo.png          # image de l'écran final
 python3 x07asm.py emu logo.bas --ecran                 # écran final en points, dans le terminal
 ```

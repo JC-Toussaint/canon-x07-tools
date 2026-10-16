@@ -1103,6 +1103,44 @@ RT_T6:                          ; commande A au T6834, paramètres dans RT_GB
         JP   T6CMDP
 """)
 
+_r("RT_FONT", """
+RT_FONT:                        ; FONT$((RT_GB))=(HL), comme la ROM ($D770)
+        LD   A,(RT_GB)
+        CP   $80                ; codes $80-$9F et $E0-$FF seulement
+        JR   C,.F
+        CP   $A0
+        JR   C,.K
+        CP   $E0
+        JR   NC,.K
+.F:     LD   E,5                ; FC
+        JP   RT_FERR
+.K:     LD   (T6BUF),A
+        CALL RT_ZSTR            ; HL = texte terminé par 00
+        LD   DE,T6BUF+1
+        LD   C,8
+.L:     PUSH BC
+        PUSH DE
+        CALL $FE51              ; DE = expression suivante (évaluateur de la ROM)
+        JR   NZ,.F              ; au-delà de 255
+        LD   A,E
+        POP  DE
+        LD   (DE),A
+        INC  DE
+        POP  BC
+        DEC  C
+        JR   Z,.E
+        CALL SYNCHR             ; virgule obligatoire, sinon SN
+        DB   ','
+        JR   .L
+.E:     LD   A,(HL)             ; rien après le 8e nombre
+        OR   A
+        LD   E,2                ; SN
+        JP   NZ,RT_FERR
+        LD   A,$1A              ; UDC WRITE : code + 8 octets
+        LD   B,9
+        JP   $DB1C
+""")
+
 VARIABLES.update({
     "RT_DPTR": 2, "RT_IP": 2, "RT_IC": 1, "RT_GB": 5, "RT_LINE": 2, "RT_FBUF": 64, "RT_DLINE": 2,
     "RT_CMD": 64, "RT_CMDP": 2,
