@@ -63,13 +63,7 @@ python3 x07asm.py run exemples/table.bas -i 7
 
 La version compilée exécute 34 662 instructions, contre 90 135 pour l'interpréteur. Avec des entiers (`DEFINT A-Z`), elle irait jusqu'à 30 fois plus vite ; voir [assembleur/COMPILATEUR.md](assembleur/COMPILATEUR.md).
 
-**Pour essayer le programme compilé comme sur la machine**, mettez-le en mémoire dans la fenêtre puis lancez-le vous-même :
-
-```sh
-python3 x07asm.py emu --fenetre --charger exemples/table.bas --ram 16
-```
-
-Le terminal indique la commande à taper dans la fenêtre, par exemple `EXEC &H3C40`.
+**Pour lancer vous-même le programme compilé, comme sur la machine**, chargez-le dans la fenêtre de l'émulateur : voir l'étape 4.
 
 ## 4. Le compiler pour la machine
 
@@ -87,6 +81,44 @@ sur le X-07 : CLEAR 50,&H3C3F  puis  EXEC &H3C40
 - **`--ram`** : mettez la mémoire de votre X-07 (8, 16 ou 24 Ko). Le programme est placé en haut de cette mémoire.
 - **Les deux commandes affichées** (`CLEAR`, puis `EXEC`) sont celles qu'il faudra taper sur la machine.
 - **`exemples/table.asm`** est le source assembleur, lisible et modifiable.
+- **`exemples/table.bin`** est le code machine, à charger à l'adresse indiquée (ici `$3C40`). D'autres formats s'obtiennent par `-f` : `-f asm,bin,hex,lst,bas` (`bas` donne un chargeur BASIC à taper sur la machine).
+
+### Charger le programme compilé dans l'émulateur
+
+Avant de l'envoyer à la machine, on peut le charger dans la fenêtre de l'émulateur et le lancer soi-même par `EXEC`, exactement comme sur le X-07. Exemple avec `premiers.bas` (le crible d'Ératosthène) :
+
+```sh
+python3 x07asm.py basic exemples/premiers.bas --ram 16
+```
+
+```
+552 octets de code, 1562 avec les variables : $39D0-$3FE9
+sur le X-07 : CLEAR 50,&H39CF  puis  EXEC &H39D0
+  -> exemples/premiers.asm
+  -> exemples/premiers.bin
+```
+
+Un `.bin` ne contient pas son adresse de chargement : donnez-la par `--org`.
+
+```sh
+python3 x07asm.py emu --fenetre --charger exemples/premiers.bin --org 39D0 --ram 16
+```
+
+On peut aussi donner directement le `.bas`, qui est alors compilé au passage :
+
+```sh
+python3 x07asm.py emu --fenetre --charger exemples/premiers.bas --ram 16
+```
+
+Dans la fenêtre du X-07 :
+
+1. `CLEAR 50,&H39CF` est tapé pour vous, puis le programme est mis en mémoire.
+2. Tapez `EXEC &H39D0` puis Entrée.
+3. Les nombres premiers jusqu'à 499 s'affichent, puis l'invite `>` revient.
+
+`EXEC &H39D0` peut être relancé autant de fois que vous voulez. `RUN`, lui, ne fait rien : aucun programme BASIC n'a été tapé, seul le code machine est en mémoire.
+
+Prenez la même valeur de `--ram` pour compiler et pour charger : sinon le programme est placé, ou attendu, à une autre adresse.
 
 ## 5. L'envoyer au X-07 par le câble série
 
