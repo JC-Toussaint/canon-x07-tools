@@ -1,0 +1,35 @@
+' Nombre mystère : QuickBASIC adapté au Canon X-07 (écran 20 x 4)
+' Traduction :  python3 x07asm.py qb exemples/qbasic/mystere.bas
+DECLARE FUNCTION Tirage% (plafond%)
+DECLARE SUB Reponse (essai%, secret%, fini%)
+CONST MAXI = 100
+DIM SHARED coups AS INTEGER
+
+CLS
+PRINT "NOMBRE MYSTERE 1-"; MAXI
+PRINT "Une touche..."
+DO                              ' graine : temps mis à appuyer
+    graine = graine + 1
+LOOP WHILE INKEY$ = ""
+RANDOMIZE graine
+secret% = Tirage%(MAXI)
+fini% = 0
+DO
+    INPUT "Essai"; essai%
+    Reponse essai%, secret%, fini%
+LOOP UNTIL fini%
+PRINT "Trouve en"; coups; "coups"
+END
+
+FUNCTION Tirage% (plafond%)
+    Tirage% = INT(RND * plafond%) + 1
+END FUNCTION
+
+SUB Reponse (essai%, secret%, fini%)
+    coups = coups + 1
+    SELECT CASE essai%
+        CASE IS < secret%: PRINT "Plus grand"
+        CASE IS > secret%: PRINT "Plus petit"
+        CASE ELSE: fini% = -1
+    END SELECT
+END SUB
