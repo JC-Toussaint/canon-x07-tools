@@ -122,7 +122,7 @@ Prenez la même valeur de `--ram` pour compiler et pour charger : sinon le progr
 
 ## 5. L'envoyer au X-07 par le câble série
 
-**Une seule fois,** tapez sur le X-07 le petit programme de réception. Il reste en mémoire, même machine éteinte :
+**Une seule fois,** tapez sur le X-07 le petit programme de réception. Il reste en mémoire, même machine éteinte ; vous pouvez aussi le sauver sur cassette (`CSAVE"RECEPT"`) :
 
 ```sh
 python3 x07asm.py recepteur
@@ -134,13 +134,15 @@ python3 x07asm.py recepteur
    ```sh
    python3 x07asm.py send exemples/table.bas --ram 16 --port /dev/ttyUSB0
    ```
-   Le PC compile le programme puis attend le X-07.
+   Le PC compile le programme puis attend le X-07. Un programme déjà compilé s'envoie aussi : `send exemples/premiers.bin --org 39D0`.
 2. **Sur le X-07 :** `CLEAR 50,&H3C3F`, puis `RUN`. Le transfert prend une dizaine de secondes et se termine par :
    ```
    RECEPTION...
    OK. EXEC &H3C40
    ```
 3. **Sur le X-07 :** `EXEC &H3C40`.
+
+Le récepteur contrôle chaque bloc reçu par une somme de contrôle.
 
 **Sous WSL2,** le module USB n'est pas visible par défaut. Attachez-le avec `usbipd attach --wsl --busid <n°>`, ou lancez `send` depuis Windows avec `--port COM3`.
 
@@ -150,12 +152,37 @@ python3 x07asm.py recepteur
 python3 x07asm.py send exemples/table.bas --ram 16 --emu
 ```
 
-## 6. Sans câble
+## 6. Sans câble : le chargeur BASIC à taper
 
-Deux autres façons de mettre le programme dans le X-07 :
+```sh
+python3 x07asm.py basic exemples/premiers.bas --ram 16 -f bas
+```
 
-- **Chargeur BASIC :** `python3 x07asm.py basic exemples/table.bas -f bin,bas` produit `table_chargeur.bas`, à taper sur le X-07 puis à lancer par `RUN`. Chaque ligne de `DATA` porte une somme de contrôle. Il faut assez de place sous le programme pour ce chargeur.
-- **Vidage hexadécimal :** `-f txt` produit les octets à recopier avec l'« entreur de codes » du livre.
+Cette commande produit `exemples/premiers_chargeur.bas`, un programme BASIC ordinaire :
+
+```
+10 REM PREMIERS - chargeur x07asm
+20 CLEAR 50,&H39CF
+30 L=1000
+40 READ A$:IF A$="*" THEN 100
+...
+1000 DATA 39D0,8,F5,C5,D5,E5,DD,E5,FD,E5,1816
+1010 DATA 39D8,8,ED,73,F3,3B,2A,AB,0,22,901
+...
+1690 DATA *
+```
+
+1. **Sur le X-07 :** tapez le chargeur, puis `RUN`. Il range les octets en mémoire par `POKE`, puis affiche `OK. EXEC &H39D0`.
+2. **Sur le X-07 :** `EXEC &H39D0`.
+
+Chaque ligne de `DATA` se termine par une somme de contrôle : une faute de frappe donne `ERREUR LIGNE n`, avec le numéro de la ligne à corriger. Pour `premiers.bas`, cela fait 70 lignes de `DATA` : c'est long, mais faisable. Une fois tapé, sauvez le chargeur sur cassette (`CSAVE`) pour ne pas avoir à le retaper. Le chargeur occupe lui-même de la mémoire : il faut assez de place sous le programme compilé.
+
+**Autre possibilité :** `-f txt` produit un vidage hexadécimal, à recopier avec l'« entreur de codes » du livre.
+
+**Dans tous les cas :**
+
+- **`--ram`** doit correspondre à la mémoire réelle de votre X-07. Avec 8 Ko, recompilez avec `--ram 8`, sinon l'adresse sera fausse.
+- **Le code n'est pas protégé :** il est perdu après un `CLEAR` qui remonte le haut de la zone BASIC, ou après un démarrage à froid. Il suffit alors de le recharger.
 
 ## 7. Pour aller plus loin
 
