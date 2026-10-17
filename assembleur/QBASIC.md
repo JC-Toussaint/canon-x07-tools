@@ -191,7 +191,7 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 |---|---|---|
 | **récursivité** (`FUNCTION` qui s'appelle elle-même) | le BASIC du X-07 n'a pas de variables locales : un appel écraserait les variables de l'appel en cours | écrire une boucle ; ou la « voie directe » ci-dessous |
 | `TYPE ... END TYPE` | pas d'enregistrements | tableaux parallèles |
-| fichiers (`OPEN`, `PRINT #`…), `WRITE` | les périphériques du X-07 sont différents | — |
+| fichiers autres que séquentiels (`RANDOM`, `BINARY`, `GET`, `PUT`) | — | fichiers séquentiels en RAM : `OPEN ... FOR INPUT/OUTPUT/APPEND`, voir [FICHIERS.md](FICHIERS.md) |
 | `UCASE$`, `LCASE$`, `LTRIM$`, `RTRIM$`, `OCT$` | absents de la ROM | `MID$(STR$(x),2)` pour un nombre positif |
 | `DIM t(2 TO 5)`, `OPTION BASE 1` | indices toujours de 0 à n sur le X-07 (`DIM A(1 TO 5)` et `OPTION BASE` y donnent `SN Error`) | décaler les indices |
 | `REDIM`, chaînes de longueur fixe, `RETURN étiquette`, `LINE -(x,y)` | | |

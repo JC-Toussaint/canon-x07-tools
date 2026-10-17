@@ -100,8 +100,52 @@ L'émulateur reproduit maintenant ce cycle : `emu.power_off(machine)` éteint pa
 
 Pistes : une option qui indique la taille de la zone de fichiers prévue, pour placer le code en dessous ; ou lire `RAMSTR` sur la machine.
 
-## Pour la suite (étape 2)
+## Étape 2 : QuickBASIC
 
-1. **Traduction** (`qb`) : `OPEN`/`PRINT #`/`WRITE #`/`INPUT #`/`LINE INPUT #`/`EOF`/`CLOSE`/`KILL`, avec les techniques ci-dessus, et `FSET` en tête (taille à choisir).
+**Traduction (`qb`) : faite.** Un programme QuickBASIC lit et écrit des fichiers en RAM :
+
+```basic
+OPEN "notes" FOR APPEND AS #1 LEN = 400   ' LEN = : taille du fichier (256 par défaut)
+PRINT #1, note$
+CLOSE #1
+OPEN "notes" FOR INPUT AS #1
+DO WHILE NOT EOF(1)
+    LINE INPUT #1, ligne$
+    PRINT ligne$
+LOOP
+```
+
+| QuickBASIC | Traduction |
+|---|---|
+| `OPEN nom FOR OUTPUT AS #n [LEN = t]` | `INIT #n,"RAM:NOM",t`, puis remise à zéro des données (sous-programme) |
+| `OPEN nom FOR APPEND AS #n [LEN = t]` | `INIT #n,"RAM:NOM",t` (créé s'il n'existe pas), puis pointeur d'écriture après les données |
+| `OPEN nom FOR INPUT AS #n` | `INIT #n,"RAM:NOM"` (`NE Error` si absent) |
+| `PRINT #n, ...`, `INPUT #n, ...` | tels quels |
+| `WRITE #n, a$, x` | `PRINT #n,CHR$(34);A$;CHR$(34);",";X` (chaînes entre guillemets) |
+| `LINE INPUT #n, a$` | `LINE INPUT #n,A$`, puis retrait du saut de ligne de tête |
+| `EOF(n)` | sous-programme : pointeur de lecture du canal |
+| `KILL nom` | `DELETE "NOM"` |
+| `CLOSE` | rien |
+
+- **La zone des fichiers :** en tête du programme, `FSET 1024` n'est fait que si la zone est plus petite. Un `FSET` plus petit donnerait `OM Error`, et un plus grand garde les fichiers.
+- **Les noms :** ils sont ramenés à 6 caractères, en majuscules, sans extension (`notes.dat` devient `NOTES`), avec un avertissement.
+- **Les canaux :** de 1 à 5.
+
+Exemple : `exemples/qbasic/journal.qbas`. Chaque lancement ajoute une note, puis réaffiche toutes les notes.
+
+**Mémoire gardée dans l'émulateur : faite.** L'option `--memoire FICHIER` de `emu` rallume le X-07 avec la RAM enregistrée (programmes et fichiers), puis l'éteint par `OFF` à la fin et enregistre sa RAM :
+
+```sh
+python3 x07asm.py emu exemples/qbasic/journal.qbas --memoire x07.mem -i "Acheter du pain"
+python3 x07asm.py emu exemples/qbasic/journal.qbas --memoire x07.mem -i "Appeler Zoe"
+```
+
+Au second lancement, le journal contient les deux notes. Dans la fenêtre (`--fenetre`), on éteint en tapant `OFF`. Sans cela, la mémoire n'est pas enregistrée.
+
+**Compilation : à faire.** Voir ci-dessous.
+
+## Pour la suite
+
+1. ~~Traduction~~ : faite.
 2. **Compilation** (traduction compilée et `--direct`) : appeler le pilote `RAM:` de la ROM (`$E449`, `$E5B4`, `$E5CB`) depuis le code compilé, et placer le code sous la zone des fichiers.
-3. **Émulateur** : garder la RAM entre deux sessions (option de `emu` et `ide`), pour retrouver ses fichiers d'une fois sur l'autre, comme sur la machine.
+3. ~~Émulateur~~ : fait pour `emu` (`--memoire`) ; reste l'éditeur-débogueur (`ide`).

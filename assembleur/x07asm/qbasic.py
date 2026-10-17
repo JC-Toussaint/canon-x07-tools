@@ -33,6 +33,7 @@ IF INPUT IS KEY LET LINE LOCATE LOOP NEXT ON PRESET PRINT PSET RANDOMIZE READ
 REDIM RESTORE RESUME RETURN SCREEN SELECT SHARED SLEEP SOUND STATIC STEP STOP
 SUB SWAP SYSTEM THEN TO TYPE UNTIL USING WEND WHILE WIDTH POKE OUT BEEP OFF
 INTEGER LONG SINGLE DOUBLE STRING VIEW WRITE OPEN CLOSE CHAIN COMMON DEFSEG SEG
+KILL OUTPUT APPEND RANDOM BINARY ACCESS
 """.split()
 OPERATOR_WORDS = "NOT AND OR XOR EQV IMP MOD".split()
 FUNCTIONS = {   # nom QuickBASIC : (types des arguments, type rendu)
@@ -49,7 +50,7 @@ FUNCTIONS = {   # nom QuickBASIC : (types des arguments, type rendu)
     "TIME$": ("", "$"), "DATE$": ("", "$"), "TIMER": ("", "s"),
     "UCASE$": ("$", "$"), "LCASE$": ("$", "$"), "LTRIM$": ("$", "$"), "RTRIM$": ("$", "$"),
     "TAB": ("n", "$"), "SPC": ("n", "$"), "ERR": ("", "i"), "ERL": ("", "i"),
-    "FRE": ("x", "d"),
+    "FRE": ("x", "d"), "EOF": ("n", "i"),
 }
 NOT_ON_X07 = {   # fonctions sans équivalent direct
     "UCASE$": "pas de UCASE$ sur le X-07 (les lettres sont déjà en majuscules)",
@@ -455,7 +456,19 @@ class Parser:
         t = self.next()
         return self.sub_call(t.val, paren=self.is_op("("))
 
+    def channel(self):
+        """« #n, » d'une instruction de fichier : rend l'expression du canal."""
+        self.expect_op("#")
+        ch = self.expr()
+        return ch
+
     def st_PRINT(self):
+        if self.is_op("#"):
+            ch = self.channel()
+            if self.accept_kw("USING"):
+                self.err("PRINT #, USING non traduit")
+            items = self.print_items() if self.accept_op(",") else []
+            return ("fprint", ch, items)
         if self.accept_kw("USING"):
             fmt = self.expr()
             self.expect_op(";")
@@ -475,6 +488,13 @@ class Parser:
         return items
 
     def st_INPUT(self):
+        if self.is_op("#"):
+            ch = self.channel()
+            self.expect_op(",")
+            tg = [self.target()]
+            while self.accept_op(","):
+                tg.append(self.target())
+            return ("finput", ch, tg)
         self.accept_op(";")
         prompt, comma = None, False
         if self.cur.kind == "str":
@@ -489,7 +509,11 @@ class Parser:
         return ("input", prompt, comma, tg)
 
     def st_LINE(self):
-        if self.accept_kw("INPUT"):
+        if self.accept_kw("INPUT") and self.is_op("#"):
+            ch = self.channel()
+            self.expect_op(",")
+            return ("flineinput", ch, self.target())
+        if self.t[self.i - 1].val == "INPUT":
             self.accept_op(";")
             prompt = None
             if self.cur.kind == "str":
@@ -924,13 +948,67 @@ class Parser:
                  "(utilisez des tableaux parallèles)")
 
     def st_OPEN(self):
-        self.err("fichiers (OPEN) non traduits")
+        """OPEN nom FOR INPUT|OUTPUT|APPEND AS [#]n [LEN = taille]"""
+        name = self.expr()
+        self.expect_kw("FOR")
+        t = self.next()
+        if t.val not in ("INPUT", "OUTPUT", "APPEND"):
+            self.err("OPEN ... FOR %s : seuls INPUT, OUTPUT et APPEND sont traduits "
+                     "(fichiers séquentiels)" % t.val, t)
+        self.expect_kw("AS")
+        self.accept_op("#")
+        ch = self.expr()
+        size = None
+        if self.accept_kw("LEN"):
+            self.expect_op("=")
+            size = self.expr()
+        return ("open", name, t.val, ch, size)
+
+    def st_CLOSE(self):
+        chans = []
+        while not self.at_sep():
+            self.accept_op("#")
+            chans.append(self.expr())
+            if not self.accept_op(","):
+                break
+        return ("close", chans)
+
+    def st_KILL(self):
+        return ("kill", self.expr())
 
     def st_WRITE(self):
-        self.err("WRITE non traduit : utilisez PRINT")
+        ch = None
+        if self.is_op("#"):
+            ch = self.channel()
+            if not self.accept_op(","):
+                return ("write", ch, [])
+        items = []
+        while not self.at_sep():
+            items.append(self.expr())
+            if not self.accept_op(","):
+                break
+        return ("write", ch, items)
 
 
 STRING_SPACE = 500     # octets réservés aux chaînes (le X-07 démarre avec 50)
+FILE_SPACE = 1024      # zone des fichiers en RAM (FSET), si le programme en emploie
+FILE_SIZE = 256        # taille d'un fichier créé sans « LEN = » (taille fixe sur le X-07)
+KBNTAB = 0x2C5         # canaux ouverts : 8 octets (pilote, écriture, lecture, fin)
+
+
+def ram_file_name(name):
+    """Nom de fichier QuickBASIC -> nom X-07 : 6 caractères, majuscules,
+    sans chemin ni extension.  Rend (nom, remarque ou None)."""
+    raw = name.replace("\\", "/").split("/")[-1]
+    stem = raw.split(".")[0].upper()
+    stem = re.sub(r"[^A-Z0-9]", "", stem)
+    if not stem:
+        raise QBError("nom de fichier invalide : %r" % name)
+    note = None
+    if len(stem) > 6 or stem != raw.upper():
+        note = "fichier « %s » : « %s » sur le X-07 (6 caractères, sans extension)" % (
+            name, stem[:6])
+    return stem[:6], note
 
 TYPE_NAMES = {"i": "entier (%)", "s": "simple précision (!)", "d": "double précision (#)",
               "$": "chaîne ($)", "l": "entier long (&)"}
@@ -1041,8 +1119,10 @@ class Scope:
 
 
 class Translator:
-    def __init__(self, text, line_len=72):
+    def __init__(self, text, line_len=72, file_space=FILE_SPACE, file_size=FILE_SIZE):
         self.line_len = line_len
+        self.file_space, self.file_size = file_space, file_size
+        self.files = None                  # sous-programmes de fichiers (créés au besoin)
         self.warnings = []
         self.names = Names()
         self.labels = {}       # étiquette QuickBASIC -> étiquette interne
@@ -1253,6 +1333,13 @@ class Translator:
         if not isinstance(e, tuple):
             return e
         k = e[0]
+        if k == "call" and e[1] == "EOF":           # sous-programme : canal -> vrai/faux
+            ch = self.hoist(e[2][0])
+            f = self.file_support()
+            self.emit("%s=%s:GOSUB @%s" % (f["c"], self.x(ch), f["eof"]))
+            tmp = self.temp("i")
+            self.emit("%s=%s" % (tmp, f["e"]))
+            return ("raw", tmp, "i")
         if k == "ufn":
             args = [self.hoist(a) for a in e[2]]
             proc = self.procs[e[1]]
@@ -1432,6 +1519,15 @@ class Translator:
         while self.pending:                                # copies demandées par les appels
             key, arrays = self.pending.pop(0)
             self.gen_proc(key, self.procs[key], arrays)
+        if self.files is not None:
+            self.gen_file_routines()
+            # zone des fichiers : FSET seulement si elle est trop petite (FSET plus
+            # petit qu'elle donnerait OM Error ; plus grand garde les fichiers)
+            at = next(k for k, it in enumerate(self.items)
+                      if it[0] == "stmt" and it[1] == "DEFSNG A-Z") + 1
+            self.items.insert(at, ("stmt", "IF PEEK(&H212)+256*PEEK(&H213)-PEEK(&H210)"
+                                   "-256*PEEK(&H211)<%d THEN FSET %d"
+                                   % (self.file_space - 13, self.file_space), True))
         if self.hoisted_dims:                              # juste après DEFSNG A-Z
             self.items.insert(1, ("stmt", "DIM " + ",".join(self.hoisted_dims.values()), False))
         for key, info in self.proc_info.items():
@@ -1551,6 +1647,130 @@ class Translator:
                 parts.append(self.x(i))
         self.emit(("PRINT " + "".join(parts)).rstrip())
 
+    # -------------------------------------------------- fichiers en RAM (voir FICHIERS.md)
+    def file_support(self):
+        """Variables et sous-programmes communs aux fichiers, créés au premier
+        besoin : C% canal, K% son entrée dans KBNTAB, P% pointeur, F% fin, E% EOF."""
+        if self.files is None:
+            self.files = {"c": self.temp("i"), "k": self.temp("i"), "p": self.temp("i"),
+                          "f": self.temp("i"), "e": self.temp("i"),
+                          "zero": self.new_label(), "append": self.new_label(),
+                          "eof": self.new_label(), "used": set()}
+        return self.files
+
+    def channel(self, ch):
+        v = self.const_value(ch)
+        if v is not None and not 1 <= v <= 5:
+            raise QBError("fichier #%d : le X-07 n'a que les canaux 1 à 5" % v)
+        return self.x(self.hoist(ch))
+
+    def file_name(self, e):
+        """Expression X-07 du nom « RAM:NOM »."""
+        if e[0] == "str":
+            name, note = ram_file_name(e[1])
+            if note:
+                self.warn(note)
+            return '"RAM:%s"' % name, '"%s"' % name
+        self.warn("nom de fichier calculé : 6 caractères au plus sur le X-07")
+        x = self.x(self.hoist(e))
+        return '"RAM:"+%s' % self.paren(x), x
+
+    def g_open(self, s, ctx):
+        _, name, mode, ch, size = s
+        f = self.file_support()
+        c = self.channel(ch)
+        full, _ = self.file_name(name)
+        if mode == "INPUT":
+            self.emit("INIT #%s,%s" % (c, full))
+            return
+        n = self.x(self.hoist(size)) if size is not None else str(self.file_size)
+        self.emit("INIT #%s,%s,%s" % (c, full, n))
+        # OUTPUT : on vide le fichier ; APPEND : on écrit après les données
+        sub = "zero" if mode == "OUTPUT" else "append"
+        f["used"].add(sub)
+        self.emit("%s=%s:GOSUB @%s" % (f["c"], c, f[sub]))
+
+    def g_close(self, s, ctx):
+        pass                                         # rien à fermer sur le X-07
+
+    def g_kill(self, s, ctx):
+        self.file_support()
+        _, short = self.file_name(s[1])
+        self.emit("DELETE %s" % short)
+
+    def g_fprint(self, s, ctx):
+        self.file_support()
+        c = self.channel(s[1])
+        parts = []
+        for i in s[2]:
+            if isinstance(i, str):
+                parts.append(i)
+            else:
+                if parts and not isinstance(parts[-1], str):
+                    parts.append(";")
+                parts.append(self.x(self.hoist(i)))
+        self.emit("PRINT #%s,%s" % (c, "".join(parts)))
+
+    def g_write(self, s, ctx):
+        """WRITE : valeurs séparées par des virgules, chaînes entre guillemets."""
+        _, ch, items = s
+        parts = []
+        for k, i in enumerate(items):
+            if k:
+                parts.append('","')
+            i = self.hoist(i)
+            if self.etype(i) == "$":
+                parts.append("CHR$(34);%s;CHR$(34)" % self.x(i))
+            else:
+                parts.append(self.x(i))
+        text = ";".join(parts)
+        if ch is None:
+            self.emit("PRINT %s" % text if text else "PRINT")
+        else:
+            self.file_support()
+            self.emit("PRINT #%s,%s" % (self.channel(ch), text))
+
+    def g_finput(self, s, ctx):
+        self.file_support()
+        c = self.channel(s[1])
+        self.emit("INPUT #%s,%s" % (c, ",".join(self.x(self.hoist(t)) for t in s[2])))
+
+    def g_flineinput(self, s, ctx):
+        self.file_support()
+        c = self.channel(s[1])
+        t = self.x(self.hoist(s[2]))
+        self.emit("LINE INPUT #%s,%s" % (c, t))
+        # le X-07 laisse le saut de ligne de la ligne précédente en tête
+        self.emit("IF LEFT$(%s,1)=CHR$(10) THEN %s=MID$(%s,2)" % (t, t, t), True)
+
+    def gen_file_routines(self):
+        f = self.files
+        c, k, p, e, fin = f["c"], f["k"], f["p"], f["e"], f["f"]
+        entry = "%s=&H%X+8*(%s-1)" % (k, KBNTAB, c)
+        read = "%s=PEEK(%s+4)+256*PEEK(%s+5)" % (p, k, k)
+        end = "%s=PEEK(%s+6)+256*PEEK(%s+7)" % (fin, k, k)
+        if "zero" in f["used"]:                       # données remises à zéro
+            self.place(f["zero"])
+            self.emit("%s:%s:%s" % (entry, read, end))
+            self.emit("FOR %s=%s TO %s:POKE %s,0:NEXT %s" % (p, p, fin, p, p))
+            self.emit("RETURN")
+        if "append" in f["used"]:                     # écriture après le dernier octet
+            loop = self.new_label()
+            self.place(f["append"])
+            self.emit("%s:%s:%s" % (entry, read, end))
+            self.place(loop)
+            self.emit("IF %s<=%s THEN IF PEEK(%s)<>0 THEN %s=%s+1:GOTO @%s"
+                      % (p, fin, p, p, p, loop), True)
+            self.emit("POKE %s+2,%s AND 255:POKE %s+3,%s\\256" % (k, p, k, p))
+            self.emit("RETURN")
+        if any(st[0] == "stmt" and "@%s" % f["eof"] in st[1] for st in self.items):
+            self.place(f["eof"])                      # EOF : pointeur de lecture
+            self.emit("%s:%s:%s" % (entry, read, end))
+            self.emit("IF %s<=%s THEN IF PEEK(%s)=10 THEN %s=%s+1" % (p, fin, p, p, p), True)
+            self.emit("%s=(%s>%s)" % (e, p, fin))
+            self.emit("IF %s=0 THEN %s=(PEEK(%s)=0)" % (e, e, p), True)
+            self.emit("RETURN")
+
     def g_using(self, s, ctx):
         fmt = self.hoist(s[1])
         items = [i if isinstance(i, str) else self.x(self.hoist(i)) for i in s[2]]
@@ -1596,7 +1816,8 @@ class Translator:
 
     def has_ufn(self, node):
         if isinstance(node, tuple):
-            if node and node[0] in ("ufn", "callsub"):
+            if node and (node[0] in ("ufn", "callsub") or
+                         (node[0] == "call" and node[1] == "EOF")):
                 return True
             return any(self.has_ufn(c) for c in node[1:])
         if isinstance(node, list):
@@ -1996,8 +2217,10 @@ class Translator:
         return "\n".join(out) + "\n"
 
 
-def translate(text, line_len=72):
-    """Rend (programme X-07, avertissements, correspondance des noms)."""
-    tr = Translator(text, line_len)
+def translate(text, line_len=72, file_space=None, file_size=None):
+    """Rend (programme X-07, avertissements, correspondance des noms).
+    file_space : octets réservés aux fichiers en RAM (FSET) ; file_size :
+    taille d'un fichier créé sans LEN =."""
+    tr = Translator(text, line_len, file_space or FILE_SPACE, file_size or FILE_SIZE)
     out = tr.translate()
     return out, tr.warnings, tr.name_map

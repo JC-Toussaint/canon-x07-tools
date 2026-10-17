@@ -66,6 +66,7 @@ Sous WSL2, la fenêtre s'ouvre grâce à WSLg (Windows 11 ou Windows 10 récent)
 | `--ram 8\|16\|24` | oui (défaut 16) | oui (défaut 8) | mémoire de la machine, en Ko |
 | `--max N` | oui | oui | arrêt après N instructions (boucle sans fin) |
 | `--fenetre`, `--zoom N` | oui | oui | affichage graphique en direct |
+| `--memoire FICHIER` | oui | — | mémoire du X-07 gardée d'une session à l'autre : rallumé avec elle, éteint par `OFF` à la fin (dans la fenêtre : taper `OFF`). Voir [FICHIERS.md](FICHIERS.md) |
 | `--charger FICHIER` (`--org`, `--entry`) | oui, avec `--fenetre` | — | programme machine mis en mémoire, à lancer par `EXEC` |
 | `--png FICHIER`, `--ecran` | oui | oui | écran final en image, ou en points dans le terminal |
 | `--debug`, `--default`, `--strlen`, `--org` | — | oui | options du compilateur ([COMPILATEUR.md](COMPILATEUR.md)) |

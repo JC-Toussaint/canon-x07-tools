@@ -9,6 +9,7 @@ graphismes) et la saisie d'une ligne sont imités (voir sim.X07).
 Sert de référence pour vérifier le compilateur, et de BASIC du X-07 sur PC.
 """
 import os
+import re
 
 from .sim import X07, SimError, EXIT, REAL, PowerOff
 
@@ -163,8 +164,11 @@ def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, 
     le câble série.  « CLEAR 50,&H(org-1) » est d'abord tapé ; le programme est
     chargé dès que le BASIC a exécuté ce CLEAR (sinon sa pile et ses chaînes,
     encore en haut de la mémoire, l'écraseraient).  Reste à taper EXEC."""
-    # machine : une machine déjà allumée (power_on) au lieu d'un démarrage à froid
+    # machine : une machine déjà allumée (power_on) au lieu d'un démarrage à froid ;
+    # son ancien programme est effacé (NEW) avant de taper le nouveau, pas ses fichiers
     m = machine if machine is not None else boot(ram, real_display=live)
+    if machine is not None and any(re.match(r"\s*\d", l) for l in src.splitlines()):
+        src = "NEW\n" + src
     m.keys = list(keys)
     m.echo = echo
     if setup:
