@@ -23,6 +23,64 @@ KEYMAP = {"Return": "\r", "KP_Enter": "\r", "BackSpace": "\x08", "Left": "\x1d",
           "Insert": "\x12", "Home": "\x0b"}
 
 
+class Ecran:
+    """L'écran du X-07 (120 x 32 points) dans un widget tkinter, avec le
+    curseur clignotant ; sert à la fenêtre de l'émulateur et à l'éditeur."""
+
+    def __init__(self, parent, zoom=5):
+        import tkinter as tk
+        self.tk = tk
+        self.zoom = zoom
+        self.pad = 4 * zoom
+        self.canvas = tk.Canvas(parent, width=WIDTH * zoom + 2 * self.pad,
+                                height=HEIGHT * zoom + 2 * self.pad, bg=OFF,
+                                highlightthickness=3, highlightbackground="#111")
+        self.img_item = None
+        self._img = None
+        self._last = None
+        self._blink = True
+        self._blink_t = 0
+
+    def refresh(self, lcd):
+        """Redessine si l'écran (ou le clignotement du curseur) a changé."""
+        now = time.time()
+        if now - self._blink_t > 0.4:
+            self._blink, self._blink_t = not self._blink, now
+        key = (lcd.version, lcd.cursor is not None and self._blink)
+        if key != self._last:
+            self._last = key
+            self.draw(lcd.rows_bits(cursor=lcd.cursor is not None and self._blink))
+
+    def draw(self, rows):
+        tk = self.tk
+        img = tk.PhotoImage(width=WIDTH, height=HEIGHT)
+        img.put(" ".join("{" + " ".join(ON if b else OFF for b in r) + "}" for r in rows))
+        img = img.zoom(self.zoom, self.zoom)
+        if self.img_item is None:
+            self.img_item = self.canvas.create_image(self.pad, self.pad, image=img, anchor="nw")
+        else:
+            self.canvas.itemconfigure(self.img_item, image=img)
+        self._img = img                         # garder une référence
+
+
+def send_key(m, ev):
+    """Touche du PC -> X-07 (m.keys) ; Échap : BREAK ; F9 : arrêt (débogueur)."""
+    if ev.keysym == "F9":
+        m.debug_pause = True
+        return
+    if ev.keysym == "Escape":
+        if m.lcd.cursor is not None:            # en saisie : BREAK de la saisie
+            m.keys.append("\x1b")
+        else:                                   # programme en cours : touche BREAK
+            m.mem[0x2B] |= 0x01
+        return
+    k = KEYMAP.get(ev.keysym)
+    if k is None and ev.char and len(ev.char) == 1 and ord(ev.char) < 256:
+        k = ev.char.swapcase() if ev.char.isalpha() else ev.char
+    if k:
+        m.keys.append(k)
+
+
 class Fenetre:
     def __init__(self, title="Canon X-07", zoom=5):
         import tkinter as tk
@@ -37,13 +95,8 @@ class Fenetre:
         self.root.resizable(False, False)
         tk.Label(self.root, text="CANON  X-07", fg="#c8c8c8", bg=BEZEL,
                  font=("Helvetica", 11, "bold")).pack(pady=(10, 4))
-        pad = 4 * zoom
-        self.canvas = tk.Canvas(self.root, width=WIDTH * zoom + 2 * pad,
-                                height=HEIGHT * zoom + 2 * pad, bg=OFF,
-                                highlightthickness=3, highlightbackground="#111")
-        self.canvas.pack(padx=18, pady=4)
-        self.pad = pad
-        self.img_item = None
+        self.ecran = Ecran(self.root, zoom)
+        self.ecran.canvas.pack(padx=18, pady=4)
         self.info = tk.Label(self.root, text="", fg="#d0d0d0", bg=BEZEL, anchor="w",
                              font=("Helvetica", 9))
         self.info.pack(fill="x", padx=18)
@@ -52,9 +105,6 @@ class Fenetre:
                  font=("Helvetica", 8)).pack(pady=(0, 8))
         self.root.bind("<Key>", self._key)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
-        self._last = None
-        self._blink = True
-        self._blink_t = 0
 
     # -------------------------------------------------- émulation
     def attach(self, m):
@@ -87,51 +137,21 @@ class Fenetre:
             self._close()
             return
         m = self.m
-        now = time.time()
-        if now - self._blink_t > 0.4:
-            self._blink, self._blink_t = not self._blink, now
         if m is not None:
             lcd = m.lcd
-            key = (lcd.version, lcd.cursor is not None and self._blink)
-            if key != self._last:
-                self._last = key
-                self._draw(lcd.rows_bits(cursor=lcd.cursor is not None and self._blink))
+            self.ecran.refresh(lcd)
             waiting = lcd.cursor is not None
             state = "attente du clavier" if waiting and not self.done else self.status
             self.info.configure(text="%s   ·   %s instructions" % (state, format(m.steps, ",")
                                                                   .replace(",", " ")))
         self.root.after(40, self._refresh)
 
-    def _draw(self, rows):
-        tk = self.tk
-        img = tk.PhotoImage(width=WIDTH, height=HEIGHT)
-        img.put(" ".join("{" + " ".join(ON if b else OFF for b in r) + "}" for r in rows))
-        img = img.zoom(self.zoom, self.zoom)
-        if self.img_item is None:
-            self.img_item = self.canvas.create_image(self.pad, self.pad, image=img, anchor="nw")
-        else:
-            self.canvas.itemconfigure(self.img_item, image=img)
-        self._img = img                         # garder une référence
-
     # -------------------------------------------------- clavier
     def _key(self, ev):
         m = self.m
         if m is None or self.done:
             return
-        if ev.keysym == "F9":                   # débogueur : arrêt du programme
-            m.debug_pause = True
-            return
-        if ev.keysym == "Escape":
-            if m.lcd.cursor is not None:        # en saisie : BREAK de la saisie
-                m.keys.append("\x1b")
-            else:                               # programme en cours : touche BREAK
-                m.mem[0x2B] |= 0x01
-            return
-        k = KEYMAP.get(ev.keysym)
-        if k is None and ev.char and len(ev.char) == 1 and ord(ev.char) < 256:
-            k = ev.char.swapcase() if ev.char.isalpha() else ev.char
-        if k:
-            m.keys.append(k)
+        send_key(m, ev)
 
     def _close(self):
         if self.m is not None:

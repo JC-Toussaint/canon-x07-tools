@@ -26,6 +26,46 @@ Chaque arrêt affiche :
 - les **registres**, et les indicateurs en clair (`S Z H P N C`, `-` quand l'indicateur est à 0) ;
 - la **prochaine instruction**, avec son étiquette, les noms des routines et des variables de la ROM, et le commentaire du source.
 
+## Éditeur-débogueur visuel
+
+```sh
+python3 x07asm.py ide exemples/qbasic/rapide.qbas
+python3 x07asm.py ide exemples/table.bas --ram 16 --zoom 4
+python3 x07asm.py ide                                  # puis « Ouvrir… »
+```
+
+![L'éditeur-débogueur sur rapide.qbas : points d'arrêt, ligne courante, écran, variables](../ref_docs/images/editeur_debogueur.png)
+
+La même mécanique que la commande `debug`, dans une fenêtre :
+
+- **À gauche, le source**, modifiable : `.asm`, `.bas` (BASIC du X-07) ou `.qbas` (compilé directement).
+  - Un **clic dans la marge** pose ou enlève un point d'arrêt (pastille rouge). Sur une ligne sans code (vide, commentaire, `DATA`), le point va sur la ligne suivante qui en contient.
+  - Les points d'arrêt **suivent les modifications** : insérer des lignes au-dessus les déplace avec leur instruction.
+  - La **ligne en cours** est surlignée en jaune, avec une flèche.
+- **À droite, l'écran du X-07** en direct. Pour taper (`INPUT`, `INKEY$`), **cliquez sur l'écran** : il reçoit alors le clavier, avec Échap pour BREAK.
+- **Les registres**, avec les indicateurs en clair et le nombre d'instructions exécutées.
+- **Des onglets :**
+  - *Variables* : les variables par leur nom, et les tableaux avec leurs premières valeurs. Une valeur qui vient de changer apparaît **en rouge**. Pour un tableau reçu en paramètre, on voit lequel (`TRI.T() -> A%()`). Pour un programme assembleur, ce sont les étiquettes de données (octets et texte).
+  - *Code machine* : le désassemblage autour du PC.
+  - *Pile*.
+  - *Messages* : avertissements de compilation, erreurs.
+
+| Bouton | Touche | Rôle |
+|---|---|---|
+| Compiler | | enregistre puis compile (aussi fait automatiquement avant de lancer un programme modifié) |
+| ▶ Continuer | F5 | jusqu'au prochain point d'arrêt, ou la fin |
+| ⏸ Pause | F9 hors du source | interrompt le programme, même s'il attend une touche |
+| Ligne suivante | F10 | une **ligne du source**, sans entrer dans les procédures appelées |
+| Entrer | F11 | une ligne du source, en entrant dans les `SUB`, `FUNCTION`, `GOSUB` |
+| Sortir | Maj+F11 | jusqu'à la fin de la routine en cours |
+| Instruction | | une seule instruction machine |
+| ↺ Recommencer | | recompile et repart du début |
+| Enregistrer | Ctrl+S | |
+
+Dans le source, **F9** pose ou enlève un point d'arrêt sur la ligne du curseur.
+
+Le pas à pas avance **par ligne du source**, et non par instruction machine comme `n` et `s` dans le terminal. Une ligne BASIC qui fait une dizaine d'instructions s'exécute donc d'un coup ; « Instruction » reste disponible pour descendre au niveau du Z80.
+
 ## Commandes
 
 | Commande | Rôle |
@@ -165,6 +205,95 @@ python3 x07asm.py debug exemples/qbasic/tri.qbas -x "b ligne 150;c;v S;v N0%"
 ```
 
 Le pas à pas avance par **instructions machine**, pas par instructions BASIC : une ligne BASIC en compte souvent une dizaine. D'où l'intérêt des points d'arrêt sur les lignes, et de `c` plutôt que de `n`.
+
+## Exemple : déboguer `rapide.qbas` en compilation directe
+
+`rapide.qbas` trie deux tableaux par un tri rapide **récursif**, puis calcule 10! par une fonction récursive. Il ne se compile que directement (voir [QBASIC.md](QBASIC.md)).
+
+**1. Lancer le débogueur.** Avec `--direct`, `ligne N` désigne la ligne N du fichier `.qbas` lui-même :
+
+```sh
+python3 x07asm.py debug exemples/qbasic/rapide.qbas --direct
+```
+
+```
+    24	SUB Tri (t(), g, d)
+    26	    pivot = t((g + d) \ 2)
+    27	    i = g: j = d
+    ...
+    36	    Tri t(), g, j            ' appels récursifs
+    37	    Tri t(), i, d
+    ...
+    41	    IF n <= 1 THEN Fact# = 1 ELSE Fact# = n * Fact#(n - 1)
+```
+
+**2. Suivre les appels récursifs de `Tri` :**
+
+```
+(x07) b ligne 27
+point d'arrêt en 3981 LN_27
+(x07) c
+[point d'arrêt]  ligne BASIC 27
+A=07 F=40 -Z----  BC=0000 DE=0008 HL=0007  IX=0000 IY=0000 SP=36BF PC=3981
+(x07) v TRI.G
+  TRI.G% = 0   ($3F93)
+(x07) v TRI.D
+  TRI.D% = 9   ($3F91)          ← premier appel : tout le tableau
+(x07) v TRI.PIVOT
+  TRI.PIVOT% = 7   ($3F99)
+(x07) v A(4)
+  A%(4) = 7   ($3F45)           ← le pivot est bien a(4), l'élément du milieu
+(x07) c
+[point d'arrêt]  ligne BASIC 27
+A=01 F=40 -Z----  BC=0000 DE=0006 HL=0001  IX=0000 IY=0000 SP=36AF PC=3981
+(x07) v TRI.D
+  TRI.D% = 6   ($3F91)          ← appel récursif : la partie gauche, de 0 à 6
+```
+
+`v TRI.G` affiche la variable `g` de la `SUB Tri`, telle qu'elle est **dans l'appel en cours**. `v A(4)` lit le tableau du programme principal. `SP` est passé de `36BF` à `36AF` : ce sont les 16 octets où l'appel précédent a rangé ses variables (`g`, `d`, `pivot`, `i`, `j`…) avant l'appel récursif.
+
+**3. Descendre puis remonter dans `Fact#` :**
+
+```
+(x07) d tout
+(x07) b ligne 41
+(x07) c
+[point d'arrêt]  ligne BASIC 41
+(x07) v FACT.N
+  FACT.N% = 10   ($3F5D)        ← Fact#(10)
+(x07) c
+[point d'arrêt]  ligne BASIC 41
+(x07) v FACT.N
+  FACT.N% = 9   ($3F5D)         ← appel récursif Fact#(9)
+(x07) d tout
+(x07) f                         ← finir cet appel (et tous ceux qu'il lance)
+[retour de la routine]  ligne BASIC 41
+(x07) v FACT.N
+  FACT.N% = 10   ($3F5D)        ← de retour dans Fact#(10) : n est restauré
+(x07) f
+[retour de la routine]  ligne BASIC 21
+```
+
+`f` termine l'appel en cours, avec toute la récursivité qu'il contient. Au retour, `FACT.N` vaut de nouveau 10 : on voit les valeurs de l'appel `Fact#(10)`.
+
+**4. Finir :**
+
+```
+(x07) c
+[fin]
+(x07) e
++--------------------+
+| 10  20  30  40  50 |
+| 60                 |
+|10! = 3628800       |
++--------------------+
+```
+
+**À retenir :**
+- **Lignes et variables :** `b ligne N` désigne une ligne du source QuickBASIC, et `v PROC.VAR` une variable locale de l'appel en cours. Les variables globales et les tableaux s'écrivent par leur nom : `v A(4)`.
+- **Avancer :** `c` d'un point d'arrêt au suivant, et `f` pour sortir d'un appel récursif.
+- **Le mot « BASIC » :** les arrêts s'affichent « ligne BASIC 27 », mais il s'agit bien de la ligne 27 du `.qbas`.
+- **Un piège :** `x A` lit la mémoire à l'adresse hexadécimale `$000A`, pas le tableau `A`. Pour un tableau, utilisez `v`.
 
 ## Avec la fenêtre
 

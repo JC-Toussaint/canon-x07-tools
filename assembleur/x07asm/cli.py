@@ -518,38 +518,47 @@ def cmd_send(args):
     return 0
 
 
+def load_for_debug(src, ram=16, org=None, entry=None, direct=False):
+    """Programme prêt à déboguer : (mémoire, entrée, symboles, listing,
+    zone du programme et de ses variables, avertissements).  Un .bas ou
+    .qbas est compilé avec les numéros de ligne (option --debug)."""
+    low = src.lower()
+    listing, symbols, warns = [], {}, []
+    if low.endswith((".bas", ".qbas")):
+        _, a, mem, comp = build_basic(src, org or "auto", ram, debug=True, direct=direct)
+        warns = comp.warnings
+        start, listing, symbols = a.entry, a.listing, a.symbols
+    elif low.endswith(".asm"):
+        a = asmmod.Assembler()
+        mem = a.assemble_file(src)
+        if a.errors:
+            raise asmmod.AsmError(str(a.errors[0]))
+        start, listing, symbols = a.entry, a.listing, a.symbols
+    else:
+        if low.endswith((".bin", ".rom")) and not org:
+            raise ValueError("pour un .bin, indiquez l'adresse de chargement : --org 3000")
+        mem = formats.load_any(src, _num(org) if org else None)
+        start = min(mem)
+    if entry:
+        start = _num(entry)
+    prog_range = (min(mem), max(max(mem), symbols.get("VARS_END", 0) - 1))   # avec les variables
+    return mem, start, symbols, listing, prog_range, warns
+
+
 def cmd_debug(args):
     """Débogueur : le programme machine tourne dans l'émulateur, pas à pas."""
-    from . import basic, debug, emu, formats
+    from . import basic, debug, emu
     src = args.source
-    low = src.lower()
     try:
-        listing, symbols = [], {}
-        if low.endswith((".bas", ".qbas")):
-            _, a, mem, comp = build_basic(src, args.org or "auto", args.ram, debug=True,
-                                          direct=args.direct)
-            for w in comp.warnings:
-                print("attention : %s" % w, file=sys.stderr)
-            entry, listing, symbols = a.entry, a.listing, a.symbols
-        elif low.endswith(".asm"):
-            a = asmmod.Assembler()
-            mem = a.assemble_file(src)
-            if a.errors:
-                raise asmmod.AsmError(str(a.errors[0]))
-            entry, listing, symbols = a.entry, a.listing, a.symbols
-        else:
-            if low.endswith((".bin", ".rom")) and not args.org:
-                raise ValueError("pour un .bin, indiquez l'adresse de chargement : --org 3000")
-            mem = formats.load_any(src, _num(args.org) if args.org else None)
-            entry = min(mem)
-        if args.entry:
-            entry = _num(args.entry)
+        mem, entry, symbols, listing, prog_range, warns = load_for_debug(
+            src, args.ram, args.org, args.entry, args.direct)
+        for w in warns:
+            print("attention : %s" % w, file=sys.stderr)
     except (basic.CompileError, asmmod.AsmError, ValueError, OSError) as e:
         print("erreur : %s" % e, file=sys.stderr)
         return 1
     keys = args.keys.encode().decode("unicode_escape") if args.keys else ""
     script = [c for c in (args.commandes or "").split(";") if c.strip()]
-    prog_range = (min(mem), max(max(mem), symbols.get("VARS_END", 0) - 1))   # avec les variables
     print("%s : $%04X-$%04X, entrée $%04X" % (src, prog_range[0], prog_range[1], entry))
 
     def make(real_display):
@@ -603,6 +612,18 @@ def cmd_debug(args):
             return line.rstrip("\r\n") if line else None
         m.input_fn = input_fn
     dbg.repl(read_line if interactive else None, script)
+    return 0
+
+
+def cmd_ide(args):
+    """Éditeur-débogueur visuel (fenêtre)."""
+    from . import ide
+    try:
+        e = ide.Editeur(args.source, ram=args.ram, zoom=args.zoom)
+    except Exception as ex:                      # pas d'affichage graphique
+        print("erreur : fenêtre impossible (%s)" % ex, file=sys.stderr)
+        return 1
+    e.mainloop()
     return 0
 
 
@@ -738,6 +759,13 @@ def main(argv=None):
                    help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
                         "(récursivité, tableaux par adresse)")
     g.set_defaults(func=cmd_debug)
+
+    ed = sub.add_parser("ide", help="éditeur-débogueur visuel (fenêtre)")
+    ed.add_argument("source", nargs="?", help=".asm, .bas ou .qbas (compilé directement)")
+    ed.add_argument("--ram", type=int, choices=(8, 16, 24), default=16,
+                    help="mémoire du X-07 en Ko (défaut : 16)")
+    ed.add_argument("--zoom", type=int, default=3, help="taille de l'écran du X-07 (défaut : 3)")
+    ed.set_defaults(func=cmd_ide)
 
     q = sub.add_parser("qb", help="traduire un programme QuickBASIC en BASIC du X-07")
     q.add_argument("source", help="programme QuickBASIC (extension .qbas)")
