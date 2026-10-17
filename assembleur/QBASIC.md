@@ -127,6 +127,15 @@ Une fois déclarée, la variable s'écrit sans suffixe partout.
 
 Tous les exemples de `exemples/qbasic/` sont écrits avec `DEFINT A-Z`. Leur traduction est identique, octet pour octet, à celle des versions avec `%`. Un suffixe n'y reste que pour un autre type : `Moyenne!` et `s!` (simple précision), `Fact#` (double), et `graine!` dans `mystere.qbas`, qui compte les tours d'attente et déborderait en entier au-delà de 32 767. Vérifié aussi : `total = x`, avec `x AS SINGLE` valant 2,7, donne bien 3, arrondi comme en QuickBASIC.
 
+**Attention aux types des arguments.** Un tableau, ou une variable passée par référence, doit avoir **exactement** le type du paramètre. Avec `DEFINT A-Z`, `SUB Tri (t())` attend un tableau d'entiers : lui passer `b()` déclaré `AS DOUBLE` est une erreur. QuickBASIC la signale à la compilation (« Parameter type mismatch »), et nos deux voies aussi :
+
+```
+erreur : QuickBASIC : ligne 15 : TRI : le paramètre T() attend un tableau de type entier (%),
+mais B() est de type double précision (#) (QuickBASIC refuse aussi : « Parameter type mismatch »)
+```
+
+Sans cette vérification, la procédure parcourrait le tableau avec la mauvaise taille d'élément (2 octets au lieu de 8). Elle trierait des morceaux de nombres, et le programme afficherait des valeurs abîmées sans aucune alerte. Une expression, elle, est convertie, comme en QuickBASIC : pour passer `x!` à un paramètre entier, écrivez `(x!)`. Une chaîne ne va jamais dans un nombre, ni l'inverse.
+
 ## Ce que le X-07 impose (vérifié dans la ROM)
 
 Ces différences ont été mesurées dans l'émulateur, qui exécute la vraie ROM. Ce sont elles qui rendent une traduction automatique nécessaire : un programme QuickBASIC ne peut pas être simplement recopié.

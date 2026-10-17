@@ -930,6 +930,32 @@ class Parser:
         self.err("WRITE non traduit : utilisez PRINT")
 
 
+TYPE_NAMES = {"i": "entier (%)", "s": "simple précision (!)", "d": "double précision (#)",
+              "$": "chaîne ($)", "l": "entier long (&)"}
+
+
+def check_argument(proc, pname, ptype, arg_text, atype, by_reference, is_array):
+    """Règle de QuickBASIC (« Parameter type mismatch ») : un tableau, ou une
+    variable passée par référence, doit avoir exactement le type du paramètre ;
+    une chaîne ne va jamais dans un nombre.  Une expression est convertie."""
+    if ptype == atype:
+        return
+    tail = " (QuickBASIC refuse aussi : « Parameter type mismatch »)"
+    if is_array:
+        raise QBError("%s : le paramètre %s() attend un tableau de type %s, mais %s est de "
+                      "type %s%s" % (proc, base(pname), TYPE_NAMES[ptype], arg_text,
+                                     TYPE_NAMES[atype], tail))
+    if "$" in (ptype, atype):
+        kind = {True: "une chaîne", False: "un nombre"}
+        raise QBError("%s : le paramètre %s attend %s, mais reçoit %s%s"
+                      % (proc, pname, kind[ptype == "$"], kind[atype == "$"], tail))
+    if by_reference:
+        raise QBError("%s : le paramètre %s attend une variable de type %s, mais %s est de "
+                      "type %s%s ; pour convertir, passez une expression : (%s)"
+                      % (proc, pname, TYPE_NAMES[ptype], arg_text, TYPE_NAMES[atype], tail,
+                         arg_text))
+
+
 def base(name):
     return name.rstrip("%!#$&")
 
@@ -1252,13 +1278,21 @@ class Translator:
                 proc["name"], len(proc["params"]), len(args)))
         back, arrays = [], []
         for (pname, is_arr, _), a, orig in zip(proc["params"], args, orig_args):
+            ptype = self.type_of(pname if pname[-1] in "%!#$&" else base(pname), info["scope"])
             if is_arr:                                   # tableau : copie de la procédure
                 if orig[0] == "idx" and not orig[2]:     # v() : tout le tableau
                     orig = ("var", orig[1])
                 if orig[0] != "var":
                     raise QBError("%s : tableau attendu pour %s" % (proc["name"], pname))
+                check_argument(proc["name"], pname, ptype, orig[1] + "()",
+                               self.type_of(orig[1]), True, True)
                 arrays.append(self.xvar(orig[1], True))
                 continue
+            by_ref = orig[0] in ("var", "idx") and not (orig[0] == "var" and
+                                                         base(orig[1]) in self.consts)
+            check_argument(proc["name"], pname, ptype,
+                           orig[1] if orig[0] in ("var", "idx") else "l'expression",
+                           self.etype(orig), by_ref, False)
             px = info["params"][pname]
             self.emit("%s=%s" % (px, self.x(self.convert(a, px))))
             if orig[0] in ("var", "idx") and not (orig[0] == "var" and base(orig[1]) in self.consts):

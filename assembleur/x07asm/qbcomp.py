@@ -25,8 +25,8 @@ import re
 
 from . import basic
 from .basic import CompileError
-from .qbasic import (FUNCTIONS, NOT_ON_X07, REL, Parser, QBError, base, num_literal,
-                     tokenize)
+from .qbasic import (FUNCTIONS, NOT_ON_X07, REL, Parser, QBError, base, check_argument,
+                     num_literal, tokenize)
 
 SUFFIX = {"i": "%", "s": "!", "d": "#", "$": "$"}
 SIZE = {"i": 2, "s": 4, "d": 8}
@@ -378,17 +378,20 @@ class Lowering:
                      % (proc.p["name"], len(params), len(args)))
         lets, back = [], []
         for (pname, is_arr, _), a, slot in zip(params, args, proc.arg):
+            ptype = self.type_of(pname, proc.scope)
             if is_arr:
                 if a[0] == "idx" and not a[2]:            # t() : tout le tableau
                     a = ("var", a[1])
                 if a[0] != "var":
                     self.err("%s : tableau attendu pour %s" % (proc.p["name"], pname))
+                self.check_arg(proc, pname, ptype, a, True)
                 if self.is_param_array(a[1]):            # tableau reçu : on le transmet
                     lets.append(("let", ("var", slot), ("var", self.cvar(a[1]))))
                 else:
                     lets.append(("let", ("var", slot), ("adesc", self.cvar(a[1], True))))
                 continue
-            t = self.type_of(pname, proc.scope)
+            self.check_arg(proc, pname, ptype, a, False)
+            t = ptype
             lets.append(("let", ("var", slot), self.value(a, t)))
             if a[0] in ("var", "idx") and not (a[0] == "var" and base(a[1]) in self.consts):
                 back.append(a)
@@ -404,6 +407,15 @@ class Lowering:
             k += 1
             if a in back:                                  # passage par référence
                 self.emit(("let", self.target(a), ("var", o)))
+
+    def check_arg(self, proc, pname, ptype, a, is_arr):
+        by_ref = a[0] in ("var", "idx") and not (a[0] == "var" and base(a[1]) in self.consts)
+        atype = self.type_of(a[1]) if is_arr else self.etype(a)
+        shown = a[1] + ("()" if is_arr else "") if a[0] in ("var", "idx") else "l'expression"
+        try:
+            check_argument(proc.p["name"], pname, ptype, shown, atype, by_ref, is_arr)
+        except QBError as e:
+            self.err(str(e))
 
     def prepare(self):
         for key, proc in self.procs.items():

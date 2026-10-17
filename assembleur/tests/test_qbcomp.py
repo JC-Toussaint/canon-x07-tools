@@ -164,6 +164,23 @@ END FUNCTION''')
         self.assertIn("V_ALPHABET_F", asm)
         self.assertIn("V_ALPHANUMERIQUE_F", asm)
 
+    def test_parameter_type_mismatch(self):
+        # QuickBASIC : « Parameter type mismatch » pour un tableau ou une variable
+        # passée par référence ; une expression est convertie
+        refused = (
+            ("DEFINT A-Z\nDECLARE SUB S (t())\nDIM b(5) AS DOUBLE\nS b()\nSUB S (t())\nEND SUB",
+             "B() est de type double précision"),
+            ("DECLARE SUB S (n%)\nx! = 2.5\nS x!\nSUB S (n%)\nEND SUB",
+             "passez une expression : (X!)"),
+            ('DECLARE SUB S (n%)\nS "A"\nSUB S (n%)\nEND SUB', "reçoit une chaîne"),
+            ("DECLARE SUB S (a$)\nS 3\nSUB S (a$)\nEND SUB", "reçoit un nombre"))
+        for src, msg in refused:
+            with self.assertRaises(qbasic.QBError) as cm:
+                qbcomp.compile_qbasic(src)
+            self.assertIn(msg, str(cm.exception), src)
+            self.assertIn("Parameter type mismatch", str(cm.exception))
+        qbcomp.compile_qbasic("DECLARE SUB S (n%)\nx! = 2.5\nS (x!)\nS x! + 1\nS 3.7\nSUB S (n%)\nEND SUB")
+
     def test_refused(self):
         for src, msg in (("PRINT INSTR(\"AB\", \"B\")", "INSTR"),
                          ("PRINT USING \"##\"; 3", "PRINT USING"),

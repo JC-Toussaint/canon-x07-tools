@@ -322,6 +322,23 @@ END SUB''', " 1  1  1  4  320 \n***\n")   # STATIC : * puis **
         _, a, mem, _ = build_basic(path, "auto", 16)
         self.assertEqual(emu.run_binary(mem, a.entry).output().rstrip(), ref.rstrip())
 
+    def test_parameter_type_mismatch(self):
+        # QuickBASIC : « Parameter type mismatch » pour un tableau ou une variable
+        # passée par référence ; une expression est convertie
+        refused = (
+            ("DEFINT A-Z\nDECLARE SUB S (t())\nDIM b(5) AS DOUBLE\nS b()\nSUB S (t())\nEND SUB",
+             "B() est de type double précision"),
+            ("DECLARE SUB S (n%)\nx! = 2.5\nS x!\nSUB S (n%)\nEND SUB",
+             "passez une expression : (X!)"),
+            ('DECLARE SUB S (n%)\nS "A"\nSUB S (n%)\nEND SUB', "reçoit une chaîne"),
+            ("DECLARE SUB S (a$)\nS 3\nSUB S (a$)\nEND SUB", "reçoit un nombre"))
+        for src, msg in refused:
+            with self.assertRaises(qbasic.QBError) as cm:
+                qbasic.translate(src)
+            self.assertIn(msg, str(cm.exception), src)
+            self.assertIn("Parameter type mismatch", str(cm.exception))
+        qbasic.translate("DECLARE SUB S (n%)\nx! = 2.5\nS (x!)\nS x! + 1\nS 3.7\nSUB S (n%)\nEND SUB")
+
     def test_refused(self):
         for src, msg in (
                 ("DECLARE FUNCTION F (n)\nPRINT F(3)\nFUNCTION F (n)\n"
