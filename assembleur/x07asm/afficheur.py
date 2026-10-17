@@ -34,7 +34,8 @@ class Ecran:
         self.pad = 4 * zoom
         self.canvas = tk.Canvas(parent, width=WIDTH * zoom + 2 * self.pad,
                                 height=HEIGHT * zoom + 2 * self.pad, bg=OFF,
-                                highlightthickness=3, highlightbackground="#111")
+                                highlightthickness=3, highlightbackground="#111",
+                                highlightcolor="#2c9a3c")   # vert : l'écran a le clavier
         self.img_item = None
         self._img = None
         self._last = None

@@ -144,6 +144,42 @@ class TestWindow(unittest.TestCase):
             finally:
                 e.close()
 
+    def test_typing_while_stopped_and_input_field(self):
+        from x07asm.ide import Editeur
+        e = Editeur(os.path.join(EX, "table.bas"))
+        r = e.root
+
+        def pump(t):
+            end = time.time() + t
+            while time.time() < end:
+                r.update()
+                time.sleep(0.02)
+        try:
+            pump(0.3)
+            e.compile()
+            e.toggle(2)                                        # arrêt avant 20 CLS:INPUT
+            e.do_run()
+            pump(1.0)
+            c = e.ecran.canvas
+            c.event_generate("<Button-1>", x=40, y=30)
+            pump(0.1)
+            c.event_generate("<KeyPress>", keysym="7")         # programme arrêté : gardée
+            pump(0.1)
+            self.assertEqual(e.session.m.keys, ["7"])
+            e.session.m.keys.clear()
+            e.entry.insert(0, "8")
+            e.send_line()                                      # champ « Taper pour le X-07 »
+            self.assertEqual(e.session.m.keys, ["8", "\r"])
+            e.toggle(2)
+            e.do_run()
+            for _ in range(80):
+                pump(0.05)
+                if not e.busy():
+                    break
+            self.assertIn("MOYENNE 40", "\n".join(e.session.m.lcd.text()))
+        finally:
+            e.close()
+
 
 if __name__ == "__main__":
     unittest.main()

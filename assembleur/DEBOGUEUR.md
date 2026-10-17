@@ -42,7 +42,13 @@ La même mécanique que la commande `debug`, dans une fenêtre :
   - Un **clic dans la marge** pose ou enlève un point d'arrêt (pastille rouge). Sur une ligne sans code (vide, commentaire, `DATA`), le point va sur la ligne suivante qui en contient.
   - Les points d'arrêt **suivent les modifications** : insérer des lignes au-dessus les déplace avec leur instruction.
   - La **ligne en cours** est surlignée en jaune, avec une flèche.
-- **À droite, l'écran du X-07** en direct. Pour taper (`INPUT`, `INKEY$`), **cliquez sur l'écran** : il reçoit alors le clavier, avec Échap pour BREAK.
+- **À droite, l'écran du X-07** en direct. Pour répondre au programme (`INPUT`, `INKEY$`), deux moyens :
+  - **cliquer sur l'écran**, puis taper. Un **cadre vert** et la mention « le clavier va au X-07 » montrent qu'il reçoit le clavier ; Échap fait BREAK ;
+  - **le champ « Taper pour le X-07 »**, sous l'écran : on y tape une valeur, puis Entrée (ou « Envoyer »). C'est la voie la plus sûre, quel que soit le focus. Le texte part tel qu'il est écrit, puis Entrée.
+
+  Sur un clavier AZERTY, les chiffres du haut demandent Maj (ou le pavé numérique) : sans Maj, l'écran reçoit « è » au lieu de « 7 ». Le champ de saisie évite ce piège.
+
+  Les touches tapées pendant que le programme est **arrêté** (au départ, ou sur un point d'arrêt) sont **gardées** : le programme les lira en repartant, et la barre d'état le signale.
 - **Les registres**, avec les indicateurs en clair et le nombre d'instructions exécutées.
 - **Des onglets :**
   - *Variables* : les variables par leur nom, et les tableaux avec leurs premières valeurs. Une valeur qui vient de changer apparaît **en rouge**. Pour un tableau reçu en paramètre, on voit lequel (`TRI.T() -> A%()`). Pour un programme assembleur, ce sont les étiquettes de données (octets et texte).

@@ -300,12 +300,23 @@ class Editeur:
         panes.add(left, stretch="always", minsize=420)
 
         right = tk.Frame(panes)
-        tk.Label(right, text="Écran du X-07 (cliquez dessus pour taper ; Échap = BREAK)",
-                 anchor="w").pack(fill="x")
+        self.screen_hint = tk.Label(right, anchor="w")
+        self.screen_hint.pack(fill="x")
         self.ecran = Ecran(right, zoom)
         self.ecran.canvas.pack(anchor="w", pady=2)
-        self.ecran.canvas.bind("<Button-1>", lambda e: self.ecran.canvas.focus_set())
-        self.ecran.canvas.bind("<Key>", self.screen_key)
+        c = self.ecran.canvas
+        c.bind("<Button-1>", lambda e: c.focus_set())
+        c.bind("<Key>", self.screen_key)
+        c.bind("<FocusIn>", lambda e: self.show_focus(True))
+        c.bind("<FocusOut>", lambda e: self.show_focus(False))
+        line = tk.Frame(right)                   # saisie sûre : une ligne, puis Entrée
+        line.pack(fill="x", pady=(0, 4))
+        tk.Label(line, text="Taper pour le X-07 :").pack(side="left")
+        self.entry = tk.Entry(line, font=mono, width=22)
+        self.entry.pack(side="left", padx=4)
+        self.entry.bind("<Return>", lambda e: self.send_line())
+        tk.Button(line, text="Envoyer ⏎", command=self.send_line).pack(side="left")
+        self.show_focus(False)
         tk.Label(right, text="Registres", anchor="w", font=("Helvetica", 9, "bold")).pack(fill="x")
         self.regs = tk.Label(right, font=mono, justify="left", anchor="w", bg="white",
                              relief="sunken")
@@ -596,12 +607,38 @@ class Editeur:
                 self.set_status("le X-07 attend une touche : cliquez sur l'écran et tapez")
         self.root.after(40, self.tick)
 
+    def show_focus(self, on):
+        self.screen_hint.configure(
+            text=("Écran du X-07 : le clavier va au X-07 (Échap = BREAK)" if on else
+                  "Écran du X-07 : cliquez dessus pour taper, ou utilisez le champ dessous"),
+            fg="#1f7a2e" if on else "#555")
+
     def screen_key(self, event):
+        """Touche tapée sur l'écran.  Programme arrêté : la touche est gardée,
+        le programme la lira en repartant (elle n'est plus perdue)."""
         s = self.session
-        if s and s.m and self.busy():
+        if s and s.m and not s.finished:
             from .afficheur import send_key
+            before = len(s.m.keys)
             send_key(s.m, event)
+            if not self.busy() and len(s.m.keys) > before:
+                self.set_status("touches gardées pour le programme : %r ; ▶ pour continuer"
+                                % "".join(s.m.keys))
+        elif s and s.finished:
+            self.set_status("programme terminé : ↺ pour recommencer, puis tapez")
         return "break"
+
+    def send_line(self):
+        """Champ « Taper pour le X-07 » : le texte tel quel, puis Entrée."""
+        s = self.session
+        text = self.entry.get()
+        if not (s and s.m) or s.finished:
+            self.set_status("lancez d'abord le programme (▶)")
+            return
+        s.m.keys += list(text) + ["\r"]
+        self.entry.delete(0, "end")
+        if not self.busy():
+            self.set_status("ligne gardée pour le programme : %r ; ▶ pour continuer" % text)
 
     def close(self):
         if self.session and self.session.m:
