@@ -246,6 +246,48 @@ END SUB''', " 1  1  1  2  1  3 \n")
         # écran de 20 colonnes : un nombre qui ne tient plus passe à la ligne
         self.qb(self.example("tri.qbas"), " 6  7  9  11  12 \n 14  15  18 \nMoyenne : 11.5 \n")
 
+    def test_example_tri2_same_sub_two_arrays(self):
+        # Trier reçoit deux tableaux : une copie de la procédure pour chacun
+        out, warns = self.qb(self.example("tri2.qbas"),
+                             " 6  7  9  11  12 \n 14  15  18 \nMoyenne : 11.5 \n")
+        self.assertTrue(any("2 tableaux" in w for w in warns))
+
+    def test_array_passed_on_and_local_arrays(self):
+        # tableau transmis d'une procédure à l'autre ; tableau local remis à
+        # zéro à chaque appel (QuickBASIC), sauf dans une procédure STATIC
+        self.qb('''
+DECLARE SUB Remplir (t(), v)
+DECLARE SUB Doubler (t())
+DECLARE FUNCTION Somme (t())
+DECLARE SUB Garde ()
+DIM a(3), b(3)
+Remplir a(), 1
+Remplir b(), 10
+Doubler b()
+PRINT Somme(a()); Somme(b())
+Garde
+Garde
+SUB Remplir (t(), v)
+  DIM w(2)
+  w(1) = w(1) + 1
+  FOR i = 0 TO 3: t(i) = v: NEXT
+  PRINT w(1);
+END SUB
+SUB Doubler (t())
+  FOR i = 0 TO 3: t(i) = 2 * t(i): NEXT
+  Remplir t(), Somme(t())
+END SUB
+FUNCTION Somme (t())
+  s = 0
+  FOR i = 0 TO 3: s = s + t(i): NEXT
+  Somme = s
+END FUNCTION
+SUB Garde STATIC
+  DIM g$(1, 1)
+  g$(1, 1) = g$(1, 1) + "*"
+  PRINT g$(1, 1);
+END SUB''', " 1  1  1  4  320 \n***\n")   # STATIC : * puis **
+
     def test_example_mystere(self):
         src = self.example("mystere.qbas")
         out, _, _ = qbasic.translate(src)

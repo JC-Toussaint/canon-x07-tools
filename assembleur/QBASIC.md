@@ -105,7 +105,8 @@ Ces différences ont été mesurées dans l'émulateur, qui exécute la vraie RO
 | pas de `SPC()` : `SPC(2)` est lu comme un tableau | | `STRING$(n," ")` (comme `SPACE$`) |
 | `INPUT "texte",v` donne `SN Error` | le X-07 affiche toujours « ? » | `INPUT "texte";v` (avertissement) |
 | type par défaut : double précision | QuickBASIC : simple | `DEFSNG A-Z` en tête |
-| `DIM` refait donne `DD Error`, `ERASE` d'un tableau absent donne `FC Error` | tableaux locaux des procédures | `DIM` exécuté au premier appel seulement |
+| `DIM` refait donne `DD Error`, `ERASE` d'un tableau absent donne `FC Error` | tableaux locaux des procédures | `DIM` une seule fois en tête du programme, tableau remis à zéro à chaque appel |
+| pas de pointeurs : un tableau ne peut pas être passé en paramètre | `SUB Trier (t())` | une copie de la procédure par tableau reçu |
 
 Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonnes), opérateurs et priorités, vrai = -1, `MOD`, `\`, `&H`, `&O`, fonctions de chaînes, `DATA`/`READ`/`RESTORE`, `ON ... GOTO/GOSUB`, `DEF FN`, et sortie d'une boucle `FOR` par `GOTO` (tolérée par la ROM).
 
@@ -124,7 +125,8 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 | appel de `FUNCTION` dans une expression, un test, une condition de boucle | appel fait juste avant, résultat dans une variable |
 | variables locales | variables propres à chaque procédure, **remises à zéro à chaque appel** ; `STATIC` les garde |
 | `DIM SHARED`, `SHARED` | variables du module |
-| paramètre tableau `t()` | le tableau réel, s'il est le même à chaque appel |
+| paramètre tableau `t()` | une **copie de la procédure pour chaque tableau reçu** (avertissement) ; ses variables simples restent communes. Un tableau peut aussi être transmis d'une procédure à une autre |
+| tableau local (`DIM` dans une procédure) | `DIM` une seule fois en tête du programme ; remis à zéro à chaque appel par une boucle, sauf `STATIC` (tailles constantes, 1 ou 2 dimensions) |
 | `CONST` | valeur recopiée dans les expressions |
 | `DIM a(1 TO n)` | `DIM a(n)` (le X-07 commence à 0) |
 | `DIM x AS INTEGER/SINGLE/DOUBLE/STRING`, suffixes, `DEFINT`… | suffixe explicite `%` `#` `$` |
@@ -145,14 +147,14 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 | fichiers (`OPEN`, `PRINT #`…), `WRITE` | les périphériques du X-07 sont différents | — |
 | `UCASE$`, `LCASE$`, `LTRIM$`, `RTRIM$`, `OCT$` | absents de la ROM | `MID$(STR$(x),2)` pour un nombre positif |
 | `DIM t(2 TO 5)` | indices à partir de 0 seulement | décaler les indices |
-| un paramètre tableau qui reçoit des tableaux différents | il faudrait des pointeurs | copier dans un tableau commun |
 | `REDIM`, chaînes de longueur fixe, `RETURN étiquette`, `LINE -(x,y)` | | |
 
 **Différences qui restent**, à connaître :
 - **Arrondi :** QuickBASIC arrondit les demis au pair (`CINT(2.5)` = 2). La traduction donne 3.
 - **Largeur d'écran :** sur 20 colonnes, `PRINT` passe à la ligne plus souvent. C'est la raison pour laquelle le programme doit être « adapté au X-07 ».
 - **Paramètres :** une procédure qui modifie à la fois un paramètre et la variable passée (par `SHARED`) ne voit pas la même chose qu'en QuickBASIC. La recopie se fait au retour.
-- **Tableaux locaux :** ils ne sont jamais remis à zéro, comme s'ils étaient `STATIC`.
+- **Tableaux locaux de taille variable** (`DIM w(n)` dans une procédure) : créés au premier appel et jamais remis à zéro, comme s'ils étaient `STATIC`. Le compilateur les refuse si la procédure est recopiée.
+- **Taille :** chaque tableau différent passé à une procédure ajoute une copie de son code. Avec beaucoup de tableaux et une grosse procédure, la mémoire du X-07 peut manquer.
 - **Messages d'erreur :** ils donnent les numéros de ligne du programme traduit.
 
 ## Deux voies vers l'assembleur
@@ -181,5 +183,5 @@ Mais cette voie ne produirait plus de BASIC du X-07, n'aurait plus la ROM pour r
 ```
 x07asm/qbasic.py          traducteur : analyse, renommage, génération numérotée
 tests/test_qbasic.py      tests (ROM + version compilée)
-exemples/qbasic/          tri.qbas, mystere.qbas
+exemples/qbasic/          tri.qbas, tri2.qbas (même SUB pour deux tableaux), mystere.qbas
 ```

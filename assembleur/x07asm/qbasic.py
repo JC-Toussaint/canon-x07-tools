@@ -1238,15 +1238,20 @@ class Translator:
         if len(args) != len(proc["params"]):
             raise QBError("%s : %d paramètre(s) attendu(s), %d donné(s)" % (
                 proc["name"], len(proc["params"]), len(args)))
-        back = []
+        back, arrays = [], []
         for (pname, is_arr, _), a, orig in zip(proc["params"], args, orig_args):
-            if is_arr:
-                continue                                 # tableau : même tableau partout
+            if is_arr:                                   # tableau : copie de la procédure
+                if orig[0] == "idx" and not orig[2]:     # v() : tout le tableau
+                    orig = ("var", orig[1])
+                if orig[0] != "var":
+                    raise QBError("%s : tableau attendu pour %s" % (proc["name"], pname))
+                arrays.append(self.xvar(orig[1], True))
+                continue
             px = info["params"][pname]
             self.emit("%s=%s" % (px, self.x(self.convert(a, px))))
             if orig[0] in ("var", "idx") and not (orig[0] == "var" and base(orig[1]) in self.consts):
                 back.append((orig, px))
-        self.emit("GOSUB @%s" % info["label"])
+        self.emit("GOSUB @%s" % self.spec(key, tuple(arrays))[0])
         for orig, px in back:                            # passage par référence
             tgt = self.x(self.hoist(orig))
             if tgt != px:
@@ -1315,8 +1320,9 @@ class Translator:
         self.proc_info = {}
         for key, p in self.procs.items():
             sc = Scope(self.global_scope, key)
-            info = {"scope": sc, "label": self.new_label(), "exit": self.new_label(),
-                    "params": {}, "result": None}
+            info = {"scope": sc, "params": {}, "result": None,
+                    "specs": {},        # tableaux reçus -> (étiquette, sortie)
+                    "dimflags": {}}     # tableaux locaux déjà créés
             self.scope = sc
             for pname, is_arr, typ in p["params"]:
                 b = base(pname)
@@ -1333,37 +1339,16 @@ class Translator:
             self.proc_info[key] = info
             self.scope = self.global_scope
 
-    def bind_array_params(self):
-        """Paramètre tableau : le tableau réel doit être le même à chaque appel."""
-        bound = {}
+    def spec(self, key, arrays):
+        """Étiquettes de la copie de la procédure key pour ces tableaux réels.
 
-        def visit(stmts):
-            for s in stmts:
-                walk(s)
-
-        def walk(node):
-            if isinstance(node, tuple) and node:
-                if node[0] in ("callsub", "ufn") and node[1] in self.procs:
-                    p = self.procs[node[1]]
-                    for (pn, is_arr, _), a in zip(p["params"], node[2]):
-                        if is_arr:
-                            if a[0] == "idx" and not a[2]:          # v() : tout le tableau
-                                a = ("var", a[1])
-                            if a[0] != "var":
-                                raise QBError("%s : tableau attendu pour %s" % (p["name"], pn))
-                            prev = bound.setdefault((node[1], base(pn)), a[1])
-                            if prev != a[1]:
-                                raise QBError("%s reçoit plusieurs tableaux (%s, %s) : non "
-                                              "traduisible sans pointeurs" % (p["name"], prev, a[1]))
-                for c in node[1:]:
-                    walk(c)
-            elif isinstance(node, list):
-                for c in node:
-                    walk(c)
-        visit(self.main)
-        for p in self.procs.values():
-            visit(p["body"])
-        return bound
+        Sans pointeurs, une procédure qui reçoit des tableaux différents est
+        recopiée pour chacun ; ses variables simples restent communes."""
+        info = self.proc_info[key]
+        if arrays not in info["specs"]:
+            info["specs"][arrays] = (self.new_label(), self.new_label())
+            self.pending.append((key, arrays))
+        return info["specs"][arrays]
 
     # -------------------------------------------------- programme
     def translate(self):
@@ -1383,14 +1368,23 @@ class Translator:
                 for n, e in s[1]:
                     self.consts[base(n)] = e
         self.prepare_procs()
-        bound = self.bind_array_params()
-        for (pname, b), actual in bound.items():
-            self.proc_info[pname]["scope"].alias[b] = self.xvar(actual, True)
+        self.pending = []
+        self.hoisted_dims = {}                             # tableaux locaux des procédures
+        for key, p in self.procs.items():              # sans tableau : une seule copie
+            if not any(is_arr for _, is_arr, _ in p["params"]):
+                self.spec(key, ())
         self.emit("DEFSNG A-Z")                            # QuickBASIC : simple par défaut
         self.gen_block(self.main, {})
         self.emit("END")
-        for key, p in self.procs.items():
-            self.gen_proc(key, p)
+        while self.pending:                                # copies demandées par les appels
+            key, arrays = self.pending.pop(0)
+            self.gen_proc(key, self.procs[key], arrays)
+        if self.hoisted_dims:                              # juste après DEFSNG A-Z
+            self.items.insert(1, ("stmt", "DIM " + ",".join(self.hoisted_dims.values()), False))
+        for key, info in self.proc_info.items():
+            if len(info["specs"]) > 1:
+                self.warn("%s reçoit %d tableaux différents : une copie de la procédure "
+                          "pour chacun" % (self.procs[key]["name"], len(info["specs"])))
         return self.layout()
 
     def apply_deftype(self, s):
@@ -1399,9 +1393,12 @@ class Translator:
             for c in range(ord(a[0]), ord(b[0]) + 1):
                 self.deftype[chr(c)] = typ
 
-    def gen_proc(self, key, p):
+    def gen_proc(self, key, p, arrays=()):
         info = self.proc_info[key]
         self.scope = info["scope"]
+        self.scope.alias = {base(pn): a for (pn, _, _), a in
+                            zip([q for q in p["params"] if q[1]], arrays)}
+        label, exit_label = info["specs"][arrays]
         for s in p["body"]:
             if s[0] == "shared":
                 for n, _, typ in s[1]:
@@ -1417,12 +1414,12 @@ class Translator:
                 for n, _, typ in s[2]:
                     if typ:
                         self.scope.declared[base(n)] = typ
-        self.place(info["label"])
+        self.place(label)
         if not p["static"]:
             self.zero_locals(p, info)
-        ctx = {"proc": p, "info": info}
+        ctx = {"proc": p, "info": info, "exit": exit_label}
         self.gen_block(p["body"], ctx)
-        self.place(info["exit"])
+        self.place(exit_label)
         self.emit("RETURN")
         self.scope = self.global_scope
 
@@ -1714,7 +1711,7 @@ class Translator:
         else:
             if "info" not in ctx:
                 raise QBError("EXIT %s hors d'une procédure" % w)
-            self.emit("GOTO @%s" % ctx["info"]["exit"])
+            self.emit("GOTO @%s" % ctx["exit"])
 
     def g_select(self, s, ctx):
         _, sel, cases, other = s
@@ -1745,7 +1742,7 @@ class Translator:
 
     def g_dim(self, s, ctx):
         _, shared, decls = s
-        out = []
+        out, local = [], []
         for name, dims, typ in decls:
             if typ:
                 self.scope.declared[base(name)] = typ
@@ -1759,12 +1756,33 @@ class Translator:
                         raise QBError("DIM %s(%s TO ...) : le X-07 commence toujours à 0"
                                       % (name, self.x(lo)))
                 sizes.append(self.x(self.hoist(hi)))
-            out.append("%s(%s)" % (self.xvar(name, True), ",".join(sizes)))
+            xn = self.xvar(name, True)
+            text = "%s(%s)" % (xn, ",".join(sizes))
+            consts = [self.const_value(hi) for _, hi in dims]
+            if "proc" in ctx and None not in consts and len(dims) <= 2:
+                local.append((name, xn, text, [int(c) for c in consts]))
+            else:
+                out.append(text)
+        for name, xn, text, sizes in local:
+            # tableau local de taille constante : DIM une seule fois, en tête du
+            # programme (un DIM refait donnerait DD Error, et le compilateur
+            # refuse deux DIM) ; remis à zéro à chaque appel, comme QuickBASIC
+            self.hoisted_dims[xn] = text
+            if ctx["proc"]["static"] or base(name) in self.scope.statics:
+                continue
+            zero = '""' if xn.endswith("$") else "0"
+            idx = [self.temp("i") for _ in sizes]
+            loops = ":".join("FOR %s=0 TO %d" % (t, n) for t, n in zip(idx, sizes))
+            nexts = ":".join("NEXT %s" % t for t in reversed(idx))
+            self.emit("%s:%s(%s)=%s:%s" % (loops, xn, ",".join(idx), zero, nexts))
         if out and "proc" in ctx:
-            # un DIM refait à chaque appel donnerait DD Error : une seule fois
-            self.warn("tableau local d'une procédure : créé au premier appel, "
-                      "jamais remis à zéro (comme STATIC)")
-            flag = self.temp("i")
+            # taille variable : DIM au premier appel seulement (ROM uniquement)
+            self.warn("tableau local de taille variable : créé au premier appel, jamais "
+                      "remis à zéro (comme STATIC) ; le compilateur ne l'accepte pas "
+                      "si la procédure est recopiée")
+            key = ",".join(out)                 # même DIM dans chaque copie : un seul drapeau
+            flag = ctx["info"]["dimflags"].get(key) or self.temp("i")
+            ctx["info"]["dimflags"][key] = flag
             self.emit("IF %s=0 THEN DIM %s:%s=1" % (flag, ",".join(out), flag), True)
         elif out:
             self.emit("DIM " + ",".join(out))
