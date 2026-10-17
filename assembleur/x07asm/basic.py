@@ -34,7 +34,7 @@ VAL ASC CHR$ TKEY LEFT$ RIGHT$ MID$ CSRLIN STICK STRIG POINT ERL ERR TAB( SPC(
 """.split(), key=len, reverse=True)
 
 OPS2 = ("<>", "<=", ">=", "=<", "=>", "><")
-OPS1 = "+-*/\\^=<>(),;:"
+OPS1 = "+-*/\\^=<>(),;:#"
 
 
 class CompileError(Exception):
@@ -570,6 +570,13 @@ class Parser:
         return self._let()
 
     def st_PRINT(self):
+        if self.isop("#"):                      # PRINT #canal, ... : fichier
+            self.next()
+            ch = self.nexpr()
+            if not self.at_end():
+                self.expect_op(",")
+            _, items, nl = self.st_PRINT()
+            return ("fprint", ch, items, nl)
         items = []
         while not self.at_end():
             if self.accept_op(";"):
@@ -706,10 +713,47 @@ class Parser:
         return ("t6", 0x12, list(self._point()))
 
     def st_LINE(self):
+        if self.accept_kw("INPUT"):             # LINE INPUT ["texte";] v$ / LINE INPUT #c, v$
+            if self.isop("#"):
+                self.next()
+                ch = self.nexpr()
+                self.expect_op(",")
+                return ("flineinput", ch, self._string_target())
+            prompt = None
+            if self.cur.kind == "str":
+                prompt = self.next().val
+                self.expect_op(";")
+            return ("lineinput", prompt, self._string_target())
         a = self._point()
         self.expect_op("-")
         b = self._point()
         return ("t6", 0x14, list(a + b))
+
+    def _string_target(self):
+        t = self.target()
+        if self.ty.of(t[1]) != "s":
+            self.err("LINE INPUT : variable chaîne attendue")
+        return t
+
+    def st_INIT(self):                          # INIT #canal,"RAM:NOM"[,taille]
+        self.expect_op("#")
+        ch = self.nexpr()
+        self.expect_op(",")
+        name = self.expr()
+        if self.et(name) != "s":
+            self.err("INIT # : nom de fichier attendu")
+        size = self.nexpr() if self.accept_op(",") else None
+        return ("finit", ch, name, size)
+
+    def st_FSET(self):
+        return ("fset", self.nexpr())
+
+    def st_DELETE(self):                        # DELETE "NOM" : fichier en RAM
+        e = self.expr()
+        if self.et(e) != "s":
+            self.err("DELETE : nom de fichier attendu (les lignes ne se suppriment pas "
+                     "dans un programme compilé)")
+        return ("fdel", e)
 
     def st_CIRCLE(self):
         a = self._point()
@@ -727,6 +771,14 @@ class Parser:
         return ("font", code, e)
 
     def st_INPUT(self):
+        if self.isop("#"):                      # INPUT #canal, variables
+            self.next()
+            ch = self.nexpr()
+            self.expect_op(",")
+            tg = [self.target()]
+            while self.accept_op(","):
+                tg.append(self.target())
+            return ("finput", ch, tg)
         prompt, q = None, True
         if self.cur.kind == "str":
             prompt = self.next().val
@@ -1226,6 +1278,65 @@ class Compiler:
         if s[2]:
             self.emit("CALL CRLF")
 
+    # ---------------------------------------------------- fichiers en RAM
+    def s_fprint(self, s):
+        self.gen_i(_fold(s[1]), 0)
+        self.emit("CALL RT_FSEL")               # le fichier devient le périphérique courant
+        self.s_print(("print", s[2], s[3]))
+        self.emit("CALL RT_FEND")
+
+    def s_finput(self, s):
+        self.gen_i(_fold(s[1]), 0)
+        self.emit("CALL RT_FSEL")
+        self.emit("CALL RT_FINPUT")
+        self._input_targets(s[2])
+        self.emit("CALL $E89E")                 # retour à l'écran
+
+    def s_lineinput(self, s):
+        _, prompt, t = s
+        if prompt:
+            self.emit("LD   HL,%s" % self.lit(prompt))
+            self.emit("CALL RT_PRS")
+        self.emit("LD   A,0")                   # sans « ? »
+        self.emit("CALL RT_INPUT")
+        self.gen_target_addr(t)
+        self.emit("CALL RT_INLINE")
+
+    def s_flineinput(self, s):
+        self.gen_i(_fold(s[1]), 0)
+        self.emit("CALL RT_FSEL")
+        self.emit("CALL RT_FINPUT")
+        self.gen_target_addr(s[2])
+        self.emit("CALL RT_INLINE")
+        self.emit("CALL $E89E")
+
+    def s_finit(self, s):
+        _, ch, name, size = s
+        self.gen_i(_fold(ch), 0)
+        self.emit("LD   (RT_FCH),HL")
+        if size is None:
+            self.emit("LD   HL,-1")
+        else:
+            self.gen_i(_fold(size), 0)
+        self.emit("LD   (RT_FSZ),HL")
+        self.emit("LD   HL,%s" % self.sptr(_fold(name), 0))
+        self.emit("CALL RT_FINIT")
+
+    def s_fset(self, s):
+        e = _fold(s[1])
+        if e[0] == "int":                       # place du code : sous la zone des fichiers
+            self.file_space = max(getattr(self, "file_space", 0), e[1])
+        self.gen_i(e, 0)
+        self.emit("CALL RT_FSET")
+
+    def s_fdel(self, s):
+        self.emit("LD   HL,%s" % self.sptr(_fold(s[1]), 0))
+        self.emit("CALL RT_FDEL")
+
+    def s_rtcall(self, s):                      # routine d'exécution, HL = valeur
+        self.gen_i(_fold(s[2]), 0)
+        self.emit("CALL %s" % s[1])
+
     def gen_cond(self, cond, false_label):
         cond = _fold(cond)
         if self.et(cond) == "i":
@@ -1495,6 +1606,9 @@ class Compiler:
             self.emit("CALL RT_PRS")
         self.emit("LD   A,%d" % (1 if q else 0))
         self.emit("CALL RT_INPUT")
+        self._input_targets(targets)
+
+    def _input_targets(self, targets):
         for t in targets:
             if self.vtype(t[1]) == "s":
                 self.gen_target_addr(t)
@@ -1714,6 +1828,10 @@ class Compiler:
 
     def gen_icall(self, e, d):
         name, args = e[1], e[2]
+        if name == "EOF":                       # compilation directe de QuickBASIC
+            self.gen_i(args[0], d)
+            self.emit("CALL RT_FEOF")
+            return
         if name in ("INT", "FIX"):
             return self.gen_i(args[0], d)
         if name == "ABS":

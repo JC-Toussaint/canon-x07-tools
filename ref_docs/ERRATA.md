@@ -33,6 +33,7 @@ Ces erreurs changent le comportement d'un programme ou font planter la machine :
 
 | Page / § | Sujet | Erreur | Correction | Vérifié par |
 |---|---|---|---|---|
+| Table des mots-clés | Adresse de `FSET` (jeton `$B0`) | `BF36` | **`$BF56`** (table de répartition en `$F0D6` : `INIT`, `ERASE`… voisins concordent) | ROM |
 | 69–74 | Port `$F6` en lecture | « T\*RDY : réception, R\*RDY : transmission » | RXRDY = réception prête (bit 1), TXRDY = émission prête (bit 0) | ROM |
 | 74–86 | Commandes `$38`/`$39` du T6834 | « CLICK OFF déclenche, CLICK ON enclenche » | OFF = désactivé, ON = activé | livre |
 | 74–86 | `STICK`, `STRIG` | non précisé | `STICK` : commande `$82`, réponse `AND $0F`. `STRIG(0)` = `$84` (espace), `STRIG(1)` = `$83` (F6) ; −1 si enfoncée | ROM |

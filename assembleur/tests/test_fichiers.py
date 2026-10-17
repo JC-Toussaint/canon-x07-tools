@@ -103,3 +103,179 @@ class TestPowerCycle(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@needs_rom
+class TestQBasicFiles(unittest.TestCase):
+    """OPEN, PRINT #, WRITE #, INPUT #, LINE INPUT #, EOF, KILL : traduction
+    en BASIC du X-07, exécutée par la ROM."""
+
+    def translate_run(self, src, machine=None, **kw):
+        from x07asm import qbasic
+        out, warns, _ = qbasic.translate(src)
+        res, m = emu.run_basic(out, machine=machine, max_steps=40_000_000, **kw)
+        self.assertIsNone(m.error, out)
+        return res.strip().replace("\n", " | "), m, out
+
+    def test_output_write_append_input_eof(self):
+        res, _, out = self.translate_run('''
+OPEN "notes.dat" FOR OUTPUT AS #1
+FOR i% = 1 TO 3
+    PRINT #1, "Ligne"; i%
+NEXT i%
+WRITE #1, "a,b", 42
+CLOSE #1
+OPEN "notes.dat" FOR APPEND AS #1
+PRINT #1, "Ajout"
+CLOSE #1
+OPEN "notes.dat" FOR INPUT AS #2
+n% = 0
+DO WHILE NOT EOF(2)
+    LINE INPUT #2, l$
+    n% = n% + 1
+    PRINT l$; "/";
+LOOP
+CLOSE
+PRINT n%''')
+        self.assertEqual(res, 'Ligne 1 /Ligne 2 /Ligne 3 /"a,b", 42 /Ajout/ 5')
+        self.assertIn("FSET 1024", out)
+        self.assertIn('INIT #1,"RAM:NOTES",256', out)
+
+    def test_input_values_and_rewrite(self):
+        res, _, _ = self.translate_run('''
+OPEN "val" FOR OUTPUT AS #1 LEN = 100
+WRITE #1, "Zoe", 12
+WRITE #1, "Max", 30
+CLOSE #1
+OPEN "val" FOR OUTPUT AS #1
+WRITE #1, "Lea", 7
+CLOSE #1
+OPEN "val" FOR INPUT AS #1
+DO UNTIL EOF(1)
+    INPUT #1, nom$, age%
+    PRINT nom$; age%; "/";
+LOOP''')
+        self.assertEqual(res, "Lea 7 /")          # OUTPUT a vidé le fichier
+
+    def test_kill_and_channel_limit(self):
+        from x07asm import qbasic
+        res, m, out = self.translate_run('OPEN "a" FOR OUTPUT AS #1\nPRINT #1, 1\nKILL "a"\n'
+                                         'OPEN "b" FOR OUTPUT AS #1\nCLOSE')
+        self.assertIn('DELETE "A"', out)
+        with self.assertRaises(qbasic.QBError):
+            qbasic.translate('OPEN "a" FOR OUTPUT AS #6')
+
+    def test_journal_survives_power_off(self):
+        with open(os.path.join(ROOT, "exemples", "qbasic", "journal.qbas"),
+                  encoding="utf-8") as f:
+            src = f.read()
+        machine = None
+        for note, count in (("PAIN", 1), ("ZOE", 2), ("PILES", 3)):
+            res, m, _ = self.translate_run(src, machine=machine, inputs=[note], keys=" ")
+            self.assertIn("%d %s" % (count, note), res)
+            self.assertIn(" %d note(s)" % count, res)
+            machine = emu.power_on(emu.power_off(m))      # éteint, rallumé
+
+    def test_memory_option(self):
+        import contextlib
+        import io
+        import tempfile
+        from x07asm.cli import main
+        src = ('n% = 0\nOPEN "compte" FOR APPEND AS #1\nCLOSE\nOPEN "compte" FOR INPUT AS #1\n'
+               'IF NOT EOF(1) THEN INPUT #1, n%\nCLOSE\nn% = n% + 1\n'
+               'OPEN "compte" FOR OUTPUT AS #1\nPRINT #1, n%\nCLOSE\nPRINT "LANCEMENT"; n%\n')
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "compte.qbas")
+            with open(p, "w") as f:
+                f.write(src)
+            mem = os.path.join(d, "x07.mem")
+            for k in (1, 2, 3):
+                with contextlib.redirect_stdout(io.StringIO()) as out:
+                    self.assertEqual(main(["emu", p, "--memoire", mem]), 0)
+                self.assertIn("LANCEMENT %d" % k, out.getvalue())
+            self.assertEqual(os.path.getsize(mem), 16384)
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(main(["emu", p, "--memoire", mem, "--ram", "8"]), 1)
+            self.assertIn("16 Ko", err.getvalue())
+
+
+FILE_PROGRAMS = {
+    "ecriture, ajout, EOF": ('''
+OPEN "notes.dat" FOR OUTPUT AS #1
+FOR i% = 1 TO 3
+    PRINT #1, "Ligne"; i%
+NEXT i%
+WRITE #1, "a,b", 42
+CLOSE #1
+OPEN "notes.dat" FOR APPEND AS #1
+PRINT #1, "Ajout"
+CLOSE #1
+OPEN "notes.dat" FOR INPUT AS #2
+n% = 0
+DO WHILE NOT EOF(2)
+    LINE INPUT #2, l$
+    n% = n% + 1
+    PRINT l$; "/";
+LOOP
+PRINT n%''', 'Ligne 1 /Ligne 2 /Ligne 3 /"a,b", 42 /Ajout/ 5'),
+    "WRITE puis INPUT #, KILL": ('''
+OPEN "val" FOR OUTPUT AS #1 LEN = 100
+WRITE #1, "Zoe, la", 12
+WRITE #1, "Max", 30
+CLOSE #1
+OPEN "val" FOR APPEND AS #1
+WRITE #1, "Lea", 7
+CLOSE
+OPEN "val" FOR INPUT AS #1
+DO UNTIL EOF(1)
+    INPUT #1, nom$, age%
+    PRINT nom$; age%; "/";
+LOOP
+KILL "val"''', "Zoe, la 12 /Max 30 /Lea 7 /"),
+}
+
+
+@needs_rom
+class TestCompiledFiles(unittest.TestCase):
+    """Les fichiers dans les trois voies : traduction exécutée par la ROM,
+    traduction compilée, compilation directe."""
+
+    def compiled(self, src, direct, inputs=(), keys="", machine=None):
+        import tempfile
+        from x07asm.cli import build_basic
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "f.qbas")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(src)
+            _, a, mem, _ = build_basic(p, "auto", 16, direct=direct)
+        self.assertLess(max(mem), 0x3FFF - 1024)          # sous la zone des fichiers
+        return emu.run_binary(mem, a.entry, inputs=inputs, keys=keys, machine=machine)
+
+    def test_three_paths_agree(self):
+        from x07asm import qbasic
+        for name, (src, expected) in FILE_PROGRAMS.items():
+            out, _, _ = qbasic.translate(src)
+            ref, m = emu.run_basic(out, max_steps=40_000_000)
+            self.assertEqual(ref.strip(), expected, name)
+            for direct in (False, True):
+                mc = self.compiled(src, direct)
+                self.assertEqual(mc.output().strip(), expected, (name, direct))
+
+    def test_compiled_journal_survives_power_off(self):
+        with open(os.path.join(ROOT, "exemples", "qbasic", "journal.qbas"),
+                  encoding="utf-8") as f:
+            src = f.read()
+        machine = None
+        for note, count in (("PAIN", 1), ("ZOE", 2)):
+            m = self.compiled(src, True, inputs=[note], keys=" ", machine=machine)
+            self.assertIn(" %d %s" % (count, note), m.output())
+            machine = emu.power_on(emu.power_off(m))      # éteint, rallumé
+
+    def test_direct_errors(self):
+        from x07asm import qbasic, qbcomp
+        for src in ('OPEN "a" FOR OUTPUT AS #6', 'PRINT EOF(7)'):
+            with self.assertRaises(qbasic.QBError):
+                qbcomp.compile_qbasic(src)
+        m = self.compiled('OPEN "absent" FOR INPUT AS #1', True)
+        self.assertIn("NE Error", m.output())             # erreur de la ROM, telle quelle

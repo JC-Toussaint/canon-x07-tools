@@ -554,7 +554,7 @@ CIRCLE & A4 & 009C & CONSOLE & A5 & E243 & CLS & A6 & CE9E \\
 COLOR & A7 & 008A & EXEC & A8 & CEB8 & LOCATE & A9 & E212 \\
 PSET & AA & 008D & PRESET & AB & 0090 & OFF & AC & C5B1 \\
 SLEEP & AD & C59B & DIR & AE & E5E3 & DELETE & AF & E682 \\
-FSET & B0 & BF36 & PAINT & B1 & 0099 & LOAD & B2 & DF38 \\
+FSET & B0 & BF56 & PAINT & B1 & 0099 & LOAD & B2 & DF38 \\
 SAVE & B3 & DEFE & INIT & B4 & E699 & ERASE & B5 & E3CF \\
 BEEP & B6 & C2CD & CLOAD & B7 & DF30 & CSAVE & B8 & DEF9 \\
 NEW & B9 & D214 & FN & BC & FCB5 & ERL & BE & FAC4 \\
@@ -576,6 +576,10 @@ CHR\$ & F6 & D828 & TKEY & F7 & D7CC & LEFT\$ & F8 & DC5A \\
 RIGHT\$ & F9 & DC8A & MID\$ & FA & DC93 & CSRLIN & FB & CEAF \\
 STICK & FC & D7E3 & STRIG & FD & D7F8 & POINT & FE & 0093 \\
 \end{longtable}
+\nota{Le livre donne \hex{BF36} pour FSET. La table de répartition de la ROM
+(\hex{F0D6}) donne \hex{BF56} (\hex{BF36} est au milieu de la conversion des
+nombres) ; ses voisines INIT, ERASE, LOAD, SAVE concordent avec le livre.
+Vérifié dans la ROM et en appelant le gestionnaire depuis du code compilé.}
 }
 Codes de contrôle de la fig.~27 : BELL (sonnerie), BS (retour arrière), LF
 (saut de ligne), LU (ligne précédente), CLS, CR, flèches de déplacement du

@@ -25,8 +25,8 @@ import re
 
 from . import basic
 from .basic import CompileError
-from .qbasic import (FUNCTIONS, NOT_ON_X07, REL, Parser, QBError, base, check_argument,
-                     num_literal, tokenize)
+from .qbasic import (FILE_SIZE, FILE_SPACE, FUNCTIONS, NOT_ON_X07, REL, Parser, QBError, base,
+                     check_argument, num_literal, ram_file_name, tokenize)
 
 SUFFIX = {"i": "%", "s": "!", "d": "#", "$": "$"}
 SIZE = {"i": 2, "s": 4, "d": 8}
@@ -324,6 +324,9 @@ class Lowering:
             self.err(NOT_COMPILED[f])
         a = [self.x(v) for v in args]
         one = ("int", 1)
+        if f == "EOF":                                  # fichiers en RAM : RT_FEOF
+            self.check_channel(args[0])
+            return ("call", "EOF", a)
         if f == "SPACE$":
             return ("call", "STRING$", [a[0], ("int", 32)])
         if f in ("CINT", "CLNG"):
@@ -554,6 +557,15 @@ class Lowering:
                 for n, e in s[1]:
                     self.consts[base(n)] = e
         self.prepare()
+        if self.uses_files():
+            # zone des fichiers : FSET seulement si elle est trop petite (comme la traduction)
+            zone = ("bin", "-", ("bin", "+", self.peek(0x212), ("bin", "*", ("int", 256),
+                                                                 self.peek(0x213))),
+                    ("bin", "+", self.peek(0x210), ("bin", "*", ("int", 256), self.peek(0x211))))
+            skip = self.new_label()
+            self.emit(("qjf", ("bin", "<", zone, ("int", self.file_space - 13)), skip))
+            self.emit(("fset", ("int", self.file_space)))
+            self.place(skip)
         self.gen_block(self.main, {})
         self.emit(("end",))
         for proc in self.procs.values():
@@ -587,8 +599,73 @@ class Lowering:
         self.assign(tgt, e)
 
     def g_print(self, s, ctx):
+        items, nl = self.print_items(s[1])
+        self.emit(("print", items, nl))
+
+    def g_using(self, s, ctx):
+        self.err("PRINT USING n'est pas géré par le compilateur")
+
+    # -------------------------------------------------- fichiers en RAM (FICHIERS.md)
+    file_space, file_size = FILE_SPACE, FILE_SIZE
+
+    @staticmethod
+    def peek(a):
+        return ("call", "PEEK", [("int", a)])
+
+    def uses_files(self):
+        kinds = ("open", "kill", "fprint", "finput", "flineinput")
+
+        def walk(node):
+            if isinstance(node, tuple) and node:
+                if node[0] in kinds or (node[0] == "write" and node[1] is not None) or \
+                        (node[0] == "call" and node[1] == "EOF"):
+                    return True
+                return any(walk(c) for c in node[1:])
+            if isinstance(node, list):
+                return any(walk(c) for c in node)
+            return False
+        return walk(self.main) or any(walk(p.p["body"]) for p in self.procs.values())
+
+    def check_channel(self, ch):
+        v = self.const_value(ch)
+        if v is not None and not 1 <= v <= 5:
+            self.err("fichier #%d : le X-07 n'a que les canaux 1 à 5" % v)
+
+    def chan(self, ch):
+        self.check_channel(ch)
+        return self.value(ch, "i")
+
+    def file_name(self, e):
+        if e[0] == "str":
+            name, note = ram_file_name(e[1])
+            if note:
+                self.warn(note)
+            return name, ("str", "RAM:" + name)
+        self.warn("nom de fichier calculé : 6 caractères au plus sur le X-07")
+        v = self.value(e)
+        return None, ("bin", "+", ("str", "RAM:"), v)
+
+    def g_open(self, s, ctx):
+        _, name, mode, ch, size = s
+        c = self.chan(ch)
+        _, full = self.file_name(name)
+        if mode == "INPUT":
+            self.emit(("finit", c, full, None))
+            return
+        n = self.value(size, "i") if size is not None else ("int", self.file_size)
+        self.emit(("finit", c, full, n))
+        self.emit(("rtcall", "RT_FZERO" if mode == "OUTPUT" else "RT_FAPP", c))
+
+    def g_close(self, s, ctx):
+        pass                                            # rien à fermer sur le X-07
+
+    def g_kill(self, s, ctx):
+        short, full = self.file_name(s[1])
+        self.emit(("fdel", ("str", short) if short else self.value(s[1])))
+
+    def print_items(self, raw):
         items = []
-        for i in s[1]:
+        for i in raw:
             if i == ";":
                 items.append(("sep", ";"))
             elif i == ",":
@@ -601,18 +678,45 @@ class Lowering:
                 if items and items[-1][0] != "sep":
                     items.append(("sep", ";"))
                 items.append(("expr", self.value(i)))
-        nl = not items or items[-1][0] != "sep"
-        self.emit(("print", items, nl))
+        return items, not items or items[-1][0] != "sep"
 
-    def g_using(self, s, ctx):
-        self.err("PRINT USING n'est pas géré par le compilateur")
+    def g_fprint(self, s, ctx):
+        c = self.chan(s[1])
+        items, nl = self.print_items(s[2])
+        self.emit(("fprint", c, items, nl))
+
+    def g_write(self, s, ctx):
+        """WRITE : valeurs séparées par des virgules, chaînes entre guillemets."""
+        _, ch, raw = s
+        quote = ("expr", ("call", "CHR$", [("int", 34)]))
+        items = []
+        for k, i in enumerate(raw):
+            if k:
+                items += [("sep", ";"), ("expr", ("str", ",")), ("sep", ";")]
+            v = self.value(i)
+            if self.etype(i) == "$":
+                items += [quote, ("sep", ";"), ("expr", v), ("sep", ";"), quote]
+            else:
+                items.append(("expr", v))
+        if ch is None:
+            self.emit(("print", items, True))
+        else:
+            self.emit(("fprint", self.chan(ch), items, True))
+
+    def g_finput(self, s, ctx):
+        c = self.chan(s[1])
+        self.emit(("finput", c, [self.target(t) for t in s[2]]))
+
+    def g_flineinput(self, s, ctx):
+        c = self.chan(s[1])
+        self.emit(("flineinput", c, self.target(s[2])))
 
     def g_input(self, s, ctx):
         _, prompt, comma, tg = s
         self.emit(("input", prompt, not comma, [self.target(t) for t in tg]))
 
     def g_lineinput(self, s, ctx):
-        self.err("LINE INPUT n'est pas géré par le compilateur")
+        self.emit(("lineinput", s[1], self.target(s[2])))
 
     def g_if(self, s, ctx):
         _, arms, other = s

@@ -961,6 +961,7 @@ class X07(CPU):
         if cmd == 0x22:                          # ON STATE : démarrage à froid, ou après OFF
             resp = [self.on_state]
         elif cmd == 0x23 and self.real_off:      # OFF REQUEST : alimentation coupée
+            self.is_off = True
             raise PowerOff("machine éteinte par OFF")
         elif cmd == 0x11:                        # PSET
             self.pixels.add(tuple(params[:2]))

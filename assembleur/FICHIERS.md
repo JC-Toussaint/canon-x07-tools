@@ -100,8 +100,72 @@ L'émulateur reproduit maintenant ce cycle : `emu.power_off(machine)` éteint pa
 
 Pistes : une option qui indique la taille de la zone de fichiers prévue, pour placer le code en dessous ; ou lire `RAMSTR` sur la machine.
 
-## Pour la suite (étape 2)
+## Étape 2 : QuickBASIC
 
-1. **Traduction** (`qb`) : `OPEN`/`PRINT #`/`WRITE #`/`INPUT #`/`LINE INPUT #`/`EOF`/`CLOSE`/`KILL`, avec les techniques ci-dessus, et `FSET` en tête (taille à choisir).
-2. **Compilation** (traduction compilée et `--direct`) : appeler le pilote `RAM:` de la ROM (`$E449`, `$E5B4`, `$E5CB`) depuis le code compilé, et placer le code sous la zone des fichiers.
-3. **Émulateur** : garder la RAM entre deux sessions (option de `emu` et `ide`), pour retrouver ses fichiers d'une fois sur l'autre, comme sur la machine.
+**Traduction (`qb`) : faite.** Un programme QuickBASIC lit et écrit des fichiers en RAM :
+
+```basic
+OPEN "notes" FOR APPEND AS #1 LEN = 400   ' LEN = : taille du fichier (256 par défaut)
+PRINT #1, note$
+CLOSE #1
+OPEN "notes" FOR INPUT AS #1
+DO WHILE NOT EOF(1)
+    LINE INPUT #1, ligne$
+    PRINT ligne$
+LOOP
+```
+
+| QuickBASIC | Traduction |
+|---|---|
+| `OPEN nom FOR OUTPUT AS #n [LEN = t]` | `INIT #n,"RAM:NOM",t`, puis remise à zéro des données (sous-programme) |
+| `OPEN nom FOR APPEND AS #n [LEN = t]` | `INIT #n,"RAM:NOM",t` (créé s'il n'existe pas), puis pointeur d'écriture après les données |
+| `OPEN nom FOR INPUT AS #n` | `INIT #n,"RAM:NOM"` (`NE Error` si absent) |
+| `PRINT #n, ...`, `INPUT #n, ...` | tels quels |
+| `WRITE #n, a$, x` | `PRINT #n,CHR$(34);A$;CHR$(34);",";X` (chaînes entre guillemets) |
+| `LINE INPUT #n, a$` | `LINE INPUT #n,A$`, puis retrait du saut de ligne de tête |
+| `EOF(n)` | sous-programme : pointeur de lecture du canal |
+| `KILL nom` | `DELETE "NOM"` |
+| `CLOSE` | rien |
+
+- **La zone des fichiers :** en tête du programme, `FSET 1024` n'est fait que si la zone est plus petite. Un `FSET` plus petit donnerait `OM Error`, et un plus grand garde les fichiers.
+- **Les noms :** ils sont ramenés à 6 caractères, en majuscules, sans extension (`notes.dat` devient `NOTES`), avec un avertissement.
+- **Les canaux :** de 1 à 5.
+
+Exemple : `exemples/qbasic/journal.qbas`. Chaque lancement ajoute une note, puis réaffiche toutes les notes.
+
+**Mémoire gardée dans l'émulateur : faite.** L'option `--memoire FICHIER` de `emu` rallume le X-07 avec la RAM enregistrée (programmes et fichiers), puis l'éteint par `OFF` à la fin et enregistre sa RAM :
+
+```sh
+python3 x07asm.py emu exemples/qbasic/journal.qbas --memoire x07.mem -i "Acheter du pain"
+python3 x07asm.py emu exemples/qbasic/journal.qbas --memoire x07.mem -i "Appeler Zoe"
+```
+
+Au second lancement, le journal contient les deux notes. Dans la fenêtre (`--fenetre`), on éteint en tapant `OFF`. Sans cela, la mémoire n'est pas enregistrée.
+
+**Compilation : faite**, dans les deux voies (traduction compilée et `--direct`). Les trois voies donnent les mêmes résultats.
+
+| Opération | Code compilé |
+|---|---|
+| `INIT #`, `DELETE`, `FSET` | le texte de la commande est fabriqué (`#1,"RAM:NOTES",256`), puis passé au gestionnaire de la ROM (`$E699`, `$E682`, `$BF56`), comme le ferait l'interpréteur : mêmes contrôles, mêmes erreurs |
+| `PRINT #c` | le fichier devient le périphérique courant (`DEVSEL`, `$E827`), puis le `PRINT` compilé habituel s'exécute (il écrit par `RST $28` vers le périphérique courant), et l'on revient à l'écran (`$E89E`) |
+| `INPUT #c`, `LINE INPUT #c` | une ligne est lue dans le fichier par la ROM (`$E8A7`), puis découpée par le code compilé ; le saut de ligne de tête est retiré |
+| `EOF(c)` (`--direct`) | une routine lit le pointeur de lecture du canal |
+| `OPEN … FOR OUTPUT/APPEND` (`--direct`) | des routines vident le fichier ou placent le pointeur d'écriture |
+
+**Deux pièges, découverts en compilant :**
+- **`FSET` fait comme `CLEAR` :** il refait le haut de la zone BASIC juste sous les fichiers, **pile comprise**. Dans un programme compilé, la pile du BASIC tombait alors sur les variables du programme. Le code compilé garde donc sa pile, et remet la zone BASIC telle que l'avait fixée son `CLEAR 50,&H…`, c'est-à-dire sous lui. Sur la vraie machine, il faudrait le faire pour la même raison.
+- **La place du code :** en adresse automatique, un programme qui emploie des fichiers est placé sous la zone des fichiers. Avec `FSET n`, la zone BASIC finit en `haut de la RAM − n − 1`. Le journal compilé, par exemple, occupe `$35D0`-`$3BEF` avec 16 Ko.
+
+`run --memoire FICHIER` garde aussi la mémoire pour un programme compilé :
+
+```sh
+python3 x07asm.py run exemples/qbasic/journal.qbas --direct --ram 16 --memoire x07.mem -i "PAIN"
+```
+
+## Pour la suite
+
+1. ~~Traduction~~ : faite.
+2. ~~Compilation~~ : faite.
+3. ~~Émulateur~~ : fait pour `emu`, `run` et `ide` (`--memoire`).
+
+Restent, pour aller plus loin : les fichiers à accès direct (`RANDOM`, `GET`, `PUT`), `LOF`, et l'essai sur une vraie machine.

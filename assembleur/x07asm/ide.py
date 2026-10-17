@@ -50,9 +50,11 @@ INTERNAL = re.compile(r"(V_|S_|A[IFDS]_)(Q[TAOR]_|FNP_|FN_)")   # variables du c
 class Session:
     """Un programme en cours de débogage, repéré par les lignes de son source."""
 
-    def __init__(self, path, ram=16):
+    def __init__(self, path, ram=16, memoire=None):
         self.path = path
         self.ram = ram
+        self.memoire = memoire             # mémoire du X-07 gardée (fichiers en RAM)
+        self.saved = False
         self.kind = os.path.splitext(path)[1].lower().lstrip(".")
         self.break_lines = set()           # points d'arrêt : lignes du source (1, 2...)
         self.m = self.dbg = None
@@ -67,7 +69,16 @@ class Session:
         from .cli import load_for_debug
         mem, entry, symbols, listing, prog_range, warns = load_for_debug(
             self.path, self.ram, direct=True)
-        m = emu.prepare_binary(mem, entry, ram=self.ram, real_display=True)
+        machine = None
+        if self.memoire and os.path.exists(self.memoire):
+            with open(self.memoire, "rb") as f:
+                image = f.read()
+            if len(image) != emu.RAM_TOP[self.ram] + 1:
+                raise ValueError("%s : mémoire de %d Ko, pas de %d Ko"
+                                 % (self.memoire, len(image) // 1024, self.ram))
+            machine = emu.power_on(image, self.ram, real_display=True)
+        m = emu.prepare_binary(mem, entry, ram=self.ram, real_display=True, machine=machine)
+        self.saved = False
         m.interactive = True               # clavier : l'écran de la fenêtre
         self.messages = []
         self.dbg = debug.Debugger(m, symbols, listing, prog_range, out=self.messages.append)
@@ -178,6 +189,16 @@ class Session:
         self.reason = self.dbg.finish() or "retour de la routine"
         return self.reason
 
+    def save_memory(self):
+        """Programme terminé : X-07 éteint par OFF, mémoire enregistrée (une fois)."""
+        if not self.memoire or self.saved or not self.finished or self.m is None:
+            return False
+        image = emu.power_off(self.m)
+        with open(self.memoire, "wb") as f:
+            f.write(image)
+        self.saved = True
+        return True
+
     def pause(self):
         if self.m is not None:
             self.m.debug_pause = True
@@ -268,7 +289,8 @@ class Editeur:
 
     BG_LINE, BG_BREAK = "#fff3a8", "#ffd6d6"
 
-    def __init__(self, path=None, ram=16, zoom=3):
+    def __init__(self, path=None, ram=16, zoom=3, memoire=None):
+        self.memoire = memoire
         import tkinter as tk
         from tkinter import ttk
         from .afficheur import Ecran
@@ -459,7 +481,7 @@ class Editeur:
         with open(path, "w", encoding="utf-8") as f:
             f.write(self.text.get("1.0", "end-1c"))
         self.path = path
-        self.session = Session(path, self.ram)
+        self.session = Session(path, self.ram, self.memoire)
         self.session.break_lines = breaks
         self.text.edit_modified(False)
         self.dirty = True
@@ -472,7 +494,7 @@ class Editeur:
         with open(path, encoding="utf-8", errors="replace") as f:
             content = f.read()
         self.path = path
-        self.session = Session(path, self.ram)
+        self.session = Session(path, self.ram, self.memoire)
         self.text.delete("1.0", "end")
         self.text.insert("1.0", content)
         self.text.edit_modified(False)
@@ -707,7 +729,10 @@ class Editeur:
             self.worker = None
             reason = s.reason
             if s.finished:
-                self.set_status("programme terminé (%s) : ↺ pour recommencer" % (reason or "fin"))
+                saved = s.save_memory()
+                self.set_status("programme terminé (%s)%s : ↺ pour recommencer"
+                                % (reason or "fin", " ; mémoire enregistrée (OFF)"
+                                   if saved else ""))
             else:
                 line = s.current_line()
                 self.set_status("arrêt%s%s" % (" : %s" % reason if reason else "",

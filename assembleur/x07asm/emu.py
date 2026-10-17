@@ -9,6 +9,7 @@ graphismes) et la saisie d'une ligne sont imités (voir sim.X07).
 Sert de référence pour vérifier le compilateur, et de BASIC du X-07 sur PC.
 """
 import os
+import re
 
 from .sim import X07, SimError, EXIT, REAL, PowerOff
 
@@ -99,16 +100,12 @@ def boot(ram=16, real_display=False):
 
 def power_off(m, max_steps=5_000_000):
     """Éteint la machine par OFF, comme sur le X-07 : la ROM range son état
-    puis coupe l'alimentation.  Rend l'image de la RAM (qui reste alimentée)."""
+    puis coupe l'alimentation ($C5A6, puis POWEROFF).  Marche quel que soit
+    l'état de la machine (invite du BASIC, fin d'un programme compilé).
+    Rend l'image de la RAM, qui reste alimentée."""
     m.real_off = True
-    typed = []
-
-    def command(c):                          # la commande OFF, tapée à l'invite
-        if typed:
-            raise SimError("OFF n'a pas éteint la machine")
-        typed.append(1)
-        _type_line(m, "OFF", echo=False)
-    m.traps[0xEBFF] = command
+    m.mem[m.brk] |= 0x80                     # demande d'extinction (comme OFF)
+    m.pc = 0xC5A6
     try:
         m.run(m.steps + max_steps)
     except PowerOff:
@@ -139,6 +136,7 @@ def power_on(image, ram=16, real_display=False):
         m.run(3_000_000)
     except Finished:
         pass
+    m.traps[0xEBFF] = lambda c: m._input(False)   # la saisie d'une ligne, comme avant
     m._use_rom_routines()
     m.has_rom = True
     m.transcript = []
@@ -163,8 +161,11 @@ def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, 
     le câble série.  « CLEAR 50,&H(org-1) » est d'abord tapé ; le programme est
     chargé dès que le BASIC a exécuté ce CLEAR (sinon sa pile et ses chaînes,
     encore en haut de la mémoire, l'écraseraient).  Reste à taper EXEC."""
-    # machine : une machine déjà allumée (power_on) au lieu d'un démarrage à froid
+    # machine : une machine déjà allumée (power_on) au lieu d'un démarrage à froid ;
+    # son ancien programme est effacé (NEW) avant de taper le nouveau, pas ses fichiers
     m = machine if machine is not None else boot(ram, real_display=live)
+    if machine is not None and any(re.match(r"\s*\d", l) for l in src.splitlines()):
+        src = "NEW\n" + src
     m.keys = list(keys)
     m.echo = echo
     if setup:
@@ -271,18 +272,21 @@ def _type_line(m, line, echo=True):
     m.setf(0x01, False)
 
 
-def run_binary(mem, entry, keys="", inputs=(), ram=16, max_steps=50_000_000, echo=None):
+def run_binary(mem, entry, keys="", inputs=(), ram=16, max_steps=50_000_000, echo=None,
+               machine=None):
     """Charge un programme machine sur la machine démarrée et l'exécute
-    comme CLEAR 50,&H(org-1) puis EXEC &Hentry.  Renvoie la machine."""
-    m = prepare_binary(mem, entry, keys, inputs, ram, echo=echo)
+    comme CLEAR 50,&H(org-1) puis EXEC &Hentry.  Renvoie la machine.
+    machine : une machine déjà allumée (power_on), avec ses fichiers."""
+    m = prepare_binary(mem, entry, keys, inputs, ram, echo=echo, machine=machine)
     m.run(max_steps)
     return m
 
 
-def prepare_binary(mem, entry, keys="", inputs=(), ram=16, real_display=False, echo=None):
+def prepare_binary(mem, entry, keys="", inputs=(), ram=16, real_display=False, echo=None,
+                   machine=None):
     """Machine prête à exécuter le programme (CLEAR 50,&H(org-1), puis EXEC
     &Hentry) : PC sur l'entrée, retour au BASIC empilé.  Sert au débogueur."""
-    m = boot(ram, real_display=real_display)
+    m = machine if machine is not None else boot(ram, real_display=real_display)
     m.keys = list(keys)
     m.lines = list(inputs)
     m.echo = echo

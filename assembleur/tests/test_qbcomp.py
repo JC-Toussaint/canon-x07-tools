@@ -262,7 +262,7 @@ class TestDirectAgainstTranslatorSuite(test_qbasic.TestQBasic):
         m, _, _ = run("DECLARE FUNCTION F (n)\nPRINT F(5)\nFUNCTION F (n)\n"
                       "IF n = 0 THEN F = 1 ELSE F = n * F(n - 1)\nEND FUNCTION")
         self.assertEqual(m.output(), " 120 \n")
-        for src in ("TYPE Point\nx AS INTEGER\nEND TYPE", 'OPEN "F" FOR INPUT AS #1',
+        for src in ("TYPE Point\nx AS INTEGER\nEND TYPE", 'OPEN "F" FOR RANDOM AS #1',
                     "DIM t(2 TO 5)"):
             with self.assertRaises(qbasic.QBError):
                 qbcomp.compile_qbasic(src)

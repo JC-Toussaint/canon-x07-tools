@@ -45,6 +45,9 @@ RT_END:
 
 _r("RT_FERR", """
 RT_FERR:                        ; erreur numéro E (crochet $00AB de la ROM ou bibliothèque)
+        PUSH DE
+        CALL $E89E              ; message à l'écran, même pendant PRINT # ou INIT #
+        POP  DE
         LD   A,(CSRX)
         DEC  A
         CALL NZ,CRLF            ; à la ligne si le curseur n'est pas en colonne 1
@@ -1026,22 +1029,36 @@ RT_SKIPC:                       ; avance après la prochaine virgule
 """)
 
 _r("RT_INS", """
-RT_INS:                         ; lit une chaîne saisie (jusqu'à la virgule) -> (HL)
-        EX   DE,HL
-        LD   HL,(RT_IP)
+RT_INS:                         ; lit une chaîne saisie (jusqu'à la virgule) -> (HL) ;
+        EX   DE,HL              ; entre guillemets (WRITE #), elle peut contenir des
+        LD   HL,(RT_IP)         ; virgules, comme pour la ROM
         LD   A,(RT_IC)
         LD   C,A
         PUSH DE
         INC  DE
         LD   B,0
+        LD   A,','
+        LD   (RT_QC),A          ; caractère de fin : virgule, ou guillemet
+        LD   A,C
+        OR   A
+        JR   Z,.L
+        LD   A,(HL)
+        CP   '"'
+        JR   NZ,.L
+        LD   (RT_QC),A
+        INC  HL
+        DEC  C
 .L:     LD   A,C
         OR   A
         JR   Z,.E
         LD   A,(HL)
         INC  HL
         DEC  C
-        CP   ','
-        JR   Z,.E
+        PUSH HL
+        LD   HL,RT_QC
+        CP   (HL)
+        POP  HL
+        JR   Z,.F
         PUSH AF
         LD   A,B
         CP   STRCAP
@@ -1053,6 +1070,17 @@ RT_INS:                         ; lit une chaîne saisie (jusqu'à la virgule) -
         JR   .L
 .S:     POP  AF
         JR   .L
+.F:     LD   A,(RT_QC)
+        CP   '"'
+        JR   NZ,.E
+.G:     LD   A,C                ; après le guillemet : jusqu'à la virgule
+        OR   A
+        JR   Z,.E
+        LD   A,(HL)
+        INC  HL
+        DEC  C
+        CP   ','
+        JR   NZ,.G
 .E:     LD   (RT_IP),HL
         LD   A,C
         LD   (RT_IC),A
@@ -1316,10 +1344,298 @@ RT_PAS:                         ; HL = rang -> HL = adresse : base + rang * tail
         RET
 """)
 
+# ------------------------------------------------------------- fichiers en RAM (FICHIERS.md)
+_r("RT_ROMCMD", """
+RT_ROMCMD:                      ; gestionnaire (DE) de la ROM sur le texte (HL), comme
+        DEC  HL                 ; l'interpréteur : A = premier caractère (CHRGET)
+        PUSH DE
+        RST  $10
+        RET                     ; vers le gestionnaire, qui reviendra à l'appelant
+""")
+
+_r("RT_UDEC", """
+RT_UDEC:                        ; HL (0 à 65535) en décimal, à partir de (DE)
+        LD   BC,-10000
+        CALL .D
+        LD   BC,-1000
+        CALL .D
+        LD   BC,-100
+        CALL .D
+        LD   BC,-10
+        CALL .D
+        LD   A,L
+        ADD  A,'0'
+        LD   (DE),A
+        INC  DE
+        RET
+.D:     LD   A,'0'-1
+.L:     INC  A
+        ADD  HL,BC
+        JR   C,.L
+        SBC  HL,BC
+        LD   (DE),A
+        INC  DE
+        RET
+""")
+
+_r("RT_FSTR", """
+RT_FSTR:                        ; (DE) <- « "chaîne" » (HL : longueur + caractères, 40 au plus)
+        LD   A,'"'
+        LD   (DE),A
+        INC  DE
+        LD   A,(HL)
+        CP   40
+        JR   C,.N
+        LD   A,40
+.N:     INC  HL
+        OR   A
+        JR   Z,.Q
+        LD   C,A
+        LD   B,0
+        LDIR
+.Q:     LD   A,'"'
+        LD   (DE),A
+        INC  DE
+        RET
+""")
+
+_r("RT_FINIT", """
+RT_FINIT:                       ; INIT #(RT_FCH),(HL)[,(RT_FSZ) si >= 0] par la ROM ($E699)
+        LD   DE,RT_FBUF
+        LD   A,'#'
+        LD   (DE),A
+        INC  DE
+        LD   A,(RT_FCH)
+        ADD  A,'0'              ; canal 1 à 5 (la ROM refuse le reste : FC)
+        LD   (DE),A
+        INC  DE
+        LD   A,','
+        LD   (DE),A
+        INC  DE
+        CALL RT_FSTR
+        LD   HL,(RT_FSZ)
+        BIT  7,H
+        JR   NZ,.Z
+        LD   A,','
+        LD   (DE),A
+        INC  DE
+        CALL RT_UDEC
+.Z:     XOR  A
+        LD   (DE),A
+        LD   HL,RT_FBUF
+        LD   DE,$E699
+        JP   RT_ROMCMD
+""")
+
+_r("RT_FSET", """
+RT_FSET:                        ; FSET HL par la ROM ($BF56 ; la référence écrit BF36).
+        LD   (RT_FSP),SP        ; FSET refait le haut de la zone BASIC comme CLEAR,
+        PUSH HL                 ; pile comprise, juste sous les fichiers : le programme
+        LD   HL,($01DD)         ; garde sa pile, et la zone BASIC reste sous lui
+        LD   (RT_FMEM),HL       ; (STKTOP, MEMSIZ, FRETOP fixés par CLEAR 50,&H...)
+        LD   HL,($01DF)
+        LD   (RT_FMEM+2),HL
+        LD   HL,($0204)
+        LD   (RT_FMEM+4),HL
+        POP  HL
+        LD   DE,RT_FBUF
+        CALL RT_UDEC
+        XOR  A
+        LD   (DE),A
+        LD   HL,RT_FBUF
+        LD   DE,$BF56
+        CALL RT_ROMCMD
+        LD   SP,(RT_FSP)
+        LD   HL,(RT_FMEM)
+        LD   ($01DD),HL
+        LD   HL,(RT_FMEM+2)
+        LD   ($01DF),HL
+        LD   HL,(RT_FMEM+4)
+        LD   ($0204),HL
+        RET
+""")
+
+_r("RT_FDEL", """
+RT_FDEL:                        ; DELETE (HL) par la ROM ($E682) : supprime le fichier
+        LD   DE,RT_FBUF
+        CALL RT_FSTR
+        XOR  A
+        LD   (DE),A
+        LD   HL,RT_FBUF
+        LD   DE,$E682
+        JP   RT_ROMCMD
+""")
+
+_r("RT_FENT", """
+RT_FENT:                        ; HL = canal 1 à 5 -> HL = son entrée dans KBNTAB ($02C5)
+        LD   A,H
+        OR   A
+        JR   NZ,.F
+        LD   A,L
+        DEC  A
+        CP   5
+        JR   NC,.F
+        ADD  A,A
+        ADD  A,A
+        ADD  A,A
+        LD   L,A
+        LD   H,0
+        LD   DE,$02C5
+        ADD  HL,DE
+        RET
+.F:     LD   E,5                ; FC : canal hors de 1 à 5
+        JP   RT_FERR
+""")
+
+_r("RT_FSEL", """
+RT_FSEL:                        ; HL = canal : le fichier devient le périphérique courant
+        CALL RT_FENT            ; (PRINT #, INPUT # : comme la ROM, DEVSEL)
+        EX   DE,HL
+        JP   DEVSEL
+""")
+
+_r("RT_FEND", """
+RT_FEND:                        ; fin d'un PRINT # ou INPUT # : retour à l'écran
+        RST  $38                ; (comme la fin de PRINT, $E62E)
+        DB   $86
+        JP   $E89E
+""")
+
+_r("RT_FINPUT", """
+RT_FINPUT:                      ; lit une ligne du fichier courant (INPUT #, $E8A7)
+        CALL $E8A7              ; -> tampon INPBUF, HL = INPBUF-1
+        INC  HL
+        LD   A,(HL)
+        CP   10                 ; saut de ligne laissé par la ligne précédente
+        JR   NZ,.K
+        INC  HL
+.K:     LD   (RT_IP),HL
+        LD   B,0
+.L:     LD   A,(HL)
+        OR   A
+        JR   Z,.E
+        INC  HL
+        INC  B
+        JR   NZ,.L
+        DEC  B
+.E:     LD   A,B
+        LD   (RT_IC),A
+        RET
+""")
+
+_r("RT_INLINE", """
+RT_INLINE:                      ; (HL) <- toute la ligne saisie (LINE INPUT)
+        EX   DE,HL
+        LD   HL,(RT_IP)
+        LD   A,(RT_IC)
+        CP   STRCAP+1
+        JR   C,.K
+        LD   A,STRCAP
+.K:     LD   (DE),A
+        INC  DE
+        OR   A
+        RET  Z
+        LD   C,A
+        LD   B,0
+        LDIR
+        RET
+""")
+
+_r("RT_FEOF", """
+RT_FEOF:                        ; HL = canal -> HL = -1 en fin de fichier, 0 sinon
+        CALL RT_FENT            ; pointeur de lecture (+4) au-delà de la fin (+6),
+        LD   DE,4               ; ou sur un octet nul (saut de ligne restant sauté)
+        ADD  HL,DE
+        LD   E,(HL)
+        INC  HL
+        LD   D,(HL)
+        INC  HL
+        LD   C,(HL)
+        INC  HL
+        LD   B,(HL)
+        LD   H,B
+        LD   L,C
+        OR   A
+        SBC  HL,DE
+        JR   C,.T
+        LD   A,(DE)
+        CP   10
+        JR   NZ,.C
+        INC  DE
+        LD   H,B
+        LD   L,C
+        OR   A
+        SBC  HL,DE
+        JR   C,.T
+        LD   A,(DE)
+.C:     OR   A
+        JR   Z,.T
+        LD   HL,0
+        RET
+.T:     LD   HL,-1
+        RET
+""")
+
+_r("RT_FZERO", """
+RT_FZERO:                       ; HL = canal : données du fichier à zéro (OPEN FOR OUTPUT)
+        CALL RT_FENT
+        LD   DE,4
+        ADD  HL,DE
+        LD   E,(HL)
+        INC  HL
+        LD   D,(HL)             ; DE = début (pointeur de lecture, juste après INIT)
+        INC  HL
+        LD   C,(HL)
+        INC  HL
+        LD   B,(HL)             ; BC = fin
+        LD   H,B
+        LD   L,C
+        OR   A
+        SBC  HL,DE
+        RET  C
+        INC  HL
+        LD   B,H
+        LD   C,L                ; taille
+        EX   DE,HL
+        JP   RT_ZERO
+""")
+
+_r("RT_FAPP", """
+RT_FAPP:                        ; HL = canal : écrire après les données (OPEN FOR APPEND)
+        CALL RT_FENT
+        PUSH HL
+        LD   DE,4
+        ADD  HL,DE
+        LD   E,(HL)
+        INC  HL
+        LD   D,(HL)             ; DE = début
+        INC  HL
+        LD   C,(HL)
+        INC  HL
+        LD   B,(HL)             ; BC = fin
+.L:     LD   H,B
+        LD   L,C
+        OR   A
+        SBC  HL,DE
+        JR   C,.S
+        LD   A,(DE)
+        OR   A
+        JR   Z,.S
+        INC  DE
+        JR   .L
+.S:     POP  HL
+        INC  HL
+        INC  HL
+        LD   (HL),E             ; pointeur d'écriture (+2)
+        INC  HL
+        LD   (HL),D
+        RET
+""")
+
 VARIABLES.update({
     "RT_DPTR": 2, "RT_IP": 2, "RT_IC": 1, "RT_GB": 5, "RT_LINE": 2, "RT_FBUF": 64, "RT_DLINE": 2,
     "RT_CMD": 64, "RT_CMDP": 2,
-    "RT_RA": 2, "RT_PD": 2, "RT_PZ": 1,
+    "RT_RA": 2, "RT_PD": 2, "RT_PZ": 1, "RT_FCH": 2, "RT_FSZ": 2, "RT_QC": 1, "RT_FSP": 2, "RT_FMEM": 6,
 })
 
 _NAME = re.compile(r"\b((?:RT|MSG)_[A-Z0-9_]+)\b")

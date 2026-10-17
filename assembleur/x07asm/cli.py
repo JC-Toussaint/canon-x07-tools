@@ -215,6 +215,10 @@ def build_basic(path, org="auto", ram=8, direct=False, **opts):
     top = free_top(ram)
     if org == "auto":
         src, a, mem, comp = once(0x1000)
+        if getattr(comp, "file_space", 0):
+            # FSET n : la zone des fichiers est en haut de la RAM ; le code va dessous
+            # (MEMSIZ après FSET n = haut de la RAM - n - 1)
+            top = RAM_TOP[ram] - comp.file_space - 1
         size = a.symbols["VARS_END"] - 0x1000
         o = (top + 1 - size) & ~0xF
         if o < 0x0600:
@@ -363,15 +367,45 @@ def cmd_run(args):
 
     m = None
     try:
-        m = emu.boot(args.ram)
+        machine = _memory_load(args)              # --memoire : X-07 rallumé avec sa RAM
+        m = machine if machine is not None else emu.boot(args.ram)
         m.keys, m.lines, m.echo, m.input_fn = list(keys), list(args.input or []), echo, input_fn
         status = _exec(m, mem, a.entry, args.max)
+    except (OSError, ValueError) as e:
+        print("erreur : %s" % e, file=sys.stderr)
+        return 1
     except sim.SimError as e:
         print("\n[simulation arrêtée : %s]" % e, file=sys.stderr)
         status = 2
     _show_screen(m, args)
+    if getattr(args, "memoire", None) and status == 0:
+        _memory_save(args, emu.power_off(m))
     print("(%d instructions Z80 exécutées)" % m.steps)
     return status
+
+
+def _memory_load(args, real_display=False):
+    """--memoire : rallume le X-07 avec la RAM enregistrée (None si absente)."""
+    from . import emu
+    path = getattr(args, "memoire", None)
+    if not path or not os.path.exists(path):
+        if path:
+            print("%s : pas encore de mémoire enregistrée, démarrage à froid" % path)
+        return None
+    with open(path, "rb") as f:
+        image = f.read()
+    expected = emu.RAM_TOP[args.ram] + 1
+    if len(image) != expected:
+        raise ValueError("%s : mémoire de %d Ko, pas de %d Ko (option --ram)"
+                         % (path, len(image) // 1024, args.ram))
+    print("%s : X-07 rallumé avec sa mémoire (programmes et fichiers en RAM)" % path)
+    return emu.power_on(image, args.ram, real_display=real_display)
+
+
+def _memory_save(args, image):
+    with open(args.memoire, "wb") as f:
+        f.write(image)
+    print("X-07 éteint par OFF : mémoire enregistrée -> %s" % args.memoire)
 
 
 def cmd_emu(args):
@@ -419,15 +453,44 @@ def cmd_emu(args):
               % (args.charger, org, end, end - org + 1))
         print("Dans la fenêtre, CLEAR 50,&H%X est tapé pour vous ; tapez ensuite :  EXEC &H%X"
               % (org - 1, entry))
+    try:
+        machine = _memory_load(args, real_display=args.fenetre)
+    except (OSError, ValueError, sim.SimError) as e:
+        print("erreur : %s" % e, file=sys.stderr)
+        return 1
     if args.fenetre:
         name = os.path.basename(args.source or args.charger or "BASIC")
-        return _window("Canon X-07 : %s" % name, args.zoom,
-                       lambda setup: emu.run_basic(src, inputs=args.input or [], keys=keys,
-                                                   ram=args.ram, max_steps=10 ** 12,
-                                                   setup=setup, live=True, preload=preload))
+
+        def target(setup):
+            def setup2(m):
+                setup(m)
+                m.real_off = bool(args.memoire)        # OFF éteint vraiment
+            _, m = emu.run_basic(src, inputs=args.input or [], keys=keys, ram=args.ram,
+                                 max_steps=10 ** 12, setup=setup2, live=True,
+                                 preload=preload, machine=machine)
+            if args.memoire:
+                if getattr(m, "is_off", False):
+                    _memory_save(args, bytes(m.mem[0:m.ram_top + 1]))
+                    holder["f"].close_requested = True
+                else:
+                    print("mémoire non enregistrée : éteignez le X-07 par OFF avant de "
+                          "fermer la fenêtre", file=sys.stderr)
+        holder = {}
+        from . import afficheur
+        try:
+            f = afficheur.Fenetre("Canon X-07 : %s" % name, args.zoom)
+        except Exception as e:
+            print("erreur : fenêtre impossible (%s). Essayez --ecran ou --png." % e,
+                  file=sys.stderr)
+            return 1
+        holder["f"] = f
+        if args.memoire:
+            print("Tapez OFF dans la fenêtre pour éteindre le X-07 et garder sa mémoire.")
+        f.start(lambda: target(f.attach))
+        return 0
     try:
         out, m = emu.run_basic(src, inputs=args.input or [], keys=keys, ram=args.ram,
-                               max_steps=args.max)
+                               max_steps=args.max, machine=machine)
     except sim.SimError as e:
         print("[émulation impossible : %s]" % e, file=sys.stderr)
         return 2
@@ -436,8 +499,12 @@ def cmd_emu(args):
     if m.error:
         print("\n[émulation arrêtée : %s]" % m.error, file=sys.stderr)
         status = 2
+        if args.memoire:
+            print("mémoire non enregistrée (programme interrompu)", file=sys.stderr)
     _show_screen(m, args)
     print("(%d instructions Z80 exécutées par la ROM)" % m.steps)
+    if args.memoire and not m.error:
+        _memory_save(args, emu.power_off(m))      # après l'écran : OFF l'efface
     return status
 
 
@@ -619,7 +686,7 @@ def cmd_ide(args):
     """Éditeur-débogueur visuel (fenêtre)."""
     from . import ide
     try:
-        e = ide.Editeur(args.source, ram=args.ram, zoom=args.zoom)
+        e = ide.Editeur(args.source, ram=args.ram, zoom=args.zoom, memoire=args.memoire)
     except Exception as ex:                      # pas d'affichage graphique
         print("erreur : fenêtre impossible (%s)" % ex, file=sys.stderr)
         return 1
@@ -765,6 +832,8 @@ def main(argv=None):
     ed.add_argument("--ram", type=int, choices=(8, 16, 24), default=16,
                     help="mémoire du X-07 en Ko (défaut : 16)")
     ed.add_argument("--zoom", type=int, default=3, help="taille de l'écran du X-07 (défaut : 3)")
+    ed.add_argument("--memoire", metavar="FICHIER",
+                    help="mémoire du X-07 gardée d'une exécution à l'autre (fichiers en RAM)")
     ed.set_defaults(func=cmd_ide)
 
     q = sub.add_parser("qb", help="traduire un programme QuickBASIC en BASIC du X-07")
@@ -804,6 +873,8 @@ def main(argv=None):
     r.add_argument("--direct", action="store_true",
                    help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
                         "(récursivité, tableaux par adresse)")
+    r.add_argument("--memoire", metavar="FICHIER",
+                   help="mémoire du X-07 gardée d'une session à l'autre (fichiers en RAM)")
     r.set_defaults(func=cmd_run)
 
     e = sub.add_parser("emu", help="exécuter un programme BASIC avec la vraie ROM (émulation)")
@@ -820,6 +891,9 @@ def main(argv=None):
     e.add_argument("--entry", help="adresse de lancement (hexa) d'un .bin pour --charger")
     e.add_argument("--fenetre", action="store_true",
                    help="affichage graphique en direct, avec le clavier (Échap = BREAK)")
+    e.add_argument("--memoire", metavar="FICHIER",
+                   help="mémoire du X-07 gardée d'une session à l'autre (programmes, fichiers "
+                        "en RAM) : rallumé avec elle, éteint par OFF à la fin")
     e.add_argument("--ecran", action="store_true",
                    help="écran final en points (caractères braille) dans le terminal")
     e.add_argument("--png", metavar="FICHIER", help="image PNG de l'écran final")
