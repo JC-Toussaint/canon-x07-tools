@@ -162,16 +162,31 @@ def free_top(ram):
     return RAM_TOP[ram] - RAM_RESERVED
 
 
-def build_basic(path, org="auto", ram=8, **opts):
-    """Compile un source BASIC puis l'assemble.
-    Renvoie (texte assembleur, assembleur, mémoire, compilateur)."""
-    from . import basic
+def read_basic(path):
+    """Texte BASIC du X-07 du fichier ; un programme QuickBASIC (.qbas) est
+    d'abord traduit (sinon la ROM répondrait SN Error dès DECLARE ou SUB)."""
     with open(path, "rb") as f:
         raw = f.read()
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         text = raw.decode("latin-1")
+    if path.lower().endswith(".qbas"):
+        from . import basic, qbasic
+        try:
+            text, warns, _ = qbasic.translate(text)
+        except qbasic.QBError as e:
+            raise basic.CompileError("QuickBASIC : %s" % e)
+        for w in warns:
+            print("attention : %s" % w, file=sys.stderr)
+    return text
+
+
+def build_basic(path, org="auto", ram=8, **opts):
+    """Compile un source BASIC (ou QuickBASIC .qbas) puis l'assemble.
+    Renvoie (texte assembleur, assembleur, mémoire, compilateur)."""
+    from . import basic
+    text = read_basic(path)
     name = os.path.splitext(os.path.basename(path))[0].upper()
 
     def once(o):
@@ -351,16 +366,15 @@ def cmd_emu(args):
         return 1
     src = ""
     if args.source:
+        from . import basic
         try:
-            with open(args.source, "rb") as f:
-                raw = f.read()
+            src = read_basic(args.source)
         except OSError as e:
             print("erreur : %s : %s" % (args.source, e.strerror), file=sys.stderr)
             return 1
-        try:
-            src = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            src = raw.decode("latin-1")
+        except basic.CompileError as e:
+            print("erreur : %s" % e, file=sys.stderr)
+            return 1
     elif not args.fenetre:
         print("erreur : indiquez un programme, ou --fenetre pour le BASIC en direct",
               file=sys.stderr)
@@ -411,11 +425,11 @@ def cmd_emu(args):
 
 
 def _load_program(args):
-    """Programme à envoyer : .bas (compilé), .hex, ou .bin avec --org.
+    """Programme à envoyer : .bas ou .qbas (compilé), .hex, ou .bin avec --org.
     Renvoie (mémoire, entrée, dernière adresse occupée, variables comprises)."""
     src = args.source
     low = src.lower()
-    if low.endswith(".bas"):
+    if low.endswith((".bas", ".qbas")):
         _, a, mem, comp = build_basic(src, args.org or "auto", args.ram)
         for w in comp.warnings:
             print("attention : %s" % w, file=sys.stderr)

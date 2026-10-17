@@ -13,7 +13,7 @@ QuickBASIC  --qb-->  BASIC du X-07 (numéroté)  --basic-->  assembleur Z80
 La traduction produit du BASIC du X-07 ordinaire. On obtient donc les deux résultats demandés avec une seule traduction : le BASIC, que la ROM exécute (ou à taper sur la machine), et l'assembleur, produit par le compilateur existant.
 
 **Ce qui a été vérifié :**
-- 20 tests (`tests/test_qbasic.py`) : chaque programme QuickBASIC est traduit, exécuté par la vraie ROM, et sa sortie est comparée à celle qu'aurait donnée QuickBASIC ;
+- les tests (`tests/test_qbasic.py`) : chaque programme QuickBASIC est traduit, exécuté par la vraie ROM, et sa sortie est comparée à celle qu'aurait donnée QuickBASIC ;
 - quand le compilateur accepte le résultat, la version compilée affiche exactement la même chose ;
 - les deux exemples de `exemples/qbasic/` passent les deux chemins.
 
@@ -29,6 +29,18 @@ python3 x07asm.py emu exemples/qbasic/tri.bas                # par la ROM du X-0
 python3 x07asm.py qb exemples/qbasic/tri.qbas -f asm,bin --ram 16   # traduit puis compile
 python3 x07asm.py qb exemples/qbasic/tri.qbas --noms         # correspondance des noms
 ```
+
+**Les autres commandes acceptent aussi directement un `.qbas`** : elles le traduisent au passage, sans écrire de fichier.
+
+```sh
+python3 x07asm.py emu exemples/qbasic/tri.qbas --fenetre     # BASIC du X-07, dans la fenêtre
+python3 x07asm.py run exemples/qbasic/tri.qbas               # compilé
+python3 x07asm.py basic exemples/qbasic/tri.qbas --ram 16    # assembleur et binaire
+python3 x07asm.py send exemples/qbasic/tri.qbas --ram 16 --port /dev/ttyUSB0
+python3 x07asm.py emu --fenetre --charger exemples/qbasic/tri.qbas --ram 16
+```
+
+Ce n'est le cas que pour l'extension `.qbas`. Un programme QuickBASIC enregistré en `.bas` serait tapé tel quel sur le X-07, qui répondrait `SN Error` dès la première ligne qu'il ne connaît pas (`DECLARE`, `SUB`…).
 
 | Option | Rôle |
 |---|---|
@@ -168,6 +180,6 @@ Mais cette voie ne produirait plus de BASIC du X-07, n'aurait plus la ROM pour r
 
 ```
 x07asm/qbasic.py          traducteur : analyse, renommage, génération numérotée
-tests/test_qbasic.py      20 tests (ROM + version compilée)
+tests/test_qbasic.py      tests (ROM + version compilée)
 exemples/qbasic/          tri.qbas, mystere.qbas
 ```

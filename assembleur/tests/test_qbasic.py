@@ -269,6 +269,17 @@ END SUB''', " 1  1  1  2  1  3 \n")
                     self.assertEqual(main(["qb", os.path.join(d, name)]), 0)
                 self.assertTrue(os.path.exists(os.path.join(d, out)), out)
 
+    def test_commands_accept_qbas(self):
+        # emu, run, basic, send : un .qbas est traduit au passage (sinon SN Error)
+        from x07asm.cli import read_basic, build_basic
+        path = os.path.join(ROOT, "exemples", "qbasic", "tri.qbas")
+        text = read_basic(path)
+        self.assertTrue(text.startswith("10 DEFSNG A-Z\n"))
+        ref, m = emu.run_basic(text)
+        self.assertIn("Moyenne : 11.5", ref)
+        _, a, mem, _ = build_basic(path, "auto", 16)
+        self.assertEqual(emu.run_binary(mem, a.entry).output().rstrip(), ref.rstrip())
+
     def test_refused(self):
         for src, msg in (
                 ("DECLARE FUNCTION F (n)\nPRINT F(3)\nFUNCTION F (n)\n"
