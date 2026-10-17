@@ -26,6 +26,46 @@ Chaque arrêt affiche :
 - les **registres**, et les indicateurs en clair (`S Z H P N C`, `-` quand l'indicateur est à 0) ;
 - la **prochaine instruction**, avec son étiquette, les noms des routines et des variables de la ROM, et le commentaire du source.
 
+## Éditeur-débogueur visuel
+
+```sh
+python3 x07asm.py ide exemples/qbasic/rapide.qbas
+python3 x07asm.py ide exemples/table.bas --ram 16 --zoom 4
+python3 x07asm.py ide                                  # puis « Ouvrir… »
+```
+
+![L'éditeur-débogueur sur rapide.qbas : points d'arrêt, ligne courante, écran, variables](../ref_docs/images/editeur_debogueur.png)
+
+La même mécanique que la commande `debug`, dans une fenêtre :
+
+- **À gauche, le source**, modifiable : `.asm`, `.bas` (BASIC du X-07) ou `.qbas` (compilé directement).
+  - Un **clic dans la marge** pose ou enlève un point d'arrêt (pastille rouge). Sur une ligne sans code (vide, commentaire, `DATA`), le point va sur la ligne suivante qui en contient.
+  - Les points d'arrêt **suivent les modifications** : insérer des lignes au-dessus les déplace avec leur instruction.
+  - La **ligne en cours** est surlignée en jaune, avec une flèche.
+- **À droite, l'écran du X-07** en direct. Pour taper (`INPUT`, `INKEY$`), **cliquez sur l'écran** : il reçoit alors le clavier, avec Échap pour BREAK.
+- **Les registres**, avec les indicateurs en clair et le nombre d'instructions exécutées.
+- **Des onglets :**
+  - *Variables* : les variables par leur nom, et les tableaux avec leurs premières valeurs. Une valeur qui vient de changer apparaît **en rouge**. Pour un tableau reçu en paramètre, on voit lequel (`TRI.T() -> A%()`). Pour un programme assembleur, ce sont les étiquettes de données (octets et texte).
+  - *Code machine* : le désassemblage autour du PC.
+  - *Pile*.
+  - *Messages* : avertissements de compilation, erreurs.
+
+| Bouton | Touche | Rôle |
+|---|---|---|
+| Compiler | | enregistre puis compile (aussi fait automatiquement avant de lancer un programme modifié) |
+| ▶ Continuer | F5 | jusqu'au prochain point d'arrêt, ou la fin |
+| ⏸ Pause | F9 hors du source | interrompt le programme, même s'il attend une touche |
+| Ligne suivante | F10 | une **ligne du source**, sans entrer dans les procédures appelées |
+| Entrer | F11 | une ligne du source, en entrant dans les `SUB`, `FUNCTION`, `GOSUB` |
+| Sortir | Maj+F11 | jusqu'à la fin de la routine en cours |
+| Instruction | | une seule instruction machine |
+| ↺ Recommencer | | recompile et repart du début |
+| Enregistrer | Ctrl+S | |
+
+Dans le source, **F9** pose ou enlève un point d'arrêt sur la ligne du curseur.
+
+Le pas à pas avance **par ligne du source**, et non par instruction machine comme `n` et `s` dans le terminal. Une ligne BASIC qui fait une dizaine d'instructions s'exécute donc d'un coup ; « Instruction » reste disponible pour descendre au niveau du Z80.
+
 ## Commandes
 
 | Commande | Rôle |

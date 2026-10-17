@@ -390,15 +390,15 @@ class Parser:
         return None
 
     def statement(self):
+        line = self.cur.line                 # avant le corps d'un bloc (DO, IF, FOR...)
         s = self._statement()
         if s is not None and getattr(self, "track_lines", False):
             s = Stmt(s)
-            s.line = self.stmt_line
+            s.line = line
         return s
 
     def _statement(self):
         t = self.cur
-        self.stmt_line = t.line
         if t.kind == "id":
             if base(t.val) in self.functions and self.is_op("=", self.peek()):
                 self.next()
