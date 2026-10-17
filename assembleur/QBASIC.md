@@ -128,7 +128,7 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 | paramètre tableau `t()` | une **copie de la procédure pour chaque tableau reçu** (avertissement) ; ses variables simples restent communes. Un tableau peut aussi être transmis d'une procédure à une autre |
 | tableau local (`DIM` dans une procédure) | `DIM` une seule fois en tête du programme ; remis à zéro à chaque appel par une boucle, sauf `STATIC` (tailles constantes, 1 ou 2 dimensions) |
 | `CONST` | valeur recopiée dans les expressions |
-| `DIM a(1 TO n)` | `DIM a(n)` (le X-07 commence à 0) |
+| `DIM a(1 TO n)`, `DIM a(0 TO n)` | `DIM a(n)` : le X-07 n'a ni `TO` dans `DIM` ni `OPTION BASE`, ses indices vont toujours de 0 à n (la case 0 reste inutilisée pour `1 TO n`) |
 | `DIM x AS INTEGER/SINGLE/DOUBLE/STRING`, suffixes, `DEFINT`… | suffixe explicite `%` `#` `$` |
 | `SWAP a, b` | trois affectations |
 | `LINE ...,B` / `,BF`, `PSET (x,y),0` | 4 lignes / boucle de lignes ; `PRESET` |
@@ -146,7 +146,7 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 | `TYPE ... END TYPE` | pas d'enregistrements | tableaux parallèles |
 | fichiers (`OPEN`, `PRINT #`…), `WRITE` | les périphériques du X-07 sont différents | — |
 | `UCASE$`, `LCASE$`, `LTRIM$`, `RTRIM$`, `OCT$` | absents de la ROM | `MID$(STR$(x),2)` pour un nombre positif |
-| `DIM t(2 TO 5)` | indices à partir de 0 seulement | décaler les indices |
+| `DIM t(2 TO 5)`, `OPTION BASE 1` | indices toujours de 0 à n sur le X-07 (`DIM A(1 TO 5)` et `OPTION BASE` y donnent `SN Error`) | décaler les indices |
 | `REDIM`, chaînes de longueur fixe, `RETURN étiquette`, `LINE -(x,y)` | | |
 
 **Différences qui restent**, à connaître :

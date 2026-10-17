@@ -329,7 +329,7 @@ END SUB''', " 1  1  1  4  320 \n***\n")   # STATIC : * puis **
                 ("TYPE Point\nx AS INTEGER\nEND TYPE", "TYPE"),
                 ("PRINT UCASE$(\"a\")", "UCASE$"),
                 ("OPEN \"F\" FOR INPUT AS #1", "OPEN"),
-                ("DIM t(2 TO 5)", "commence toujours à 0"),
+                ("DIM t(2 TO 5)", "toujours de 0 à n"),
                 ("CONST N = 3\nDECLARE SUB S (n)\nSUB S (n)\nEND SUB", "constante")):
             with self.assertRaises(qbasic.QBError) as cm:
                 qbasic.translate(src)

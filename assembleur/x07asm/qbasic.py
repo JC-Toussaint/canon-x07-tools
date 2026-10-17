@@ -1753,7 +1753,8 @@ class Translator:
                 if lo is not None:
                     lv = self.const_value(lo)
                     if lv not in (0, 1):
-                        raise QBError("DIM %s(%s TO ...) : le X-07 commence toujours à 0"
+                        raise QBError("DIM %s(%s TO ...) : sur le X-07, les indices vont "
+                                      "toujours de 0 à n (décalez les indices)"
                                       % (name, self.x(lo)))
                 sizes.append(self.x(self.hoist(hi)))
             xn = self.xvar(name, True)
