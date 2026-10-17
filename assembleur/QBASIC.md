@@ -154,8 +154,25 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 - **Largeur d'écran :** sur 20 colonnes, `PRINT` passe à la ligne plus souvent. C'est la raison pour laquelle le programme doit être « adapté au X-07 ».
 - **Paramètres :** une procédure qui modifie à la fois un paramètre et la variable passée (par `SHARED`) ne voit pas la même chose qu'en QuickBASIC. La recopie se fait au retour.
 - **Tableaux locaux de taille variable** (`DIM w(n)` dans une procédure) : créés au premier appel et jamais remis à zéro, comme s'ils étaient `STATIC`. Le compilateur les refuse si la procédure est recopiée.
-- **Taille :** chaque tableau différent passé à une procédure ajoute une copie de son code. Avec beaucoup de tableaux et une grosse procédure, la mémoire du X-07 peut manquer.
+- **Taille :** chaque tableau différent passé à une procédure ajoute une copie de son code (voir « Tableaux en paramètre » ci-dessous). Avec beaucoup de tableaux et une grosse procédure, la mémoire du X-07 peut manquer.
 - **Messages d'erreur :** ils donnent les numéros de ligne du programme traduit.
+
+## Tableaux en paramètre : sans pointeurs
+
+Le BASIC du X-07 n'a pas de pointeurs : la traduction ne passe donc jamais l'adresse d'un tableau. Le **passage par référence** fonctionne pourtant : une procédure qui modifie le tableau reçu modifie bien celui de l'appelant, comme en QuickBASIC.
+
+**Comment.** Le traducteur produit une **copie de la procédure pour chaque tableau réel** qu'elle reçoit. Dans `tri2.qbas` :
+- `Trier notes%()` appelle une copie de `Trier` qui travaille directement sur `NO%` ;
+- `Trier notes2%()` appelle une autre copie, qui travaille sur `NT%`.
+
+Le résultat est le même qu'avec une référence. On paie en taille de code (une copie par tableau), mais rien n'est recopié pendant l'exécution. C'est possible parce qu'en QuickBASIC le tableau passé est toujours **nommé dans le source** : on sait, dès la traduction, sur lequel la procédure travaillera.
+
+**Pourquoi ne pas simuler des pointeurs.** La ROM connaît `VARPTR`, qui donne l'adresse d'une variable, et `PEEK`/`POKE` permettent d'atteindre les éléments par leur adresse (vérifié : `VARPTR(T%(0))` puis `PEEK` relisent bien `T%(2)`). Mais ce n'est pas une voie fiable :
+- **les tableaux bougent en mémoire.** Le BASIC Microsoft range les tableaux après les variables simples et les déplace dès qu'une nouvelle variable apparaît. Dans l'émulateur, `VARPTR(T%(0))` vaut 1428, puis 1450 après la création de deux variables `B` et `Z`. Une adresse gardée comme « pointeur » deviendrait fausse sans prévenir ;
+- **lourd et lent :** chaque `t(i)` deviendrait plusieurs `PEEK`/`POKE` avec un calcul d'adresse, pire encore pour les nombres décimaux (4 ou 8 octets BCD) et les chaînes ;
+- **le compilateur ne gère pas `VARPTR`.**
+
+**Où de vrais pointeurs seraient possibles :** dans la voie directe ci-dessous. Dans le code compilé, les tableaux ont une **adresse fixe**, que l'on pourrait passer dans un registre. Il n'y aurait plus de copies de procédures, et la récursivité deviendrait possible. Mais il n'y aurait plus de version en BASIC du X-07.
 
 ## Deux voies vers l'assembleur
 
@@ -163,7 +180,7 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 
 **2. Directe** : l'arbre de QuickBASIC serait donné au générateur de code du compilateur, sans repasser par le texte BASIC. On gagnerait :
 - la **récursivité**, grâce à une pile pour les variables locales et les paramètres ;
-- de vrais **paramètres par référence** (passage d'adresses) ;
+- de vrais **paramètres par référence** (passage d'adresses), y compris pour les tableaux, sans copie de procédure ;
 - des **entiers 32 bits** (`LONG`), avec de nouvelles routines.
 
 Mais cette voie ne produirait plus de BASIC du X-07, n'aurait plus la ROM pour référence, et demanderait de reprendre une bonne part du compilateur.
