@@ -84,7 +84,85 @@ point d'arrêt en 3D8F LN_40
   T%(3) = 9   ($3F7B)
 ```
 
-Une ligne QuickBASIC n'a pas de numéro : on s'arrête sur la ligne du programme traduit, que donne `python3 x07asm.py qb FICHIER.qbas`.
+Une ligne QuickBASIC n'a pas de numéro : on s'arrête sur la ligne du programme traduit, que donne `python3 x07asm.py qb FICHIER.qbas`. Voir l'exemple ci-dessous.
+
+## Exemple : déboguer `tri.qbas`
+
+**1. Repérer les lignes à surveiller.** On regarde la traduction, avec `--noms` pour savoir ce que deviennent les variables :
+
+```sh
+python3 x07asm.py qb exemples/qbasic/tri.qbas --noms
+```
+
+```
+  NOTES()                  NO%
+  TRIER.I                  I0%
+  MOYENNE.S                S
+  MOYENNE! (résultat)      M
+...
+80 FOR I0%=1 TO B%:IF NO%(I0%)<=NO%(I0%+1) THEN 100
+90 C%=NO%(I0%):NO%(I0%)=NO%(I0%+1):NO%(I0%+1)=C%:E%=-1     ← le SWAP de Trier
+...
+150 M=S/N0%                                                  ← le calcul de la moyenne
+```
+
+**2. Lancer le débogueur.** Le `.qbas` est traduit et compilé au passage :
+
+```sh
+python3 x07asm.py debug exemples/qbasic/tri.qbas
+```
+
+**3. S'arrêter à chaque échange du tri :**
+
+```
+(x07) b ligne 90
+point d'arrêt en 3C0D LN_90
+(x07) c
+[point d'arrêt]  ligne BASIC 90
+(x07) v I0%
+  I0% = 1   ($3F98)
+(x07) v NO%(1)
+  NO%(1) = 12   ($3F7A)
+(x07) v NO%(2)
+  NO%(2) = 7   ($3F7C)          ← 12 > 7 : c'est bien un échange
+(x07) c
+[point d'arrêt]  ligne BASIC 90
+(x07) v NO%(2)
+  NO%(2) = 12   ($3F7C)         ← le premier échange a eu lieu
+```
+
+**4. Aller au calcul de la moyenne :**
+
+```
+(x07) d tout
+(x07) b ligne 150
+(x07) c
+[point d'arrêt]  ligne BASIC 150
+(x07) v S
+  S! = 92   ($3FA6)             ← somme des 8 notes
+(x07) v N0%
+  N0% = 8   ($3FA2)
+(x07) f                         ← finir la FUNCTION Moyenne!
+[retour de la routine]  ligne BASIC 50
+(x07) v M
+  M! = 11.5   ($3F9E)           ← son résultat
+(x07) c
+[fin]
+(x07) e
++--------------------+
+| 6  7  9  11  12    |
+| 14  15  18         |
+|Moyenne : 11.5      |
++--------------------+
+```
+
+Pour rejouer une suite de commandes sans les taper, on les passe avec `-x` :
+
+```sh
+python3 x07asm.py debug exemples/qbasic/tri.qbas -x "b ligne 150;c;v S;v N0%"
+```
+
+Le pas à pas avance par **instructions machine**, pas par instructions BASIC : une ligne BASIC en compte souvent une dizaine. D'où l'intérêt des points d'arrêt sur les lignes, et de `c` plutôt que de `n`.
 
 ## Avec la fenêtre
 
