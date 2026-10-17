@@ -215,6 +215,10 @@ def build_basic(path, org="auto", ram=8, direct=False, **opts):
     top = free_top(ram)
     if org == "auto":
         src, a, mem, comp = once(0x1000)
+        if getattr(comp, "file_space", 0):
+            # FSET n : la zone des fichiers est en haut de la RAM ; le code va dessous
+            # (MEMSIZ après FSET n = haut de la RAM - n - 1)
+            top = RAM_TOP[ram] - comp.file_space - 1
         size = a.symbols["VARS_END"] - 0x1000
         o = (top + 1 - size) & ~0xF
         if o < 0x0600:
@@ -363,13 +367,19 @@ def cmd_run(args):
 
     m = None
     try:
-        m = emu.boot(args.ram)
+        machine = _memory_load(args)              # --memoire : X-07 rallumé avec sa RAM
+        m = machine if machine is not None else emu.boot(args.ram)
         m.keys, m.lines, m.echo, m.input_fn = list(keys), list(args.input or []), echo, input_fn
         status = _exec(m, mem, a.entry, args.max)
+    except (OSError, ValueError) as e:
+        print("erreur : %s" % e, file=sys.stderr)
+        return 1
     except sim.SimError as e:
         print("\n[simulation arrêtée : %s]" % e, file=sys.stderr)
         status = 2
     _show_screen(m, args)
+    if getattr(args, "memoire", None) and status == 0:
+        _memory_save(args, emu.power_off(m))
     print("(%d instructions Z80 exécutées)" % m.steps)
     return status
 
@@ -861,6 +871,8 @@ def main(argv=None):
     r.add_argument("--direct", action="store_true",
                    help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
                         "(récursivité, tableaux par adresse)")
+    r.add_argument("--memoire", metavar="FICHIER",
+                   help="mémoire du X-07 gardée d'une session à l'autre (fichiers en RAM)")
     r.set_defaults(func=cmd_run)
 
     e = sub.add_parser("emu", help="exécuter un programme BASIC avec la vraie ROM (émulation)")

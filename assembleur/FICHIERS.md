@@ -142,10 +142,28 @@ python3 x07asm.py emu exemples/qbasic/journal.qbas --memoire x07.mem -i "Appeler
 
 Au second lancement, le journal contient les deux notes. Dans la fenêtre (`--fenetre`), on éteint en tapant `OFF`. Sans cela, la mémoire n'est pas enregistrée.
 
-**Compilation : à faire.** Voir ci-dessous.
+**Compilation : faite**, dans les deux voies (traduction compilée et `--direct`). Les trois voies donnent les mêmes résultats.
+
+| Opération | Code compilé |
+|---|---|
+| `INIT #`, `DELETE`, `FSET` | le texte de la commande est fabriqué (`#1,"RAM:NOTES",256`), puis passé au gestionnaire de la ROM (`$E699`, `$E682`, `$BF56`), comme le ferait l'interpréteur : mêmes contrôles, mêmes erreurs |
+| `PRINT #c` | le fichier devient le périphérique courant (`DEVSEL`, `$E827`), puis le `PRINT` compilé habituel s'exécute (il écrit par `RST $28` vers le périphérique courant), et l'on revient à l'écran (`$E89E`) |
+| `INPUT #c`, `LINE INPUT #c` | une ligne est lue dans le fichier par la ROM (`$E8A7`), puis découpée par le code compilé ; le saut de ligne de tête est retiré |
+| `EOF(c)` (`--direct`) | une routine lit le pointeur de lecture du canal |
+| `OPEN … FOR OUTPUT/APPEND` (`--direct`) | des routines vident le fichier ou placent le pointeur d'écriture |
+
+**Deux pièges, découverts en compilant :**
+- **`FSET` fait comme `CLEAR` :** il refait le haut de la zone BASIC juste sous les fichiers, **pile comprise**. Dans un programme compilé, la pile du BASIC tombait alors sur les variables du programme. Le code compilé garde donc sa pile, et remet la zone BASIC telle que l'avait fixée son `CLEAR 50,&H…`, c'est-à-dire sous lui. Sur la vraie machine, il faudrait le faire pour la même raison.
+- **La place du code :** en adresse automatique, un programme qui emploie des fichiers est placé sous la zone des fichiers. Avec `FSET n`, la zone BASIC finit en `haut de la RAM − n − 1`. Le journal compilé, par exemple, occupe `$35D0`-`$3BEF` avec 16 Ko.
+
+`run --memoire FICHIER` garde aussi la mémoire pour un programme compilé :
+
+```sh
+python3 x07asm.py run exemples/qbasic/journal.qbas --direct --ram 16 --memoire x07.mem -i "PAIN"
+```
 
 ## Pour la suite
 
 1. ~~Traduction~~ : faite.
-2. **Compilation** (traduction compilée et `--direct`) : appeler le pilote `RAM:` de la ROM (`$E449`, `$E5B4`, `$E5CB`) depuis le code compilé, et placer le code sous la zone des fichiers.
-3. ~~Émulateur~~ : fait pour `emu` (`--memoire`) ; reste l'éditeur-débogueur (`ide`).
+2. ~~Compilation~~ : faite.
+3. ~~Émulateur~~ : fait pour `emu` et `run` (`--memoire`) ; reste l'éditeur-débogueur (`ide`).

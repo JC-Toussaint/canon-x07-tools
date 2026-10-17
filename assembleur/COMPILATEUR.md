@@ -79,8 +79,10 @@ Les règles de calcul sont celles de la ROM, puisque c'est elle qui calcule :
 - `PSET(x,y)`, `PRESET(x,y)`, `LINE(x1,y1)-(x2,y2)`, `CIRCLE(x,y),r`
 - `FONT$(code)=chaîne` : caractère redéfini (codes `&H80`-`&H9F` et `&HE0`-`&HFF`). La chaîne contient **8 nombres** séparés par des virgules, un par ligne de 6 points (bit 7 à gauche), lus par la ROM comme sur la machine. Écrivez-les en décimal ou avec `&H` : `"F8"` serait lu comme la variable F8.
 - `POKE`, `OUT`, `EXEC adr`
+- `LINE INPUT ["texte";] v$` : toute la ligne, virgules comprises
+- fichiers en RAM : `FSET n`, `INIT #c,"RAM:NOM"[,taille]`, `PRINT #c,…`, `INPUT #c,…`, `LINE INPUT #c,v$`, `DELETE "NOM"`. Le code compilé appelle les routines de la ROM, dont il a donc exactement les erreurs (`NE`, `IO`, `FC`…). Après `FSET`, il remet la zone BASIC sous lui. Voir [FICHIERS.md](FICHIERS.md)
 
-`CLEAR` est ignoré.
+`CLEAR` est ignoré. Une chaîne saisie entre guillemets (`INPUT`, `INPUT #`) peut contenir des virgules, comme pour la ROM.
 
 **Fonctions :**
 
@@ -114,7 +116,7 @@ Ces comportements, parfois surprenants, ont été observés sur l'interpréteur 
 - **Noms de variables** distingués sur toute leur longueur. Comme sur le X-07, un nom **ne doit pas contenir de mot-clé** (`TOTAL` se lit `TO TAL`).
 - **Tableau non déclaré :** il est créé avec 11 éléments par dimension ; le compilateur vous prévient.
 
-**Non géré :** `ON ERROR`, `RESUME`, `PRINT USING`, `INSTR`, `LINE INPUT`, fichiers (`INIT#`), `DEFFN` sur des chaînes, `MID$` à gauche du signe `=`.
+**Non géré :** `ON ERROR`, `RESUME`, `PRINT USING`, `INSTR`, `DEFFN` sur des chaînes, `MID$` à gauche du signe `=`.
 
 ## Vérification
 
