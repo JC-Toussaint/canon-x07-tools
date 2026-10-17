@@ -166,6 +166,95 @@ python3 x07asm.py debug exemples/qbasic/tri.qbas -x "b ligne 150;c;v S;v N0%"
 
 Le pas à pas avance par **instructions machine**, pas par instructions BASIC : une ligne BASIC en compte souvent une dizaine. D'où l'intérêt des points d'arrêt sur les lignes, et de `c` plutôt que de `n`.
 
+## Exemple : déboguer `rapide.qbas` en compilation directe
+
+`rapide.qbas` trie deux tableaux par un tri rapide **récursif**, puis calcule 10! par une fonction récursive. Il ne se compile que directement (voir [QBASIC.md](QBASIC.md)).
+
+**1. Lancer le débogueur.** Avec `--direct`, `ligne N` désigne la ligne N du fichier `.qbas` lui-même :
+
+```sh
+python3 x07asm.py debug exemples/qbasic/rapide.qbas --direct
+```
+
+```
+    24	SUB Tri (t(), g, d)
+    26	    pivot = t((g + d) \ 2)
+    27	    i = g: j = d
+    ...
+    36	    Tri t(), g, j            ' appels récursifs
+    37	    Tri t(), i, d
+    ...
+    41	    IF n <= 1 THEN Fact# = 1 ELSE Fact# = n * Fact#(n - 1)
+```
+
+**2. Suivre les appels récursifs de `Tri` :**
+
+```
+(x07) b ligne 27
+point d'arrêt en 3981 LN_27
+(x07) c
+[point d'arrêt]  ligne BASIC 27
+A=07 F=40 -Z----  BC=0000 DE=0008 HL=0007  IX=0000 IY=0000 SP=36BF PC=3981
+(x07) v TRI.G
+  TRI.G% = 0   ($3F93)
+(x07) v TRI.D
+  TRI.D% = 9   ($3F91)          ← premier appel : tout le tableau
+(x07) v TRI.PIVOT
+  TRI.PIVOT% = 7   ($3F99)
+(x07) v A(4)
+  A%(4) = 7   ($3F45)           ← le pivot est bien a(4), l'élément du milieu
+(x07) c
+[point d'arrêt]  ligne BASIC 27
+A=01 F=40 -Z----  BC=0000 DE=0006 HL=0001  IX=0000 IY=0000 SP=36AF PC=3981
+(x07) v TRI.D
+  TRI.D% = 6   ($3F91)          ← appel récursif : la partie gauche, de 0 à 6
+```
+
+`v TRI.G` affiche la variable `g` de la `SUB Tri`, telle qu'elle est **dans l'appel en cours**. `v A(4)` lit le tableau du programme principal. `SP` est passé de `36BF` à `36AF` : ce sont les 16 octets où l'appel précédent a rangé ses variables (`g`, `d`, `pivot`, `i`, `j`…) avant l'appel récursif.
+
+**3. Descendre puis remonter dans `Fact#` :**
+
+```
+(x07) d tout
+(x07) b ligne 41
+(x07) c
+[point d'arrêt]  ligne BASIC 41
+(x07) v FACT.N
+  FACT.N% = 10   ($3F5D)        ← Fact#(10)
+(x07) c
+[point d'arrêt]  ligne BASIC 41
+(x07) v FACT.N
+  FACT.N% = 9   ($3F5D)         ← appel récursif Fact#(9)
+(x07) d tout
+(x07) f                         ← finir cet appel (et tous ceux qu'il lance)
+[retour de la routine]  ligne BASIC 41
+(x07) v FACT.N
+  FACT.N% = 10   ($3F5D)        ← de retour dans Fact#(10) : n est restauré
+(x07) f
+[retour de la routine]  ligne BASIC 21
+```
+
+`f` termine l'appel en cours, avec toute la récursivité qu'il contient. Au retour, `FACT.N` vaut de nouveau 10 : on voit les valeurs de l'appel `Fact#(10)`.
+
+**4. Finir :**
+
+```
+(x07) c
+[fin]
+(x07) e
++--------------------+
+| 10  20  30  40  50 |
+| 60                 |
+|10! = 3628800       |
++--------------------+
+```
+
+**À retenir :**
+- **Lignes et variables :** `b ligne N` désigne une ligne du source QuickBASIC, et `v PROC.VAR` une variable locale de l'appel en cours. Les variables globales et les tableaux s'écrivent par leur nom : `v A(4)`.
+- **Avancer :** `c` d'un point d'arrêt au suivant, et `f` pour sortir d'un appel récursif.
+- **Le mot « BASIC » :** les arrêts s'affichent « ligne BASIC 27 », mais il s'agit bien de la ligne 27 du `.qbas`.
+- **Un piège :** `x A` lit la mémoire à l'adresse hexadécimale `$000A`, pas le tableau `A`. Pour un tableau, utilisez `v`.
+
 ## Avec la fenêtre
 
 Avec `--fenetre`, l'écran du X-07 s'affiche en direct dans une fenêtre. Les commandes du débogueur, elles, se tapent dans le terminal. Le clavier de la fenêtre sert au programme (`INKEY$`, `INPUT`) ; F9 l'interrompt.
