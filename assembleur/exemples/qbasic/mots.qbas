@@ -1,0 +1,58 @@
+' Jeux de lettres : les chaînes de caractères en QuickBASIC, pour le Canon X-07
+' Traduction :          python3 x07asm.py qb exemples/qbasic/mots.qbas
+' Compilation directe : python3 x07asm.py run exemples/qbasic/mots.qbas --direct
+DEFINT A-Z                      ' variables entières par défaut ; $ pour les chaînes
+DECLARE FUNCTION Envers$ (s$)
+DECLARE FUNCTION Cesar$ (s$, k)
+DECLARE FUNCTION Voyelles (s$)
+DECLARE SUB Ligne (rang, titre$, valeur$)
+
+CLS
+INPUT "Mot"; mot$
+mot$ = LEFT$(mot$, 11)          ' 20 colonnes : le mot doit tenir sur une ligne
+CLS
+Ligne 1, "Mot", mot$
+Ligne 2, "Envers", Envers$(mot$)
+Ligne 3, "Cesar+3", Cesar$(mot$, 3)
+LOCATE 4, 1
+PRINT "Voyelles :"; Voyelles(mot$);
+IF Envers$(mot$) = mot$ AND LEN(mot$) > 1 THEN PRINT "PALIN";
+SLEEP                           ' attend une touche : l'écran reste affiché
+END
+
+SUB Ligne (rang, titre$, valeur$)
+    ' titre complété par des espaces : les « : » sont alignés
+    LOCATE rang, 1
+    PRINT LEFT$(titre$ + SPACE$(8), 8); ": "; valeur$;
+END SUB
+
+FUNCTION Envers$ (s$)
+    r$ = ""
+    FOR i = LEN(s$) TO 1 STEP -1
+        r$ = r$ + MID$(s$, i, 1)
+    NEXT i
+    Envers$ = r$
+END FUNCTION
+
+FUNCTION Cesar$ (s$, k)
+    ' décale chaque lettre de k rangs dans l'alphabet (Z+1 = A)
+    r$ = ""
+    FOR i = 1 TO LEN(s$)
+        c = ASC(MID$(s$, i, 1))
+        IF c >= 65 AND c <= 90 THEN c = (c - 65 + k) MOD 26 + 65
+        IF c >= 97 AND c <= 122 THEN c = (c - 97 + k) MOD 26 + 97
+        r$ = r$ + CHR$(c)
+    NEXT i
+    Cesar$ = r$
+END FUNCTION
+
+FUNCTION Voyelles (s$)
+    n = 0
+    FOR i = 1 TO LEN(s$)
+        SELECT CASE MID$(s$, i, 1)
+            CASE "A", "E", "I", "O", "U", "Y", "a", "e", "i", "o", "u", "y"
+                n = n + 1
+        END SELECT
+    NEXT i
+    Voyelles = n
+END FUNCTION

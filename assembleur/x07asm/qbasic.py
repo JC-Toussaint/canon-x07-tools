@@ -930,6 +930,8 @@ class Parser:
         self.err("WRITE non traduit : utilisez PRINT")
 
 
+STRING_SPACE = 500     # octets réservés aux chaînes (le X-07 démarre avec 50)
+
 TYPE_NAMES = {"i": "entier (%)", "s": "simple précision (!)", "d": "double précision (#)",
               "$": "chaîne ($)", "l": "entier long (&)"}
 
@@ -1050,6 +1052,8 @@ class Translator:
         self.consts = {}
         self.deffn_names = {}
         toks = tokenize(text)
+        # chaînes : le X-07 ne leur réserve que 50 octets au départ (OS Error)
+        self.uses_strings = any(t.kind in ("id", "kw") and t.val.endswith("$") for t in toks)
         funcs, subs = set(), set()
         for k, t in enumerate(toks[:-1]):
             if t.kind == "kw" and t.val in ("FUNCTION", "SUB") and toks[k + 1].kind in ("id", "kw"):
@@ -1420,6 +1424,8 @@ class Translator:
         for key, p in self.procs.items():              # sans tableau : une seule copie
             if not any(is_arr for _, is_arr, _ in p["params"]):
                 self.spec(key, ())
+        if self.uses_strings:
+            self.emit("CLEAR %d" % STRING_SPACE)           # place pour les chaînes
         self.emit("DEFSNG A-Z")                            # QuickBASIC : simple par défaut
         self.gen_block(self.main, {})
         self.emit("END")

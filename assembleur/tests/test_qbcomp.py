@@ -159,6 +159,17 @@ FUNCTION P% (n%)
 END FUNCTION''')
         self.assertIn("OM Error", m.output())             # récursivité trop profonde
 
+    def test_example_mots_strings(self):
+        with open(os.path.join(ROOT, "exemples", "qbasic", "mots.qbas"), encoding="utf-8") as f:
+            src = f.read()
+        asm, _, _ = qbcomp.compile_qbasic(src, "T", 0x2000)
+        a = Assembler()
+        m = emu.run_binary(a.assemble_text(asm), a.entry, inputs=["RADAR"], keys=" ")
+        screen = m.screen_text()
+        for row in ("Mot     : RADAR", "Envers  : RADAR", "Cesar+3 : UDGDU",
+                    "Voyelles : 2 PALIN"):
+            self.assertIn(row, screen)
+
     def test_long_names_kept(self):
         _, asm, _ = run('alphabet = 1: alphanumerique = 2: total = 3\nPRINT alphabet; total')
         self.assertIn("V_ALPHABET_F", asm)

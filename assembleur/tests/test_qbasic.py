@@ -79,7 +79,8 @@ SUB Ligne (texte$, total)
     total = 0
 END SUB
 ''', "SOMME 55 \nUNPLUSPLUS\nPETIT\n")
-        self.assertTrue(out.startswith("10 DEFSNG A-Z\n"))
+        # chaînes : place réservée (le X-07 n'en a que 50 octets au départ)
+        self.assertTrue(out.startswith("10 CLEAR 500\n20 DEFSNG A-Z\n"))
 
     def test_by_value_in_parentheses(self):
         self.qb('''
@@ -287,6 +288,20 @@ SUB Garde STATIC
   g$(1, 1) = g$(1, 1) + "*"
   PRINT g$(1, 1);
 END SUB''', " 1  1  1  4  320 \n***\n")   # STATIC : * puis **
+
+    def test_example_mots_strings(self):
+        # chaînes : FUNCTION qui rend une chaîne, MID$, ASC, CHR$, SELECT CASE
+        out, _, _ = qbasic.translate(self.example("mots.qbas"))
+        self.assertTrue(out.startswith("10 CLEAR 500\n"))
+        _, m = emu.run_basic(out, inputs=["Bonjour"], keys=" ")
+        self.assertIsNone(m.error)
+        screen = m.screen_text()
+        for row in ("Envers  : ruojnoB", "Cesar+3 : Erqmrxu", "Voyelles : 3"):
+            self.assertIn(row, screen)
+        asm, _ = compile_basic(out, "T", 0x2000)
+        a = Assembler()
+        mc = emu.run_binary(a.assemble_text(asm), a.entry, inputs=["RADAR"], keys=" ")
+        self.assertIn("Voyelles : 2 PALIN", mc.screen_text())
 
     def test_example_mystere(self):
         src = self.example("mystere.qbas")

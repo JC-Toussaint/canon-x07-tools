@@ -152,6 +152,7 @@ Ces différences ont été mesurées dans l'émulateur, qui exécute la vraie RO
 | `INPUT "texte",v` donne `SN Error` | le X-07 affiche toujours « ? » | `INPUT "texte";v` (avertissement) |
 | type par défaut : double précision | QuickBASIC : simple | `DEFSNG A-Z` en tête |
 | `DIM` refait donne `DD Error`, `ERASE` d'un tableau absent donne `FC Error` | tableaux locaux des procédures | `DIM` une seule fois en tête du programme, tableau remis à zéro à chaque appel |
+| **50 octets seulement pour les chaînes** au départ : construire une chaîne (`r$ = r$ + MID$(...)`) donne vite `OS Error` | QuickBASIC n'a pas cette limite | `CLEAR 500` en tête du programme traduit, s'il emploie des chaînes (le compilateur, lui, réserve la place de chaque chaîne) |
 | pas de pointeurs : un tableau ne peut pas être passé en paramètre | `SUB Trier (t())` | une copie de la procédure par tableau reçu |
 
 Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonnes), opérateurs et priorités, vrai = -1, `MOD`, `\`, `&H`, `&O`, fonctions de chaînes, `DATA`/`READ`/`RESTORE`, `ON ... GOTO/GOSUB`, `DEF FN`, et sortie d'une boucle `FOR` par `GOTO` (tolérée par la ROM).
@@ -304,5 +305,6 @@ x07asm/qbcomp.py          compilation directe en assembleur (--direct)
 tests/test_qbasic.py      tests de la traduction (ROM + version compilée)
 tests/test_qbcomp.py      tests de la compilation directe
 exemples/qbasic/          tri.qbas, tri2.qbas (même SUB pour deux tableaux), mystere.qbas,
+                          mots.qbas (chaînes : envers, César, voyelles, palindrome),
                           rapide.qbas (tri rapide récursif : compilation directe seulement)
 ```
