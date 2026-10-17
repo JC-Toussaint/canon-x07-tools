@@ -14,5 +14,7 @@ __pycache__/
 # fichiers d'échange des éditeurs
 *.swp
 *~
-# traductions produites à partir des exemples QuickBASIC
+# fichiers produits à partir des exemples QuickBASIC (traduction, compilation)
 assembleur/exemples/qbasic/*.bas
+assembleur/exemples/qbasic/*.asm
+assembleur/exemples/qbasic/*.bin
