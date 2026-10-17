@@ -180,6 +180,51 @@ class TestWindow(unittest.TestCase):
         finally:
             e.close()
 
+    def test_new_program_and_save_as(self):
+        from x07asm.ide import Editeur, TEMPLATES
+        with tempfile.TemporaryDirectory() as d:
+            e = Editeur()
+            r = e.root
+
+            def pump(t):
+                end = time.time() + t
+                while time.time() < end:
+                    r.update()
+                    time.sleep(0.02)
+            try:
+                pump(0.2)
+                for ext, answer, shown in ((".bas", "ZOE", "BONJOUR ZOE"),
+                                           (".qbas", "ZOE", "Bonjour ZOE"),
+                                           (".asm", "X", "BONJOUR X-07 !")):
+                    path = os.path.join(d, "essai" + ext)
+                    self.assertTrue(e.new_file(path))          # modèle selon l'extension
+                    with open(path) as f:
+                        self.assertEqual(f.read(), TEMPLATES[ext])
+                    self.assertTrue(e.compile())
+                    e.entry.insert(0, answer)
+                    e.send_line()                              # gardée jusqu'au départ
+                    e.do_run()
+                    for _ in range(100):
+                        pump(0.05)
+                        if not e.busy():
+                            break
+                    self.assertTrue(e.session.finished, ext)
+                    self.assertIn(shown, "\n".join(e.session.m.lcd.text()))
+                e.toggle(7)                                    # point d'arrêt, gardé
+                e.text.insert("end", "; ajout\n")
+                copy = os.path.join(d, "copie.asm")
+                self.assertTrue(e.save_as(copy))
+                self.assertEqual(e.path, copy)
+                with open(copy) as f:
+                    self.assertTrue(f.read().endswith("; ajout\n"))
+                self.assertFalse(e.text.edit_modified())
+                self.assertTrue(e.compile())
+                self.assertEqual(e.session.break_lines, {7})
+                self.assertFalse(e.save_as(os.path.join(d, "copie.txt")))   # extension refusée
+            finally:
+                e.text.edit_modified(False)
+                e.close()
+
 
 if __name__ == "__main__":
     unittest.main()

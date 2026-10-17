@@ -31,7 +31,7 @@ Chaque arrêt affiche :
 ```sh
 python3 x07asm.py ide exemples/qbasic/rapide.qbas
 python3 x07asm.py ide exemples/table.bas --ram 16 --zoom 4
-python3 x07asm.py ide                                  # puis « Ouvrir… »
+python3 x07asm.py ide                                  # puis « Nouveau » ou « Ouvrir… »
 ```
 
 ![L'éditeur-débogueur sur rapide.qbas : points d'arrêt, ligne courante, écran, variables](../ref_docs/images/editeur_debogueur.png)
@@ -58,6 +58,10 @@ La même mécanique que la commande `debug`, dans une fenêtre :
 
 | Bouton | Touche | Rôle |
 |---|---|---|
+| Nouveau ▾ | | nouveau programme : BASIC du X-07 (`.bas`), QuickBASIC (`.qbas`) ou assembleur (`.asm`) ; on choisit le nom, et le programme part d'un petit modèle qui fonctionne |
+| Ouvrir… | Ctrl+O | ouvrir un programme |
+| Enregistrer | Ctrl+S | |
+| Enregistrer sous… | Ctrl+Maj+S | enregistrer sous un autre nom, qui devient le fichier ouvert ; les points d'arrêt sont gardés. L'extension choisit le langage |
 | Compiler | | enregistre puis compile (aussi fait automatiquement avant de lancer un programme modifié) |
 | ▶ Continuer | F5 | jusqu'au prochain point d'arrêt, ou la fin |
 | ⏸ Pause | F9 hors du source | interrompt le programme, même s'il attend une touche |
@@ -66,7 +70,8 @@ La même mécanique que la commande `debug`, dans une fenêtre :
 | Sortir | Maj+F11 | jusqu'à la fin de la routine en cours |
 | Instruction | | une seule instruction machine |
 | ↺ Recommencer | | recompile et repart du début |
-| Enregistrer | Ctrl+S | |
+
+Avant d'ouvrir ou de créer un autre programme, ou en fermant la fenêtre, l'éditeur propose d'enregistrer les modifications en cours.
 
 Dans le source, **F9** pose ou enlève un point d'arrêt sur la ligne du curseur.
 

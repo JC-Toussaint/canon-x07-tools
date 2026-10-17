@@ -19,6 +19,31 @@ import threading
 from . import debug, emu
 from .sim import EXIT
 
+TEMPLATES = {   # point de départ d'un nouveau programme
+    ".bas": '10 REM NOUVEAU PROGRAMME\n20 CLS\n30 INPUT "NOM";N$\n40 PRINT "BONJOUR ";N$\n',
+    ".qbas": ("' Nouveau programme QuickBASIC pour le Canon X-07\n"
+              "DEFINT A-Z                      ' variables entières par défaut\n"
+              "CLS\n"
+              "INPUT \"Nom\"; nom$\n"
+              "PRINT \"Bonjour \"; nom$\n"
+              "END\n"),
+    ".asm": ("; Nouveau programme en assembleur pour le Canon X-07\n"
+             "; Chargement : CLEAR 50,&H1BFF  puis  EXEC &H1C00\n"
+             "\n"
+             "        ORG  $1C00\n"
+             "\n"
+             "DEBUT:  CALL LCDCLS          ; efface l'écran\n"
+             "        LD   HL,MSG\n"
+             "        CALL PRTMSG          ; affiche (HL) jusqu'à 00\n"
+             ".ATT:   XOR  A\n"
+             "        CALL INKEY           ; Z=1 si aucune touche\n"
+             "        JR   Z,.ATT\n"
+             "        RET                  ; retour au BASIC\n"
+             "\n"
+             "MSG:    DZ   \"BONJOUR X-07 !\"\n"),
+}
+KINDS = ((".bas", "BASIC du X-07"), (".qbas", "QuickBASIC"), (".asm", "Assembleur Z80"))
+
 INTERNAL = re.compile(r"(V_|S_|A[IFDS]_)(Q[TAOR]_|FNP_|FN_)")   # variables du compilateur
 
 
@@ -260,10 +285,18 @@ class Editeur:
 
         bar = tk.Frame(self.root)
         bar.pack(fill="x", padx=4, pady=3)
-        self.buttons = {}
+        nouveau = tk.Menubutton(bar, text="Nouveau ▾", relief="raised")
+        menu = tk.Menu(nouveau, tearoff=False)
+        for ext, label in KINDS:
+            menu.add_command(label="%s (%s)" % (label, ext),
+                             command=lambda e=ext: self.new_dialog(e))
+        nouveau.configure(menu=menu)
+        nouveau.pack(side="left", padx=2)
+        self.buttons = {"nouveau": nouveau}
         for key, text, cmd in (
                 ("ouvrir", "Ouvrir…", self.open_dialog),
                 ("enregistrer", "Enregistrer", self.save),
+                ("enregistrer_sous", "Enregistrer sous…", self.save_as_dialog),
                 ("compiler", "Compiler", self.compile),
                 ("continuer", "▶ Continuer (F5)", self.do_run),
                 ("pause", "⏸ Pause", self.do_pause),
@@ -341,6 +374,8 @@ class Editeur:
         r.bind("<Shift-F11>", lambda e: self.do_step("out"))
         r.bind("<F9>", self.f9)
         r.bind("<Control-s>", lambda e: self.save())
+        r.bind("<Control-S>", lambda e: self.save_as_dialog())       # Ctrl+Maj+S
+        r.bind("<Control-o>", lambda e: self.open_dialog())
         r.protocol("WM_DELETE_WINDOW", self.close)
         if path:
             self.load(path)
@@ -348,12 +383,90 @@ class Editeur:
         self.root.after(40, self.tick)
 
     # -------------------------------------------------- fichier
+    FILETYPES = [("Programmes X-07", "*.bas *.qbas *.asm"), ("BASIC du X-07", "*.bas"),
+                 ("QuickBASIC", "*.qbas"), ("Assembleur", "*.asm"), ("Tous", "*")]
+
     def open_dialog(self):
         from tkinter import filedialog
-        p = filedialog.askopenfilename(filetypes=[("Programmes X-07", "*.asm *.bas *.qbas"),
-                                                  ("Tous", "*")])
+        if self.busy() or not self.confirm_discard():
+            return
+        p = filedialog.askopenfilename(filetypes=self.FILETYPES)
         if p:
             self.load(p)
+
+    def confirm_discard(self):
+        """Modifications non enregistrées : proposer de les enregistrer.
+        Rend False si l'utilisateur annule."""
+        if not (self.path and self.text.edit_modified()):
+            return True
+        from tkinter import messagebox
+        answer = messagebox.askyesnocancel(
+            "Modifications", "Enregistrer les modifications de %s ?"
+            % os.path.basename(self.path), parent=self.root)
+        if answer is None:
+            return False
+        if answer:
+            self.save()
+        return True
+
+    def new_dialog(self, ext):
+        from tkinter import filedialog
+        if self.busy() or not self.confirm_discard():
+            return
+        label = dict(KINDS)[ext]
+        p = filedialog.asksaveasfilename(
+            title="Nouveau programme : %s" % label, defaultextension=ext,
+            initialfile="nouveau" + ext, filetypes=[(label, "*" + ext), ("Tous", "*")])
+        if p:
+            self.new_file(p)
+
+    def new_file(self, path):
+        """Crée le programme (modèle selon l'extension) et l'ouvre."""
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in TEMPLATES:
+            self.set_status("extension inconnue : .bas, .qbas ou .asm")
+            return False
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(TEMPLATES[ext])
+        self.load(path)
+        self.set_status("nouveau programme %s : modifiez-le, puis ▶"
+                        % os.path.basename(path))
+        return True
+
+    def save_as_dialog(self):
+        from tkinter import filedialog
+        if not self.path or self.busy():
+            return
+        ext = os.path.splitext(self.path)[1].lower()
+        p = filedialog.asksaveasfilename(
+            title="Enregistrer sous", defaultextension=ext,
+            initialdir=os.path.dirname(os.path.abspath(self.path)),
+            initialfile=os.path.basename(self.path), filetypes=self.FILETYPES)
+        if p:
+            self.save_as(p)
+
+    def save_as(self, path):
+        """Enregistre le texte sous un autre nom, qui devient le fichier ouvert
+        (les points d'arrêt sont gardés ; à recompiler)."""
+        if os.path.splitext(path)[1].lower() not in TEMPLATES:
+            self.set_status("extension inconnue : .bas, .qbas ou .asm")
+            return False
+        if self.session is not None:
+            self.sync_breaks_from_text()
+            breaks = set(self.session.break_lines)
+        else:
+            breaks = set()
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(self.text.get("1.0", "end-1c"))
+        self.path = path
+        self.session = Session(path, self.ram)
+        self.session.break_lines = breaks
+        self.text.edit_modified(False)
+        self.dirty = True
+        self.root.title("Canon X-07 : %s" % os.path.basename(path))
+        self.set_status("enregistré sous %s" % path)
+        self.refresh()
+        return True
 
     def load(self, path):
         with open(path, encoding="utf-8", errors="replace") as f:
@@ -581,7 +694,7 @@ class Editeur:
         for k, b in self.buttons.items():
             if k == "pause":
                 b.configure(state="normal" if run else "disabled")
-            elif k in ("ouvrir",):
+            elif k in ("ouvrir", "nouveau"):
                 b.configure(state="disabled" if run else "normal")
             else:
                 b.configure(state="normal" if has and not run else "disabled")
@@ -641,6 +754,8 @@ class Editeur:
             self.set_status("ligne gardée pour le programme : %r ; ▶ pour continuer" % text)
 
     def close(self):
+        if not self.confirm_discard():
+            return
         if self.session and self.session.m:
             self.session.m.stop_requested = True
         self.root.destroy()
