@@ -2,15 +2,18 @@
 
 **Question :** peut-on écrire un programme en QuickBASIC (blocs structurés, `SUB`, `FUNCTION`, noms longs, sans numéros de ligne), adapté au X-07 (écran de 20 × 4, 120 × 32 points), et en tirer automatiquement un programme en BASIC du X-07 et en assembleur ?
 
-**Réponse : oui, pour l'essentiel du langage.** Un prototype fonctionne : la commande `qb`.
+**Réponse : oui, pour l'essentiel du langage.** Deux voies fonctionnent :
 
 ```
 QuickBASIC  --qb-->  BASIC du X-07 (numéroté)  --basic-->  assembleur Z80
-                         |                                    |
-                     emu : vraie ROM                     run / --charger / send
+     |                   |                                    |
+     |               emu : vraie ROM                     run / --charger / send
+     |
+     +--qb --direct-->  assembleur Z80  (récursivité, tableaux par adresse)
 ```
 
-La traduction produit du BASIC du X-07 ordinaire. On obtient donc les deux résultats demandés avec une seule traduction : le BASIC, que la ROM exécute (ou à taper sur la machine), et l'assembleur, produit par le compilateur existant.
+- **Traduction (`qb`)** : le résultat est du BASIC du X-07 ordinaire, que la ROM exécute ou que l'on tape sur la machine. Le compilateur existant en fait ensuite de l'assembleur : une seule traduction donne les deux résultats.
+- **Compilation directe (`--direct`)** : le programme QuickBASIC devient directement de l'assembleur, sans BASIC du X-07. On gagne la récursivité et le passage des tableaux par adresse, mais on n'a plus de version en BASIC. Voir « Compilation directe » plus bas.
 
 **Ce qui a été vérifié :**
 - les tests (`tests/test_qbasic.py`) : chaque programme QuickBASIC est traduit, exécuté par la vraie ROM, et sa sortie est comparée à celle qu'aurait donnée QuickBASIC ;
@@ -172,33 +175,91 @@ Le résultat est le même qu'avec une référence. On paie en taille de code (un
 - **lourd et lent :** chaque `t(i)` deviendrait plusieurs `PEEK`/`POKE` avec un calcul d'adresse, pire encore pour les nombres décimaux (4 ou 8 octets BCD) et les chaînes ;
 - **le compilateur ne gère pas `VARPTR`.**
 
-**Où de vrais pointeurs seraient possibles :** dans la voie directe ci-dessous. Dans le code compilé, les tableaux ont une **adresse fixe**, que l'on pourrait passer dans un registre. Il n'y aurait plus de copies de procédures, et la récursivité deviendrait possible. Mais il n'y aurait plus de version en BASIC du X-07.
+**Où de vrais pointeurs sont possibles :** dans le code compilé, les tableaux ont une **adresse fixe**. C'est ce que fait la compilation directe (`--direct`, ci-dessous) : une seule copie de chaque procédure, et la récursivité en plus, mais plus de version en BASIC du X-07.
 
-## Deux voies vers l'assembleur
+## Compilation directe (`--direct`)
 
-**1. Par le BASIC du X-07 : la voie choisie pour le prototype.** Une seule traduction donne les deux résultats demandés. Le BASIC produit est vérifié par la vraie ROM, puis le compilateur existant (déjà testé contre la ROM) en fait de l'assembleur. Le prix à payer : l'assembleur hérite des limites du BASIC du X-07 (pas de récursivité, noms courts, pas d'entiers 32 bits).
+```sh
+python3 x07asm.py run exemples/qbasic/rapide.qbas --direct       # dans l'émulateur
+python3 x07asm.py qb exemples/qbasic/rapide.qbas --direct        # -> rapide.asm, rapide.bin
+python3 x07asm.py debug exemples/qbasic/rapide.qbas --direct     # débogueur, voir ci-dessous
+```
 
-**2. Directe** : l'arbre de QuickBASIC serait donné au générateur de code du compilateur, sans repasser par le texte BASIC. On gagnerait :
-- la **récursivité**, grâce à une pile pour les variables locales et les paramètres ;
-- de vrais **paramètres par référence** (passage d'adresses), y compris pour les tableaux, sans copie de procédure ;
-- des **entiers 32 bits** (`LONG`), avec de nouvelles routines.
+`--direct` existe aussi pour `basic`, `send` et `emu --charger`. Sans cette option, un `.qbas` passe par la traduction en BASIC.
 
-Mais cette voie ne produirait plus de BASIC du X-07, n'aurait plus la ROM pour référence, et demanderait de reprendre une bonne part du compilateur.
+Avec le débogueur, `ligne N` désigne la ligne N du **source QuickBASIC**, et `v PROC.VAR` une variable locale. On voit ainsi chaque appel récursif :
 
-**Recommandation :** garder la voie 1, qui couvre les programmes écrits pour une machine de cette taille, et n'envisager la voie 2 que si la récursivité devient un vrai besoin.
+```
+(x07) b ligne 26                  ← i% = g%: j% = d%, dans SUB Tri
+(x07) c
+(x07) v TRI.G
+  TRI.G% = 0
+(x07) v TRI.D
+  TRI.D% = 9
+(x07) v TRI.PIVOT
+  TRI.PIVOT% = 7
+(x07) c                           ← l'appel récursif suivant
+(x07) v TRI.D
+  TRI.D% = 6
+```
+
+**Principe.** Le programme QuickBASIC, analysé comme pour la traduction, est transformé directement en instructions internes du compilateur, sans texte BASIC (`x07asm/qbcomp.py`). Le générateur de code existant, vérifié contre la ROM, sert tel quel pour les expressions, `PRINT`, les chaînes et les nombres BCD. Les adaptations au X-07 restent les mêmes que pour la traduction : arrondi vers les entiers, `LOCATE`, garde des `FOR`.
+
+**Ce qui change par rapport à la traduction :**
+
+| | Traduction (`qb`) | Compilation directe (`--direct`) |
+|---|---|---|
+| noms des variables | renommés en 1 ou 2 caractères | gardés (`V_ALPHABET_F`) |
+| `SUB`, `FUNCTION` | `GOSUB` | `CALL` / `RET` |
+| récursivité | refusée | **permise** |
+| tableau en paramètre | une copie de la procédure par tableau | **une seule copie** : le tableau est passé par adresse |
+| `INSTR`, `LINE INPUT`, `PRINT USING`, `ON ERROR`, `TIME$` | traduits (ROM seulement) | refusés (absents du compilateur) |
+| `DIM t(n)` avec n variable | accepté par la ROM | refusé : dimensions constantes |
+| résultat | BASIC du X-07 + assembleur | assembleur seulement |
+
+**Procédures.** L'appelant range les arguments dans des cases propres à la procédure ; la procédure les recopie dans ses paramètres à l'entrée. À la sortie, elle range ses paramètres dans d'autres cases, que l'appelant recopie dans les variables passées : c'est le passage par référence de QuickBASIC, et `(x)` passe par valeur. Ces cases ne sont jamais empilées : le passage reste exact pendant la récursivité, y compris quand une procédure se transmet sa propre variable par référence.
+
+**Récursivité.** Les variables gardent une adresse fixe. Une procédure **récursive** (repérée par le graphe des appels) empile, à l'entrée, ses variables locales, ses paramètres, son résultat, ses variables temporaires et les variables cachées de ses boucles `FOR` (limite, pas). Elle les dépile à la sortie (`RT_SAVE`, `RT_REST`). Les procédures non récursives n'ont pas ce coût. Une récursivité trop profonde donne `OM Error` avant que la pile n'atteigne la mémoire du BASIC.
+
+**Tableaux par adresse.** Chaque tableau passé en paramètre reçoit un petit descripteur (adresse, nombre d'éléments par dimension). L'appelant transmet l'adresse du descripteur ; la procédure la charge dans un registre à chaque accès, et une routine calcule l'adresse de l'élément, avec le contrôle des indices (`BS Error`). Une procédure peut transmettre à son tour le tableau reçu. Le passage par adresse est limité à 1 ou 2 dimensions.
+
+**Coût, mesuré dans l'émulateur :**
+
+| Programme | Traduction | Compilation directe |
+|---|---|---|
+| `tri.qbas` | 1 163 octets, 22 632 instructions | 1 374 octets, 26 458 instructions |
+| `tri2.qbas` (deux tableaux) | 1 560 octets, 31 030 instructions | 1 502 octets, 38 417 instructions |
+| `rapide.qbas` (récursif) | refusé | 1 926 octets, 56 250 instructions |
+
+L'accès indirect aux tableaux et les recopies de paramètres coûtent environ 20 % de temps. En échange, le code ne grossit plus avec le nombre de tableaux passés à une procédure.
+
+**Limites propres à la compilation directe :**
+- **Tableau local d'une procédure récursive :** il n'est pas empilé, et il est donc partagé par tous les appels en cours (avertissement).
+- **`LOCATE` :** il faut donner la ligne et la colonne.
+- **`PSET` :** la couleur doit être une constante.
+- **`DEF FN` :** numériques seulement.
+- **Messages d'erreur :** les erreurs d'exécution donnent la ligne du source QuickBASIC, avec l'option du compilateur `--debug` (`debug` l'active toujours).
+
+**Quand choisir quoi :**
+- **Traduction :** si l'on veut un programme en BASIC du X-07, à taper ou à lire sur la machine, ou si le programme emploie `INSTR`, `PRINT USING`, `ON ERROR`.
+- **Compilation directe :** dès qu'il y a de la récursivité, ou une procédure qui travaille sur plusieurs tableaux.
 
 ## Pistes pour aller plus loin
 
-1. Ajouter au compilateur ce que la ROM sait déjà faire et que la traduction produit : `INSTR`, `LINE INPUT`, `PRINT USING`, `TIME$`, `ON ERROR`.
-2. Arrondi exact de QuickBASIC (demi au pair) dans une petite routine.
-3. `TYPE` traduit en tableaux parallèles ; `REDIM` par `ERASE` puis `DIM`.
-4. Garder les commentaires en `REM` (option), au prix de la mémoire.
-5. Essayer des programmes QuickBASIC réels, écrits par d'autres, pour mesurer la part traduite sans retouche.
+1. Ajouter au compilateur ce que la ROM sait déjà faire et que la traduction produit : `INSTR`, `LINE INPUT`, `PRINT USING`, `TIME$`, `ON ERROR`. Les deux voies en profiteraient.
+2. Compilation directe : entiers 32 bits (`LONG`), dimensions variables (`DIM t(n)`), tableaux par adresse à plus de 2 dimensions.
+3. Arrondi exact de QuickBASIC (demi au pair) dans une petite routine.
+4. `TYPE` traduit en tableaux parallèles ; `REDIM` par `ERASE` puis `DIM`.
+5. Garder les commentaires en `REM` (option), au prix de la mémoire.
+6. Essayer des programmes QuickBASIC réels, écrits par d'autres, pour mesurer la part traduite sans retouche.
 
 ## Fichiers
 
 ```
 x07asm/qbasic.py          traducteur : analyse, renommage, génération numérotée
-tests/test_qbasic.py      tests (ROM + version compilée)
-exemples/qbasic/          tri.qbas, tri2.qbas (même SUB pour deux tableaux), mystere.qbas
+x07asm/qbcomp.py          compilation directe en assembleur (--direct)
+tests/test_qbasic.py      tests de la traduction (ROM + version compilée)
+tests/test_qbcomp.py      tests de la compilation directe
+exemples/qbasic/          tri.qbas, tri2.qbas (même SUB pour deux tableaux), mystere.qbas,
+                          rapide.qbas (tri rapide récursif : compilation directe seulement)
 ```

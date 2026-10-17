@@ -1181,9 +1181,145 @@ RT_FONTR:                       ; (HL) <- FONT$(A), comme la ROM ($D737) :
         JP   RT_SCOPY
 """)
 
+# ------------------------------------------------------------- QuickBASIC compilé (qbcomp)
+_r("RT_SAVE", """
+RT_SAVE:                        ; empile BC octets copiés de (HL) : variables d'une
+        POP  DE                 ; procédure récursive, à l'entrée
+        LD   (RT_RA),DE
+        EX   DE,HL              ; DE = source
+        LD   HL,0
+        ADD  HL,SP
+        OR   A
+        SBC  HL,BC              ; HL = nouvelle pile
+        PUSH HL
+        PUSH DE
+        LD   DE,(STREND)        ; garder 64 octets au-dessus de la zone libre
+        LD   HL,64
+        ADD  HL,DE
+        EX   DE,HL
+        POP  HL                 ; HL = source
+        EX   (SP),HL            ; HL = nouvelle pile, (SP) = source
+        PUSH HL
+        OR   A
+        SBC  HL,DE
+        POP  HL
+        JR   C,.OM              ; récursivité trop profonde
+        POP  DE                 ; DE = source
+        LD   SP,HL              ; la zone réservée est au-dessus de SP
+        EX   DE,HL              ; HL = source, DE = pile
+        LDIR
+        LD   HL,(RT_RA)
+        JP   (HL)
+.OM:    LD   E,7                ; OM : plus de mémoire
+        JP   RT_FERR
+""")
+
+_r("RT_REST", """
+RT_REST:                        ; dépile BC octets vers (HL) (sortie de la procédure)
+        POP  DE
+        LD   (RT_RA),DE
+        EX   DE,HL              ; DE = destination
+        LD   HL,0
+        ADD  HL,SP              ; HL = données en haut de la pile
+        LDIR
+        LD   SP,HL              ; libère la zone
+        LD   HL,(RT_RA)
+        JP   (HL)
+""")
+
+_r("RT_ZERO", """
+RT_ZERO:                        ; BC octets à zéro en (HL) : tableau local, ERASE
+        LD   (HL),0
+        DEC  BC
+        LD   A,B
+        OR   C
+        RET  Z
+        LD   D,H
+        LD   E,L
+        INC  DE
+        LDIR
+        RET
+""")
+
+_r("RT_PA1", """
+RT_PA1:                         ; tableau passé en paramètre, 1 indice :
+        LD   (RT_PD),DE         ; HL = indice, DE = descripteur (adresse, n1, n2),
+        LD   (RT_PZ),A          ; A = taille d'un élément -> HL = adresse de l'élément
+        EX   DE,HL
+        INC  HL
+        INC  HL
+        LD   A,(HL)
+        INC  HL
+        LD   H,(HL)
+        LD   L,A                ; HL = n1
+        EX   DE,HL              ; HL = indice, DE = n1
+        CALL RT_CHK             ; BS si l'indice dépasse
+        JP   RT_PAS
+""")
+
+_r("RT_PA2", """
+RT_PA2:                         ; 2 indices : DE = indice 1, HL = indice 2,
+        LD   (RT_PD),BC         ; BC = descripteur, A = taille d'un élément
+        LD   (RT_PZ),A
+        PUSH DE
+        PUSH HL
+        LD   HL,(RT_PD)
+        LD   DE,4
+        ADD  HL,DE
+        LD   E,(HL)
+        INC  HL
+        LD   D,(HL)             ; DE = n2
+        POP  HL
+        CALL RT_CHK             ; indice 2 < n2
+        EX   (SP),HL            ; HL = indice 1, pile : indice 2
+        PUSH DE                 ; n2
+        LD   DE,(RT_PD)
+        INC  DE
+        INC  DE
+        EX   DE,HL
+        LD   A,(HL)
+        INC  HL
+        LD   H,(HL)
+        LD   L,A                ; HL = n1
+        EX   DE,HL              ; HL = indice 1, DE = n1
+        CALL RT_CHK
+        POP  DE
+        CALL RT_MUL             ; HL = indice 1 * n2
+        POP  DE
+        ADD  HL,DE              ; rang de l'élément
+        JP   RT_PAS
+""")
+
+_r("RT_PAS", """
+RT_PAS:                         ; HL = rang -> HL = adresse : base + rang * taille
+        LD   A,(RT_PZ)
+        CP   2                  ; entier, simple, double : décalages
+        JR   Z,.D1
+        CP   4
+        JR   Z,.D2
+        CP   8
+        JR   Z,.D3
+        LD   E,A                ; chaîne : multiplication
+        LD   D,0
+        CALL RT_MUL
+        JR   .B
+.D3:    ADD  HL,HL
+.D2:    ADD  HL,HL
+.D1:    ADD  HL,HL
+.B:     EX   DE,HL
+        LD   HL,(RT_PD)
+        LD   A,(HL)
+        INC  HL
+        LD   H,(HL)
+        LD   L,A
+        ADD  HL,DE
+        RET
+""")
+
 VARIABLES.update({
     "RT_DPTR": 2, "RT_IP": 2, "RT_IC": 1, "RT_GB": 5, "RT_LINE": 2, "RT_FBUF": 64, "RT_DLINE": 2,
     "RT_CMD": 64, "RT_CMDP": 2,
+    "RT_RA": 2, "RT_PD": 2, "RT_PZ": 1,
 })
 
 _NAME = re.compile(r"\b((?:RT|MSG)_[A-Z0-9_]+)\b")

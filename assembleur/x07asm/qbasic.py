@@ -134,6 +134,10 @@ REL = ("=", "<>", "<", ">", "<=", ">=")
 NORM_REL = {"=<": "<=", "=>": ">=", "><": "<>"}
 
 
+class Stmt(tuple):
+    """Instruction avec sa ligne dans le source (compilation directe)."""
+
+
 class Parser:
     def __init__(self, toks, functions):
         self.t, self.i = toks, 0
@@ -386,7 +390,15 @@ class Parser:
         return None
 
     def statement(self):
+        s = self._statement()
+        if s is not None and getattr(self, "track_lines", False):
+            s = Stmt(s)
+            s.line = self.stmt_line
+        return s
+
+    def _statement(self):
         t = self.cur
+        self.stmt_line = t.line
         if t.kind == "id":
             if base(t.val) in self.functions and self.is_op("=", self.peek()):
                 self.next()
@@ -1309,8 +1321,9 @@ class Translator:
             while todo:
                 n = todo.pop()
                 if n == start:
-                    raise QBError("%s est récursive : le X-07 n'a pas de variables locales "
-                                  "(la traduction exige un programme non récursif)" % start)
+                    raise QBError("%s est récursive : le BASIC du X-07 n'a pas de variables "
+                                  "locales ; compilez directement en assembleur (--direct)"
+                                  % start)
                 if n in seen or n not in graph:
                     continue
                 seen.add(n)

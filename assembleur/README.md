@@ -28,6 +28,7 @@ python3 x07asm.py run exemples/devine.bas                # l'essayer sur PC
 python3 x07asm.py emu exemples/devine.bas                # le BASIC du X-07 (vraie ROM)
 python3 x07asm.py emu exemples/graphisme.bas --fenetre   # l'écran de 120 x 32 points
 python3 x07asm.py qb exemples/qbasic/tri.qbas            # QuickBASIC -> BASIC du X-07
+python3 x07asm.py run exemples/qbasic/rapide.qbas --direct   # QuickBASIC compilé directement
 python3 x07asm.py debug exemples/bonjour.asm              # débogueur pas à pas
 python3 x07asm.py send exemples/devine.bas -p /dev/ttyUSB0   # envoi par le câble FT232RL
 python3 -m unittest discover -s tests                    # tests
@@ -123,6 +124,7 @@ x07asm/formats.py   bin, Intel HEX, chargeur BASIC, vidage, DATA
 x07asm/basic.py     compilateur BASIC (voir COMPILATEUR.md)
 x07asm/debug.py     débogueur (voir DEBOGUEUR.md)
 x07asm/qbasic.py    traducteur QuickBASIC -> BASIC du X-07 (voir QBASIC.md)
+x07asm/qbcomp.py    compilation directe QuickBASIC -> assembleur (voir QBASIC.md)
 x07asm/runtime.py   bibliothèque d'exécution du compilateur
 x07asm/sim.py       simulateur Z80 pour essayer les programmes sur PC
 x07asm/emu.py       démarrage de la vraie ROM : le BASIC du X-07 sur PC

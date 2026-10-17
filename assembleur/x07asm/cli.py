@@ -162,15 +162,19 @@ def free_top(ram):
     return RAM_TOP[ram] - RAM_RESERVED
 
 
-def read_basic(path):
-    """Texte BASIC du X-07 du fichier ; un programme QuickBASIC (.qbas) est
-    d'abord traduit (sinon la ROM répondrait SN Error dès DECLARE ou SUB)."""
+def read_text(path):
     with open(path, "rb") as f:
         raw = f.read()
     try:
-        text = raw.decode("utf-8")
+        return raw.decode("utf-8")
     except UnicodeDecodeError:
-        text = raw.decode("latin-1")
+        return raw.decode("latin-1")
+
+
+def read_basic(path):
+    """Texte BASIC du X-07 du fichier ; un programme QuickBASIC (.qbas) est
+    d'abord traduit (sinon la ROM répondrait SN Error dès DECLARE ou SUB)."""
+    text = read_text(path)
     if path.lower().endswith(".qbas"):
         from . import basic, qbasic
         try:
@@ -182,15 +186,26 @@ def read_basic(path):
     return text
 
 
-def build_basic(path, org="auto", ram=8, **opts):
+def build_basic(path, org="auto", ram=8, direct=False, **opts):
     """Compile un source BASIC (ou QuickBASIC .qbas) puis l'assemble.
+    direct : un .qbas est compilé directement (qbcomp : récursivité, tableaux
+    par adresse), sans passer par le BASIC du X-07.
     Renvoie (texte assembleur, assembleur, mémoire, compilateur)."""
     from . import basic
-    text = read_basic(path)
+    direct = direct and path.lower().endswith(".qbas")
+    text = read_text(path) if direct else read_basic(path)
     name = os.path.splitext(os.path.basename(path))[0].upper()
 
     def once(o):
-        src, comp = basic.compile_basic(text, name, o, **opts)
+        if direct:
+            from . import qbasic, qbcomp
+            try:
+                src, comp, warns = qbcomp.compile_qbasic(text, name, o, **opts)
+            except qbasic.QBError as e:
+                raise basic.CompileError("QuickBASIC : %s" % e)
+            comp.warnings = list(dict.fromkeys(warns))
+        else:
+            src, comp = basic.compile_basic(text, name, o, **opts)
         a = asmmod.Assembler()
         mem = a.assemble_text(src, name + ".asm")
         if a.errors:
@@ -219,7 +234,8 @@ def cmd_basic(args):
     try:
         src, a, mem, comp = build_basic(
             args.source, args.org, args.ram, strcap=args.strlen, brk=not args.no_break,
-            debug=args.debug, bounds=not args.no_bounds, default=args.default)
+            debug=args.debug, bounds=not args.no_bounds, default=args.default,
+            direct=args.direct)
     except basic.CompileError as e:
         print("erreur : %s" % e, file=sys.stderr)
         return 1
@@ -316,7 +332,7 @@ def cmd_run(args):
             if a.errors:
                 raise basic.CompileError(str(a.errors[0]))
         else:
-            _, a, mem, comp = build_basic(args.source, args.org, args.ram,
+            _, a, mem, comp = build_basic(args.source, args.org, args.ram, direct=args.direct,
                                           strcap=args.strlen, debug=args.debug,
                                           default=args.default)
             for w in comp.warnings:
@@ -388,7 +404,8 @@ def cmd_emu(args):
         from . import basic
         try:
             preload, entry, end = _load_program(argparse.Namespace(
-                source=args.charger, org=args.org, entry=args.entry, ram=args.ram))
+                source=args.charger, org=args.org, entry=args.entry, ram=args.ram,
+                direct=args.direct))
         except (basic.CompileError, asmmod.AsmError, ValueError, OSError) as e:
             print("erreur : %s" % e, file=sys.stderr)
             return 1
@@ -430,7 +447,8 @@ def _load_program(args):
     src = args.source
     low = src.lower()
     if low.endswith((".bas", ".qbas")):
-        _, a, mem, comp = build_basic(src, args.org or "auto", args.ram)
+        _, a, mem, comp = build_basic(src, args.org or "auto", args.ram,
+                                      direct=getattr(args, "direct", False))
         for w in comp.warnings:
             print("attention : %s" % w, file=sys.stderr)
         return mem, a.entry, a.symbols["VARS_END"] - 1
@@ -508,7 +526,8 @@ def cmd_debug(args):
     try:
         listing, symbols = [], {}
         if low.endswith((".bas", ".qbas")):
-            _, a, mem, comp = build_basic(src, args.org or "auto", args.ram, debug=True)
+            _, a, mem, comp = build_basic(src, args.org or "auto", args.ram, debug=True,
+                                          direct=args.direct)
             for w in comp.warnings:
                 print("attention : %s" % w, file=sys.stderr)
             entry, listing, symbols = a.entry, a.listing, a.symbols
@@ -600,6 +619,10 @@ def cmd_qb(args):
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         text = raw.decode("latin-1")
+    if args.direct:                               # compilation directe en assembleur
+        return main(["basic", args.source, "--direct", "-f", args.format or "asm,bin",
+                     "--ram", str(args.ram), "--org", args.org]
+                    + (["-o", args.output] if args.output else []))
     try:
         out, warns, names = qbasic.translate(text, args.largeur)
     except qbasic.QBError as e:
@@ -691,6 +714,9 @@ def main(argv=None):
                    help="les erreurs indiquent le numéro de ligne")
     b.add_argument("--default", choices=("d", "f", "i"), default="d",
                    help="type des variables sans suffixe : d double (X-07), f simple, i entier")
+    b.add_argument("--direct", action="store_true",
+                   help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
+                        "(récursivité, tableaux par adresse)")
     b.set_defaults(func=cmd_basic)
 
     g = sub.add_parser("debug", help="déboguer un programme machine dans l'émulateur")
@@ -708,6 +734,9 @@ def main(argv=None):
     g.add_argument("--fenetre", action="store_true",
                    help="écran du X-07 dans une fenêtre, commandes dans le terminal")
     g.add_argument("--zoom", type=int, default=5, help="taille de la fenêtre (défaut : 5)")
+    g.add_argument("--direct", action="store_true",
+                   help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
+                        "(récursivité, tableaux par adresse)")
     g.set_defaults(func=cmd_debug)
 
     q = sub.add_parser("qb", help="traduire un programme QuickBASIC en BASIC du X-07")
@@ -722,6 +751,9 @@ def main(argv=None):
                    help="longueur maximale d'une ligne produite (défaut : 72)")
     q.add_argument("--noms", action="store_true",
                    help="affiche la correspondance des noms de variables")
+    q.add_argument("--direct", action="store_true",
+                   help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
+                        "(récursivité, tableaux par adresse)")
     q.set_defaults(func=cmd_qb)
 
     r = sub.add_parser("run", help="exécuter un programme sur le simulateur (PC)")
@@ -741,6 +773,9 @@ def main(argv=None):
                    help="écran final en points (caractères braille) dans le terminal")
     r.add_argument("--png", metavar="FICHIER", help="image PNG de l'écran final")
     r.add_argument("--zoom", type=int, default=5, help="agrandissement (défaut : 5)")
+    r.add_argument("--direct", action="store_true",
+                   help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
+                        "(récursivité, tableaux par adresse)")
     r.set_defaults(func=cmd_run)
 
     e = sub.add_parser("emu", help="exécuter un programme BASIC avec la vraie ROM (émulation)")
@@ -761,6 +796,9 @@ def main(argv=None):
                    help="écran final en points (caractères braille) dans le terminal")
     e.add_argument("--png", metavar="FICHIER", help="image PNG de l'écran final")
     e.add_argument("--zoom", type=int, default=5, help="agrandissement (défaut : 5)")
+    e.add_argument("--direct", action="store_true",
+                   help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
+                        "(récursivité, tableaux par adresse)")
     e.set_defaults(func=cmd_emu)
 
     rc = sub.add_parser("recepteur", help="programme BASIC de réception série, à taper sur le X-07")
@@ -778,6 +816,9 @@ def main(argv=None):
     sd.add_argument("--timeout", type=float, default=60, help="attente maximale du X-07 (s)")
     sd.add_argument("--emu", action="store_true",
                     help="essai complet avec le X-07 émulé (vraie ROM), sans câble")
+    sd.add_argument("--direct", action="store_true",
+                   help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
+                        "(récursivité, tableaux par adresse)")
     sd.set_defaults(func=cmd_send)
 
     args = p.parse_args(argv)

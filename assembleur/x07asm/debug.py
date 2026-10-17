@@ -411,17 +411,21 @@ class Debugger:
             for n in found:
                 self.out("  %s" % self.var_text(n))
             return
-        m = re.fullmatch(r"\s*([A-Za-z][A-Za-z0-9]*)([%!#$]?)\s*(?:\(\s*(\S+?)\s*\))?\s*", rest)
+        m = re.fullmatch(r"\s*([A-Za-z][A-Za-z0-9.]*)([%!#$]?)\s*(?:\(\s*(\S+?)\s*\))?\s*", rest)
         if not m:
-            raise DebugError("v NOM, v NOM$, v NOM%(3)")
+            raise DebugError("v NOM, v NOM$, v NOM%(3), v PROC.NOM")
         name, suf, idx = m.group(1).upper(), m.group(2), m.group(3)
+        name = name.replace(".", "__")          # QuickBASIC compilé : PROC.VAR
         tags = [self.TAGS[suf]] if suf in self.TAGS else (["$"] if suf == "$" else ["I", "F", "D", "$"])
         shown = False
         for t in tags:
             if idx is None:
                 lab = ("S_%s" % name) if t == "$" else "V_%s_%s" % (name, t)
             else:
-                lab = ("AS_%s" % name) if t == "$" else "A%s_%s" % (t, name)
+                arr = name + "__A" if "V_%s_%s" % (name, t) in self.symbols or \
+                    ("A%s_%s__A" % (t, name)) in self.symbols or \
+                    ("AS_%s__A" % name) in self.symbols else name
+                lab = ("AS_%s" % arr) if t == "$" else "A%s_%s" % (t, arr)
             if lab in self.symbols:
                 self.out("  " + self.var_text(lab, None if idx is None else self.number("#" + idx)))
                 shown = True
@@ -446,6 +450,7 @@ class Debugger:
         name = lab.split("_", 1)[1]
         if t != "$":
             name = name.rsplit("_", 1)[0] if not lab.startswith("A") else name
+        name = re.sub(r"__A$", "", name).replace("__", ".")     # QuickBASIC compilé
         suffix = {"I": "%", "F": "!", "D": "#", "$": "$"}[t]
         idx = "(%d)" % index if index is not None else ""
         return "%s%s%s = %s   ($%04X)" % (name, suffix, idx, val, a)
