@@ -58,22 +58,23 @@ Ce n'est le cas que pour l'extension `.qbas`. Un programme QuickBASIC enregistr�
 `exemples/qbasic/tri.qbas` (extrait) :
 
 ```basic
-DECLARE SUB Trier (t%(), n%)
+DEFINT A-Z                      ' variables entières sur 2 octets par défaut
+DECLARE SUB Trier (t(), n)
 CONST NB = 8
-DIM notes%(1 TO NB)
+DIM notes(1 TO NB)
 ...
-Trier notes%(), NB
+Trier notes(), NB
 ...
-SUB Trier (t%(), n%)
+SUB Trier (t(), n)
     DO
-        echange% = 0
-        FOR i% = 1 TO n% - 1
-            IF t%(i%) > t%(i% + 1) THEN
-                SWAP t%(i%), t%(i% + 1)
-                echange% = -1
+        echange = 0
+        FOR i = 1 TO n - 1
+            IF t(i) > t(i + 1) THEN
+                SWAP t(i), t(i + 1)
+                echange = -1
             END IF
-        NEXT i%
-    LOOP WHILE echange%
+        NEXT i
+    LOOP WHILE echange
 END SUB
 ```
 
@@ -124,7 +125,7 @@ Une fois déclarée, la variable s'écrit sans suffixe partout.
 
 **Le résultat d'une `FUNCTION`** ne peut pas s'écrire `AS INTEGER` en QuickBASIC 4.5 : son type vient du suffixe du nom (`Fact#`) ou de `DEFINT`. Avec `DEFINT A-Z`, `FUNCTION Somme` rend un entier.
 
-Ces formes ont été vérifiées : `rapide.qbas` réécrit avec `DEFINT A-Z`, sans aucun `%`, donne le même résultat ; et `total = x` avec `x AS SINGLE` valant 2,7 donne bien 3, arrondi comme en QuickBASIC.
+Tous les exemples de `exemples/qbasic/` sont écrits avec `DEFINT A-Z`. Leur traduction est identique, octet pour octet, à celle des versions avec `%`. Un suffixe n'y reste que pour un autre type : `Moyenne!` et `s!` (simple précision), `Fact#` (double), et `graine!` dans `mystere.qbas`, qui compte les tours d'attente et déborderait en entier au-delà de 32 767. Vérifié aussi : `total = x`, avec `x AS SINGLE` valant 2,7, donne bien 3, arrondi comme en QuickBASIC.
 
 ## Ce que le X-07 impose (vérifié dans la ROM)
 
@@ -198,8 +199,8 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 Le BASIC du X-07 n'a pas de pointeurs : la traduction ne passe donc jamais l'adresse d'un tableau. Le **passage par référence** fonctionne pourtant : une procédure qui modifie le tableau reçu modifie bien celui de l'appelant, comme en QuickBASIC.
 
 **Comment.** Le traducteur produit une **copie de la procédure pour chaque tableau réel** qu'elle reçoit. Dans `tri2.qbas` :
-- `Trier notes%()` appelle une copie de `Trier` qui travaille directement sur `NO%` ;
-- `Trier notes2%()` appelle une autre copie, qui travaille sur `NT%`.
+- `Trier notes()` appelle une copie de `Trier` qui travaille directement sur `NO%` ;
+- `Trier notes2()` appelle une autre copie, qui travaille sur `NT%`.
 
 Le résultat est le même qu'avec une référence. On paie en taille de code (une copie par tableau), mais rien n'est recopié pendant l'exécution. C'est possible parce qu'en QuickBASIC le tableau passé est toujours **nommé dans le source** : on sait, dès la traduction, sur lequel la procédure travaillera.
 
@@ -223,7 +224,7 @@ python3 x07asm.py debug exemples/qbasic/rapide.qbas --direct     # débogueur, v
 Avec le débogueur, `ligne N` désigne la ligne N du **source QuickBASIC**, et `v PROC.VAR` une variable locale. On voit ainsi chaque appel récursif :
 
 ```
-(x07) b ligne 26                  ← i% = g%: j% = d%, dans SUB Tri
+(x07) b ligne 27                  ← i = g: j = d, dans SUB Tri
 (x07) c
 (x07) v TRI.G
   TRI.G% = 0

@@ -1,41 +1,42 @@
 ' Tri rapide récursif : QuickBASIC adapté au Canon X-07
 ' Compilation directe (récursivité, tableau passé par adresse) :
 '   python3 x07asm.py run exemples/qbasic/rapide.qbas --direct
-DECLARE SUB Tri (t%(), g%, d%)
-DECLARE FUNCTION Fact# (n%)
-DIM a%(9), b%(5)
+DEFINT A-Z                      ' variables entières sur 2 octets par défaut
+DECLARE SUB Tri (t(), g, d)
+DECLARE FUNCTION Fact# (n)
+DIM a(9), b(5)
 
-FOR i% = 0 TO 9: READ a%(i%): NEXT i%
-FOR i% = 0 TO 5: READ b%(i%): NEXT i%
+FOR i = 0 TO 9: READ a(i): NEXT i
+FOR i = 0 TO 5: READ b(i): NEXT i
 DATA 5, 3, 9, 1, 7, 0, 8, 2, 6, 4
 DATA 60, 10, 50, 20, 40, 30
 
-Tri a%(), 0, 9                  ' la même SUB pour deux tableaux
-Tri b%(), 0, 5
+Tri a(), 0, 9                  ' la même SUB pour deux tableaux
+Tri b(), 0, 5
 CLS
-FOR i% = 0 TO 9: PRINT a%(i%);: NEXT i%
+FOR i = 0 TO 9: PRINT a(i);: NEXT i
 PRINT
-FOR i% = 0 TO 5: PRINT b%(i%);: NEXT i%
+FOR i = 0 TO 5: PRINT b(i);: NEXT i
 PRINT
 PRINT "10! ="; Fact#(10)
 END
 
-SUB Tri (t%(), g%, d%)
-    IF g% >= d% THEN EXIT SUB
-    pivot% = t%((g% + d%) \ 2)
-    i% = g%: j% = d%
-    DO WHILE i% <= j%
-        DO WHILE t%(i%) < pivot%: i% = i% + 1: LOOP
-        DO WHILE t%(j%) > pivot%: j% = j% - 1: LOOP
-        IF i% <= j% THEN
-            SWAP t%(i%), t%(j%)
-            i% = i% + 1: j% = j% - 1
+SUB Tri (t(), g, d)
+    IF g >= d THEN EXIT SUB
+    pivot = t((g + d) \ 2)
+    i = g: j = d
+    DO WHILE i <= j
+        DO WHILE t(i) < pivot: i = i + 1: LOOP
+        DO WHILE t(j) > pivot: j = j - 1: LOOP
+        IF i <= j THEN
+            SWAP t(i), t(j)
+            i = i + 1: j = j - 1
         END IF
     LOOP
-    Tri t%(), g%, j%            ' appels récursifs
-    Tri t%(), i%, d%
+    Tri t(), g, j            ' appels récursifs
+    Tri t(), i, d
 END SUB
 
-FUNCTION Fact# (n%)
-    IF n% <= 1 THEN Fact# = 1 ELSE Fact# = n% * Fact#(n% - 1)
+FUNCTION Fact# (n)
+    IF n <= 1 THEN Fact# = 1 ELSE Fact# = n * Fact#(n - 1)
 END FUNCTION

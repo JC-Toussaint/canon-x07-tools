@@ -86,7 +86,7 @@ point d'arrêt en 3D8F LN_40
 
 Une ligne QuickBASIC n'a pas de numéro : on s'arrête sur la ligne du programme traduit, que donne `python3 x07asm.py qb FICHIER.qbas`. Voir l'exemple ci-dessous.
 
-Avec la **compilation directe** (`debug FICHIER.qbas --direct`, voir [QBASIC.md](QBASIC.md)), c'est plus simple : `b ligne 26` désigne la ligne 26 du **source QuickBASIC** lui-même, les variables gardent leur nom, et une variable locale s'écrit `v PROC.VAR` (`v TRI.PIVOT`). Le débogueur suit aussi la récursivité : chaque arrêt montre les variables de l'appel en cours.
+Avec la **compilation directe** (`debug FICHIER.qbas --direct`, voir [QBASIC.md](QBASIC.md)), c'est plus simple : `b ligne 27` désigne la ligne 27 du **source QuickBASIC** lui-même, les variables gardent leur nom, et une variable locale s'écrit `v PROC.VAR` (`v TRI.PIVOT`). Le débogueur suit aussi la récursivité : chaque arrêt montre les variables de l'appel en cours.
 
 ## Exemple : déboguer `tri.qbas`
 
