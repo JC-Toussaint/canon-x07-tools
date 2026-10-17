@@ -97,6 +97,18 @@ class TestSession(unittest.TestCase):
             self.assertIn(s.line_addr[27], s.dbg.breaks)
             self.assertEqual(s.run(), "point d'arrêt")
 
+    def test_memory_kept_between_runs_without_option(self):
+        # comme sur la machine : relancer un programme ne perd pas ses fichiers en RAM
+        image = None
+        for note, count in (("PAIN", 1), ("ZOE", 2)):
+            s = Session(os.path.join(EX, "qbasic", "journal.qbas"), image=image)
+            s.build()
+            s.m.keys = list(note + "\r ")
+            s.run()
+            self.assertTrue(s.save_memory())
+            self.assertIn(" %d note(s)" % count, "\n".join(s.m.lcd.text()))
+            image = s.image
+
     def test_memory_kept_between_runs(self):
         # --memoire : les fichiers en RAM d'une exécution sont retrouvés à la suivante
         with tempfile.TemporaryDirectory() as d:

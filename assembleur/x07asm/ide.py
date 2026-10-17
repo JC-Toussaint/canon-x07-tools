@@ -50,11 +50,12 @@ INTERNAL = re.compile(r"(V_|S_|A[IFDS]_)(Q[TAOR]_|FNP_|FN_)")   # variables du c
 class Session:
     """Un programme en cours de débogage, repéré par les lignes de son source."""
 
-    def __init__(self, path, ram=16, memoire=None):
+    def __init__(self, path, ram=16, memoire=None, image=None):
         self.path = path
         self.ram = ram
-        self.memoire = memoire             # mémoire du X-07 gardée (fichiers en RAM)
-        self.saved = False
+        self.memoire = memoire             # fichier : mémoire gardée d'une session à l'autre
+        self.image = image                 # RAM du X-07 à la fin du dernier programme :
+        self.saved = False                 # le suivant repart d'elle, comme sur la machine
         self.kind = os.path.splitext(path)[1].lower().lstrip(".")
         self.break_lines = set()           # points d'arrêt : lignes du source (1, 2...)
         self.m = self.dbg = None
@@ -70,12 +71,14 @@ class Session:
         mem, entry, symbols, listing, prog_range, warns = load_for_debug(
             self.path, self.ram, direct=True)
         machine = None
-        if self.memoire and os.path.exists(self.memoire):
+        image = self.image
+        if image is None and self.memoire and os.path.exists(self.memoire):
             with open(self.memoire, "rb") as f:
                 image = f.read()
+        if image is not None:
             if len(image) != emu.RAM_TOP[self.ram] + 1:
-                raise ValueError("%s : mémoire de %d Ko, pas de %d Ko"
-                                 % (self.memoire, len(image) // 1024, self.ram))
+                raise ValueError("mémoire de %d Ko, pas de %d Ko"
+                                 % (len(image) // 1024, self.ram))
             machine = emu.power_on(image, self.ram, real_display=True)
         m = emu.prepare_binary(mem, entry, ram=self.ram, real_display=True, machine=machine)
         self.saved = False
@@ -159,7 +162,8 @@ class Session:
     # -------------------------------------------------- exécution
     @property
     def finished(self):
-        return self.m is None or self.m.pc == EXIT
+        # programme revenu au BASIC, ou X-07 déjà éteint par OFF à sa fin
+        return self.m is None or self.m.pc == EXIT or self.saved
 
     def run(self):
         self.reason = self.dbg.go()
@@ -190,12 +194,15 @@ class Session:
         return self.reason
 
     def save_memory(self):
-        """Programme terminé : X-07 éteint par OFF, mémoire enregistrée (une fois)."""
-        if not self.memoire or self.saved or not self.finished or self.m is None:
+        """Programme terminé : X-07 éteint par OFF ; sa mémoire (programmes,
+        fichiers en RAM) sert au lancement suivant, et va dans le fichier
+        --memoire s'il y en a un.  Rend True si elle a été gardée."""
+        if self.saved or not self.finished or self.m is None:
             return False
-        image = emu.power_off(self.m)
-        with open(self.memoire, "wb") as f:
-            f.write(image)
+        self.image = emu.power_off(self.m)
+        if self.memoire:
+            with open(self.memoire, "wb") as f:
+                f.write(self.image)
         self.saved = True
         return True
 
@@ -481,7 +488,8 @@ class Editeur:
         with open(path, "w", encoding="utf-8") as f:
             f.write(self.text.get("1.0", "end-1c"))
         self.path = path
-        self.session = Session(path, self.ram, self.memoire)
+        self.session = Session(path, self.ram, self.memoire,
+                               self.session.image if self.session else None)
         self.session.break_lines = breaks
         self.text.edit_modified(False)
         self.dirty = True
@@ -494,7 +502,8 @@ class Editeur:
         with open(path, encoding="utf-8", errors="replace") as f:
             content = f.read()
         self.path = path
-        self.session = Session(path, self.ram, self.memoire)
+        self.session = Session(path, self.ram, self.memoire,
+                               self.session.image if self.session else None)
         self.text.delete("1.0", "end")
         self.text.insert("1.0", content)
         self.text.edit_modified(False)
@@ -731,8 +740,9 @@ class Editeur:
             if s.finished:
                 saved = s.save_memory()
                 self.set_status("programme terminé (%s)%s : ↺ pour recommencer"
-                                % (reason or "fin", " ; mémoire enregistrée (OFF)"
-                                   if saved else ""))
+                                % (reason or "fin",
+                                   "" if not saved else " ; mémoire enregistrée (OFF)"
+                                   if s.memoire else " ; fichiers en RAM gardés"))
             else:
                 line = s.current_line()
                 self.set_status("arrêt%s%s" % (" : %s" % reason if reason else "",

@@ -1,6 +1,7 @@
 ' Journal : chaque lancement ajoute une note dans un fichier en RAM du X-07,
 ' puis réaffiche toutes les notes.  Le fichier survit à l'extinction (OFF).
 ' Sur PC :  python3 x07asm.py emu exemples/qbasic/journal.qbas --memoire x07.mem
+' ou dans l'éditeur : python3 x07asm.py ide exemples/qbasic/journal.qbas (▶, ↺, ▶...)
 DEFINT A-Z
 
 CLS
