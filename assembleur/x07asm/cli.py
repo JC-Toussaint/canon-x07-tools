@@ -686,7 +686,7 @@ def cmd_ide(args):
     """Éditeur-débogueur visuel (fenêtre)."""
     from . import ide
     try:
-        e = ide.Editeur(args.source, ram=args.ram, zoom=args.zoom)
+        e = ide.Editeur(args.source, ram=args.ram, zoom=args.zoom, memoire=args.memoire)
     except Exception as ex:                      # pas d'affichage graphique
         print("erreur : fenêtre impossible (%s)" % ex, file=sys.stderr)
         return 1
@@ -832,6 +832,8 @@ def main(argv=None):
     ed.add_argument("--ram", type=int, choices=(8, 16, 24), default=16,
                     help="mémoire du X-07 en Ko (défaut : 16)")
     ed.add_argument("--zoom", type=int, default=3, help="taille de l'écran du X-07 (défaut : 3)")
+    ed.add_argument("--memoire", metavar="FICHIER",
+                    help="mémoire du X-07 gardée d'une exécution à l'autre (fichiers en RAM)")
     ed.set_defaults(func=cmd_ide)
 
     q = sub.add_parser("qb", help="traduire un programme QuickBASIC en BASIC du X-07")

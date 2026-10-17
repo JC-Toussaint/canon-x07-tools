@@ -97,6 +97,19 @@ class TestSession(unittest.TestCase):
             self.assertIn(s.line_addr[27], s.dbg.breaks)
             self.assertEqual(s.run(), "point d'arrêt")
 
+    def test_memory_kept_between_runs(self):
+        # --memoire : les fichiers en RAM d'une exécution sont retrouvés à la suivante
+        with tempfile.TemporaryDirectory() as d:
+            mem = os.path.join(d, "x07.mem")
+            for note, count in (("PAIN", 1), ("ZOE", 2)):
+                s = Session(os.path.join(EX, "qbasic", "journal.qbas"), memoire=mem)
+                s.build()
+                s.m.keys = list(note + "\r ")
+                s.run()
+                self.assertTrue(s.finished)
+                self.assertTrue(s.save_memory())
+                self.assertIn(" %d note(s)" % count, "\n".join(s.m.lcd.text()))
+
     def test_compile_error(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "e.qbas")

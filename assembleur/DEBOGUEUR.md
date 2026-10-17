@@ -32,6 +32,7 @@ Chaque arrêt affiche :
 python3 x07asm.py ide exemples/qbasic/rapide.qbas
 python3 x07asm.py ide exemples/table.bas --ram 16 --zoom 4
 python3 x07asm.py ide                                  # puis « Nouveau » ou « Ouvrir… »
+python3 x07asm.py ide exemples/qbasic/journal.qbas --memoire x07.mem   # fichiers gardés
 ```
 
 ![L'éditeur-débogueur sur rapide.qbas : points d'arrêt, ligne courante, écran, variables](../ref_docs/images/editeur_debogueur.png)
@@ -74,6 +75,8 @@ La même mécanique que la commande `debug`, dans une fenêtre :
 Avant d'ouvrir ou de créer un autre programme, ou en fermant la fenêtre, l'éditeur propose d'enregistrer les modifications en cours.
 
 Dans le source, **F9** pose ou enlève un point d'arrêt sur la ligne du curseur.
+
+Avec **`--memoire FICHIER`**, chaque exécution part de la mémoire enregistrée. Quand le programme se termine, le X-07 est éteint par `OFF` et sa mémoire est enregistrée. Les fichiers en RAM (`OPEN`, `PRINT #`…) sont ainsi retrouvés d'une exécution à l'autre, et d'une session à l'autre. Voir [FICHIERS.md](FICHIERS.md).
 
 Le pas à pas avance **par ligne du source**, et non par instruction machine comme `n` et `s` dans le terminal. Une ligne BASIC qui fait une dizaine d'instructions s'exécute donc d'un coup ; « Instruction » reste disponible pour descendre au niveau du Z80.
 

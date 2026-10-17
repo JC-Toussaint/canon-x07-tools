@@ -166,4 +166,6 @@ python3 x07asm.py run exemples/qbasic/journal.qbas --direct --ram 16 --memoire x
 
 1. ~~Traduction~~ : faite.
 2. ~~Compilation~~ : faite.
-3. ~~Émulateur~~ : fait pour `emu` et `run` (`--memoire`) ; reste l'éditeur-débogueur (`ide`).
+3. ~~Émulateur~~ : fait pour `emu`, `run` et `ide` (`--memoire`).
+
+Restent, pour aller plus loin : les fichiers à accès direct (`RANDOM`, `GET`, `PUT`), `LOF`, et l'essai sur une vraie machine.
