@@ -858,6 +858,9 @@ class X07(CPU):
         while not self.keys:
             if self.stop_requested:
                 raise SimError("arrêt demandé")
+            if getattr(self, "debug_pause", False):    # débogueur : F9 ou Ctrl+C
+                self.lcd.cursor = None
+                raise SimError("interrompu pendant l'attente d'une touche")
             time.sleep(0.01)
         self.lcd.cursor = None
         self.lcd.version += 1

@@ -500,6 +500,93 @@ def cmd_send(args):
     return 0
 
 
+def cmd_debug(args):
+    """Débogueur : le programme machine tourne dans l'émulateur, pas à pas."""
+    from . import basic, debug, emu, formats
+    src = args.source
+    low = src.lower()
+    try:
+        listing, symbols = [], {}
+        if low.endswith((".bas", ".qbas")):
+            _, a, mem, comp = build_basic(src, args.org or "auto", args.ram, debug=True)
+            for w in comp.warnings:
+                print("attention : %s" % w, file=sys.stderr)
+            entry, listing, symbols = a.entry, a.listing, a.symbols
+        elif low.endswith(".asm"):
+            a = asmmod.Assembler()
+            mem = a.assemble_file(src)
+            if a.errors:
+                raise asmmod.AsmError(str(a.errors[0]))
+            entry, listing, symbols = a.entry, a.listing, a.symbols
+        else:
+            if low.endswith((".bin", ".rom")) and not args.org:
+                raise ValueError("pour un .bin, indiquez l'adresse de chargement : --org 3000")
+            mem = formats.load_any(src, _num(args.org) if args.org else None)
+            entry = min(mem)
+        if args.entry:
+            entry = _num(args.entry)
+    except (basic.CompileError, asmmod.AsmError, ValueError, OSError) as e:
+        print("erreur : %s" % e, file=sys.stderr)
+        return 1
+    keys = args.keys.encode().decode("unicode_escape") if args.keys else ""
+    script = [c for c in (args.commandes or "").split(";") if c.strip()]
+    prog_range = (min(mem), max(max(mem), symbols.get("VARS_END", 0) - 1))   # avec les variables
+    print("%s : $%04X-$%04X, entrée $%04X" % (src, prog_range[0], prog_range[1], entry))
+
+    def make(real_display):
+        m = emu.prepare_binary(mem, entry, keys, args.input or [], args.ram,
+                               real_display=real_display)
+        dbg = debug.Debugger(m, symbols, listing, prog_range)
+        for b in args.arret or []:
+            try:
+                dbg.breaks.add(dbg.addr(b))
+            except debug.DebugError as e:
+                print("erreur : %s" % e, file=sys.stderr)
+        return m, dbg
+
+    def read_line(prompt):
+        return input(prompt)
+
+    interactive = sys.stdin.isatty()
+    if args.fenetre:
+        import signal
+        holder = {}
+
+        def target(setup):
+            m, dbg = make(True)
+            holder["m"] = m
+            setup(m)
+            try:
+                dbg.repl(read_line if interactive else None, script)
+            finally:
+                holder["f"].close_requested = True
+
+        def on_sigint(sig, frame):                   # Ctrl+C : arrêt du programme
+            if "m" in holder:
+                holder["m"].debug_pause = True
+        from . import afficheur
+        try:
+            f = afficheur.Fenetre("Canon X-07 : %s (débogueur)" % os.path.basename(src),
+                                  args.zoom)
+        except Exception as e:
+            print("erreur : fenêtre impossible (%s)" % e, file=sys.stderr)
+            return 1
+        holder["f"] = f
+        signal.signal(signal.SIGINT, on_sigint)
+        f.start(lambda: target(f.attach))
+        return 0
+    m, dbg = make(False)
+    if interactive:
+        def input_fn():                              # INPUT du programme
+            sys.stdout.write("[INPUT du programme] ")
+            sys.stdout.flush()
+            line = sys.stdin.readline()
+            return line.rstrip("\r\n") if line else None
+        m.input_fn = input_fn
+    dbg.repl(read_line if interactive else None, script)
+    return 0
+
+
 def cmd_qb(args):
     """Traduit un programme QuickBASIC en BASIC du X-07 (puis le compile)."""
     from . import qbasic
@@ -605,6 +692,23 @@ def main(argv=None):
     b.add_argument("--default", choices=("d", "f", "i"), default="d",
                    help="type des variables sans suffixe : d double (X-07), f simple, i entier")
     b.set_defaults(func=cmd_basic)
+
+    g = sub.add_parser("debug", help="déboguer un programme machine dans l'émulateur")
+    g.add_argument("source", help=".asm, .bas, .qbas (compilés), .hex ou .bin (--org)")
+    g.add_argument("--org", help="adresse de chargement d'un .bin, implantation d'un .bas")
+    g.add_argument("--entry", help="adresse de départ (défaut : celle du programme)")
+    g.add_argument("--ram", type=int, choices=(8, 16, 24), default=16,
+                   help="mémoire du X-07 en Ko (défaut : 16)")
+    g.add_argument("-b", "--arret", action="append",
+                   help="point d'arrêt (répétable) : adresse, étiquette, « ligne 40 »")
+    g.add_argument("-x", "--commandes",
+                   help="commandes à exécuter d'abord, séparées par « ; » (ex. \"b START;c;r\")")
+    g.add_argument("-k", "--keys", help="touches lues par INKEY$")
+    g.add_argument("-i", "--input", action="append", help="réponse à un INPUT (répétable)")
+    g.add_argument("--fenetre", action="store_true",
+                   help="écran du X-07 dans une fenêtre, commandes dans le terminal")
+    g.add_argument("--zoom", type=int, default=5, help="taille de la fenêtre (défaut : 5)")
+    g.set_defaults(func=cmd_debug)
 
     q = sub.add_parser("qb", help="traduire un programme QuickBASIC en BASIC du X-07")
     q.add_argument("source", help="programme QuickBASIC (extension .qbas)")

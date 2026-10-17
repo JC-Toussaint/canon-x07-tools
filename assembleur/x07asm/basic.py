@@ -976,7 +976,7 @@ class Compiler:
             self.cur_line = num
             self.emit("")
             self.emit("; %s" % src.replace("\t", " "))
-            if num is not None and num in self.targets:
+            if num is not None:                 # chaque ligne : sauts, et débogueur
                 self.label("LN_%d" % num)
             if self.debug and num is not None:
                 self.emit("LD   HL,%d" % num)
