@@ -11,6 +11,7 @@ Assembleur et désassembleur Z80 pour le **Canon X-07**, dont le processeur NSC8
 L'outil comprend aussi :
 - un **compilateur BASIC** (entiers, simple et double précision, chaînes) : [COMPILATEUR.md](COMPILATEUR.md) ;
 - un **émulateur** qui exécute la vraie ROM : [EMULATEUR.md](EMULATEUR.md) ;
+- un **débogueur** : points d'arrêt, pas à pas, registres, dans l'émulateur : [DEBOGUEUR.md](DEBOGUEUR.md) ;
 - un **traducteur QuickBASIC** vers le BASIC du X-07 (étude, prototype) : [QBASIC.md](QBASIC.md) ;
 - le **transfert par le câble série** : [TRANSFERT.md](TRANSFERT.md).
 
@@ -27,6 +28,7 @@ python3 x07asm.py run exemples/devine.bas                # l'essayer sur PC
 python3 x07asm.py emu exemples/devine.bas                # le BASIC du X-07 (vraie ROM)
 python3 x07asm.py emu exemples/graphisme.bas --fenetre   # l'écran de 120 x 32 points
 python3 x07asm.py qb exemples/qbasic/tri.qbas            # QuickBASIC -> BASIC du X-07
+python3 x07asm.py debug exemples/bonjour.asm              # débogueur pas à pas
 python3 x07asm.py send exemples/devine.bas -p /dev/ttyUSB0   # envoi par le câble FT232RL
 python3 -m unittest discover -s tests                    # tests
 ```
@@ -119,6 +121,7 @@ x07asm/expr.py      évaluateur d'expressions
 x07asm/x07sym.py    symboles du X-07
 x07asm/formats.py   bin, Intel HEX, chargeur BASIC, vidage, DATA
 x07asm/basic.py     compilateur BASIC (voir COMPILATEUR.md)
+x07asm/debug.py     débogueur (voir DEBOGUEUR.md)
 x07asm/qbasic.py    traducteur QuickBASIC -> BASIC du X-07 (voir QBASIC.md)
 x07asm/runtime.py   bibliothèque d'exécution du compilateur
 x07asm/sim.py       simulateur Z80 pour essayer les programmes sur PC

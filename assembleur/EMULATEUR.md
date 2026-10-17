@@ -107,6 +107,10 @@ Le **sous-processeur T6834**, qui gère l'écran, le clavier et les graphismes, 
 - **Temps :** il est compté en instructions, pas en cycles. Les rapports de vitesse donnés dans la documentation sont donc approximatifs.
 - **Codes du T6834** (touches de `STICK`, motifs des caractères…) : ils ne sont pas dans la ROM. Leurs valeurs viennent des livres.
 
+## Débogueur
+
+`python3 x07asm.py debug PROGRAMME` exécute un programme machine pas à pas dans cet émulateur : points d'arrêt, registres, mémoire, variables BASIC. Voir [DEBOGUEUR.md](DEBOGUEUR.md).
+
 ## Usage en Python
 
 ```python
@@ -127,4 +131,5 @@ x07asm/sim.py        processeur Z80, ports, UART, imitation du T6834
 x07asm/emu.py        démarrage de la ROM, frappe du programme, RUN, EXEC
 x07asm/lcd.py        écran de 120 x 32 points, police, graphismes, PNG, braille
 x07asm/afficheur.py  fenêtre en direct (tkinter) et clavier
+x07asm/debug.py      débogueur (points d'arrêt, pas à pas, registres)
 ```

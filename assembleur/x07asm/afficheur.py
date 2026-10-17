@@ -7,6 +7,7 @@ l'écran de 120 x 32 points dès qu'il change et transmet les touches :
   flèches     déplacent le curseur (éditeur plein écran de la ROM)
   Suppr, Inser, Origine   DEL, INS, HOME
   Échap       BREAK
+  F9          interrompt le programme (débogueur)
 """
 import threading
 import time
@@ -82,6 +83,9 @@ class Fenetre:
 
     # -------------------------------------------------- dessin
     def _refresh(self):
+        if getattr(self, "close_requested", False):    # demandé depuis un autre fil
+            self._close()
+            return
         m = self.m
         now = time.time()
         if now - self._blink_t > 0.4:
@@ -113,6 +117,9 @@ class Fenetre:
     def _key(self, ev):
         m = self.m
         if m is None or self.done:
+            return
+        if ev.keysym == "F9":                   # débogueur : arrêt du programme
+            m.debug_pause = True
             return
         if ev.keysym == "Escape":
             if m.lcd.cursor is not None:        # en saisie : BREAK de la saisie

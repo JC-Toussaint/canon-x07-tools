@@ -220,7 +220,15 @@ def _type_line(m, line, echo=True):
 def run_binary(mem, entry, keys="", inputs=(), ram=16, max_steps=50_000_000, echo=None):
     """Charge un programme machine sur la machine démarrée et l'exécute
     comme CLEAR 50,&H(org-1) puis EXEC &Hentry.  Renvoie la machine."""
-    m = boot(ram)
+    m = prepare_binary(mem, entry, keys, inputs, ram, echo=echo)
+    m.run(max_steps)
+    return m
+
+
+def prepare_binary(mem, entry, keys="", inputs=(), ram=16, real_display=False, echo=None):
+    """Machine prête à exécuter le programme (CLEAR 50,&H(org-1), puis EXEC
+    &Hentry) : PC sur l'entrée, retour au BASIC empilé.  Sert au débogueur."""
+    m = boot(ram, real_display=real_display)
     m.keys = list(keys)
     m.lines = list(inputs)
     m.echo = echo
@@ -236,5 +244,4 @@ def run_binary(mem, entry, keys="", inputs=(), ram=16, max_steps=50_000_000, ech
         m.sp = top - 50
     m.push(EXIT)
     m.pc = entry
-    m.run(max_steps)
     return m
