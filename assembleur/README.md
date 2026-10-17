@@ -12,6 +12,7 @@ L'outil comprend aussi :
 - un **compilateur BASIC** (entiers, simple et double précision, chaînes) : [COMPILATEUR.md](COMPILATEUR.md) ;
 - un **émulateur** qui exécute la vraie ROM : [EMULATEUR.md](EMULATEUR.md) ;
 - un **débogueur** : points d'arrêt, pas à pas, registres, dans l'émulateur, et un **éditeur-débogueur visuel** (fenêtre) : [DEBOGUEUR.md](DEBOGUEUR.md) ;
+- une étude des **fichiers en RAM** du X-07 et de leur persistance : [FICHIERS.md](FICHIERS.md) ;
 - un **traducteur QuickBASIC** vers le BASIC du X-07 (étude, prototype) : [QBASIC.md](QBASIC.md) ;
 - le **transfert par le câble série** : [TRANSFERT.md](TRANSFERT.md).
 

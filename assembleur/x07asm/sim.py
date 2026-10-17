@@ -19,6 +19,10 @@ class SimError(Exception):
     pass
 
 
+class PowerOff(SimError):
+    """La ROM a demandé la coupure de l'alimentation (OFF) ; la RAM est gardée."""
+
+
 def _parity(v):
     return bin(v & 0xFF).count("1") % 2 == 0
 
@@ -680,6 +684,8 @@ class X07(CPU):
         T[sym["T6PEEK"]] = lambda c: c.r.__setitem__("A", 0)
         self.brk = sym["BRKFLG"]
         self.powered_off = 0
+        self.real_off = False         # OFF exécuté par la ROM (rangement de l'état, coupure)
+        self.on_state = 0             # réponse à ON STATE ($22) : bit 0 = rallumée après OFF
         from collections import deque
         self.serial_in = deque()      # octets envoyés par le PC, pas encore arrivés
         self.serial_out = []          # octets émis par le X-07
@@ -787,6 +793,8 @@ class X07(CPU):
 
     def _chkbatt(self, c):
         a = self.mem[self.brk]
+        if a & 0x80 and self.real_off:     # la vraie ROM range son état puis coupe ($23)
+            return REAL
         if a & 0x80:                       # OFF : la vraie ROM éteint la machine
             self.mem[self.brk] = 0
             self.powered_off += 1
@@ -950,7 +958,11 @@ class X07(CPU):
         self.t6log.append((cmd, params))
         resp = []
         lcd, p = self.lcd, params + [0] * 10
-        if cmd == 0x11:                          # PSET
+        if cmd == 0x22:                          # ON STATE : démarrage à froid, ou après OFF
+            resp = [self.on_state]
+        elif cmd == 0x23 and self.real_off:      # OFF REQUEST : alimentation coupée
+            raise PowerOff("machine éteinte par OFF")
+        elif cmd == 0x11:                        # PSET
             self.pixels.add(tuple(params[:2]))
             lcd.pset(p[0], p[1])
         elif cmd == 0x12:                        # PRESET

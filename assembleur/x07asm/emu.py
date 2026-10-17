@@ -10,7 +10,7 @@ Sert de référence pour vérifier le compilateur, et de BASIC du X-07 sur PC.
 """
 import os
 
-from .sim import X07, SimError, EXIT, REAL
+from .sim import X07, SimError, EXIT, REAL, PowerOff
 
 ROM_PATHS = (os.path.join(os.path.dirname(__file__), "..", "..", "ROM_x07", "x07.bin"),)
 RAM_TOP = {8: 0x1FFF, 16: 0x3FFF, 24: 0x5FFF}
@@ -97,8 +97,61 @@ def boot(ram=16, real_display=False):
     return m
 
 
+def power_off(m, max_steps=5_000_000):
+    """Éteint la machine par OFF, comme sur le X-07 : la ROM range son état
+    puis coupe l'alimentation.  Rend l'image de la RAM (qui reste alimentée)."""
+    m.real_off = True
+    typed = []
+
+    def command(c):                          # la commande OFF, tapée à l'invite
+        if typed:
+            raise SimError("OFF n'a pas éteint la machine")
+        typed.append(1)
+        _type_line(m, "OFF", echo=False)
+    m.traps[0xEBFF] = command
+    try:
+        m.run(m.steps + max_steps)
+    except PowerOff:
+        return bytes(m.mem[0:m.ram_top + 1])
+    raise SimError("la machine ne s'est pas éteinte")
+
+
+def power_on(image, ram=16, real_display=False):
+    """Rallume une machine dont la RAM a été gardée (image de power_off) :
+    les programmes et les fichiers en RAM sont retrouvés.  Rend la machine
+    à l'invite, comme boot()."""
+    m = X07()
+    m.load_rom(load_rom())
+    if real_display:
+        from . import x07sym
+        for n in DISPLAY_TRAPS:
+            m.traps.pop(x07sym.all_symbols()[n], None)
+    m.ram_top = RAM_TOP[ram]
+    m.strict = False
+    m.mem[0:len(image)] = image
+    m.on_state = 0x01                        # ON STATE : rallumée après OFF
+    m.sp, m.pc = 0, 0xC3C3
+
+    def ready(c):
+        raise Finished()
+    m.traps[0xEBFF] = ready
+    try:
+        m.run(3_000_000)
+    except Finished:
+        pass
+    m._use_rom_routines()
+    m.has_rom = True
+    m.transcript = []
+    m.ready_ret = m.rd16(m.sp)
+    m.real_display = real_display
+    if not real_display:
+        m._cls(m)
+    m.on_state = 0
+    return m
+
+
 def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, setup=None,
-              live=False, preload=None):
+              live=False, preload=None, machine=None):
     """Tape le programme puis RUN.  Renvoie (affichage du programme, machine).
     L'affichage commence après « RUN » et s'arrête au retour à l'invite.
 
@@ -110,7 +163,8 @@ def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, 
     le câble série.  « CLEAR 50,&H(org-1) » est d'abord tapé ; le programme est
     chargé dès que le BASIC a exécuté ce CLEAR (sinon sa pile et ses chaînes,
     encore en haut de la mémoire, l'écraseraient).  Reste à taper EXEC."""
-    m = boot(ram, real_display=live)
+    # machine : une machine déjà allumée (power_on) au lieu d'un démarrage à froid
+    m = machine if machine is not None else boot(ram, real_display=live)
     m.keys = list(keys)
     m.echo = echo
     if setup:

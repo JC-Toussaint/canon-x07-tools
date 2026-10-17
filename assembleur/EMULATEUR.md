@@ -107,6 +107,10 @@ Le **sous-processeur T6834**, qui gère l'écran, le clavier et les graphismes, 
 - **Temps :** il est compté en instructions, pas en cycles. Les rapports de vitesse donnés dans la documentation sont donc approximatifs.
 - **Codes du T6834** (touches de `STICK`, motifs des caractères…) : ils ne sont pas dans la ROM. Leurs valeurs viennent des livres.
 
+## Extinction et rallumage
+
+`emu.power_off(machine)` éteint la machine par `OFF`, comme sur le X-07 : la ROM range son état, puis coupe l'alimentation. La fonction rend l'image de la RAM. `emu.power_on(image)` rallume une machine avec cette RAM : les programmes et les fichiers en RAM sont retrouvés. `run_basic(..., machine=m)` continue ensuite sur cette machine. Voir [FICHIERS.md](FICHIERS.md).
+
 ## Débogueur
 
 `python3 x07asm.py debug PROGRAMME` exécute un programme machine pas à pas dans cet émulateur : points d'arrêt, registres, mémoire, variables BASIC. Voir [DEBOGUEUR.md](DEBOGUEUR.md).
