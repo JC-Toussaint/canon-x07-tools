@@ -93,6 +93,39 @@ devient :
 
 Ici, 37 lignes de QuickBASIC donnent 16 lignes de BASIC du X-07 (505 caractères) et 1 163 octets de code machine.
 
+## Types des variables : éviter les `%`
+
+Comme sur le X-07, un nom terminé par `%` désigne un **entier sur 2 octets** (de -32 768 à 32 767), `!` la simple précision, `#` la double, `$` une chaîne. Sans suffixe, une variable est en simple précision. Pour ne pas écrire `%` partout, QuickBASIC offre deux moyens, acceptés par la traduction comme par la compilation directe.
+
+**1. `DEFINT` pour une plage de lettres**, en tête du programme :
+
+```basic
+DEFINT A-Z                       ' toutes les variables sont entières par défaut
+DECLARE SUB Tri (t(), g, d)
+DIM a(9), b(5)
+...
+SUB Tri (t(), g, d)
+    pivot = t((g + d) \ 2)
+```
+
+`DEFINT I-N` limite la règle aux noms qui commencent par I à N. `DEFSNG`, `DEFDBL` et `DEFSTR` font de même pour les autres types. Un suffixe explicite reste prioritaire : avec `DEFINT A-Z`, `moyenne!` est toujours en simple précision.
+
+**2. `AS INTEGER` dans les déclarations**, variable par variable, paramètres et variables locales compris :
+
+```basic
+DECLARE FUNCTION Somme (n AS INTEGER)
+DIM total AS INTEGER, k AS INTEGER, x AS SINGLE
+...
+FUNCTION Somme (n AS INTEGER)
+    DIM s AS INTEGER, i AS INTEGER
+```
+
+Une fois déclarée, la variable s'écrit sans suffixe partout.
+
+**Le résultat d'une `FUNCTION`** ne peut pas s'écrire `AS INTEGER` en QuickBASIC 4.5 : son type vient du suffixe du nom (`Fact#`) ou de `DEFINT`. Avec `DEFINT A-Z`, `FUNCTION Somme` rend un entier.
+
+Ces formes ont été vérifiées : `rapide.qbas` réécrit avec `DEFINT A-Z`, sans aucun `%`, donne le même résultat ; et `total = x` avec `x AS SINGLE` valant 2,7 donne bien 3, arrondi comme en QuickBASIC.
+
 ## Ce que le X-07 impose (vérifié dans la ROM)
 
 Ces différences ont été mesurées dans l'émulateur, qui exécute la vraie ROM. Ce sont elles qui rendent une traduction automatique nécessaire : un programme QuickBASIC ne peut pas être simplement recopié.
