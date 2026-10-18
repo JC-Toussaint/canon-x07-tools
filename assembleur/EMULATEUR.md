@@ -51,7 +51,13 @@ Un curseur clignote quand le X-07 attend une touche. Fermer la fenêtre arrête 
 |---|---|---|---|---|---|---|---|---|---|
 | direction | aucune | haut | haut-droite | droite | bas-droite | bas | bas-gauche | gauche | haut-gauche |
 
-Le bouton du milieu est vu par `STRIG(1)` (−1 enfoncé, 0 sinon), et la barre d'espace par `STRIG(0)`. Les diagonales s'obtiennent au clavier en tenant deux flèches. Les codes de `STICK` sont ceux des *Applications en assembleur* (1, 3, 5, 7). La *Référence* en donne d'autres (`$32` droite, `$36` bas) : à vérifier sur la machine.
+Le bouton du milieu est vu par `STRIG(1)` (−1 enfoncé, 0 sinon), et la barre d'espace par `STRIG(0)`.
+
+**Exemple :** `exemples/fleches.bas` déplace un point avec le pavé, diagonales comprises. Le bouton du milieu active ou coupe la trace (`*`), et la première ligne affiche en permanence `STICK(0)` et `STRIG(1)`. C'est aussi un moyen de relever les codes de `STICK` sur la vraie machine.
+
+```sh
+python3 x07asm.py emu exemples/fleches.bas --fenetre
+``` Les diagonales s'obtiennent au clavier en tenant deux flèches. Les codes de `STICK` sont ceux des *Applications en assembleur* (1, 3, 5, 7). La *Référence* en donne d'autres (`$32` droite, `$36` bas) : à vérifier sur la machine.
 
 **Un programme machine en mémoire**, comme s'il venait d'arriver par le câble série :
 
