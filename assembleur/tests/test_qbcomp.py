@@ -36,6 +36,13 @@ class TestDirect(unittest.TestCase):
         self.assertEqual(m.output().rstrip("\n"), expected.rstrip("\n"), src)
         return asm, warns
 
+    def test_listing_shows_source_lines(self):
+        # le listing montre chaque ligne QuickBASIC au-dessus de son code
+        asm, _, _ = qbcomp.compile_qbasic("DEFINT A-Z\n' rien\nx = 1\n\tPRINT x\n", "T", 0x3000)
+        self.assertIn("; 3: x = 1\nLN_3:", asm)
+        self.assertIn("; 4: PRINT x\nLN_4:", asm)
+        self.assertNotIn("; 2:", asm)                         # pas de code : pas de ligne
+
     def test_recursive_functions_and_sub(self):
         self.qb('''
 DECLARE FUNCTION Fact# (n%)

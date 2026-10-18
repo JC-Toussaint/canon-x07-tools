@@ -52,6 +52,14 @@ python3 x07asm.py asm SOURCE [-o BASE] [-f FORMATS] [-D NOM=VAL] [--no-x07]
 
 Par défaut : `bin,lst`.
 
+Un programme BASIC ou QuickBASIC a aussi son listing, avec la ligne d'origine en commentaire au-dessus de son code (`; 27: i = g: j = d`, puis `LN_27:`) :
+
+```sh
+python3 x07asm.py basic exemples/table.bas -f asm,lst
+python3 x07asm.py basic exemples/qbasic/rapide.qbas --direct -f asm,lst
+python3 x07asm.py qb exemples/qbasic/mystere.qbas -f asm,lst   # traduit, puis compilé
+```
+
 ### Syntaxe
 
 ```asm
