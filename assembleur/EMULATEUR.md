@@ -67,6 +67,8 @@ python3 x07asm.py emu --fenetre --charger caso.asm
 python3 x07asm.py emu --fenetre --charger prog.bin --org 3000 --entry 3010
 ```
 
+Un `.asm` ou un `.bin` se charge ainsi (ou se lance par `run`) : `emu prog.asm` le refuse, car `emu` tape le texte au BASIC du X-07.
+
 `CLEAR 50,&H…` est tapé pour vous, puis le programme est mis en mémoire juste après ce `CLEAR` (avant, la pile et les chaînes du BASIC, encore en haut de la mémoire, l'écraseraient). Il reste à taper la commande `EXEC &H…` indiquée dans le terminal ; vous pouvez la relancer autant de fois que vous voulez. Un `.bas` est placé en haut de la RAM choisie par `--ram`, sauf si `--org` est donné.
 
 Sous WSL2, la fenêtre s'ouvre grâce à WSLg (Windows 11 ou Windows 10 récent). Sans affichage graphique, utilisez `--png` ou `--ecran`.
