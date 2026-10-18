@@ -51,13 +51,15 @@ Un curseur clignote quand le X-07 attend une touche. Fermer la fenêtre arrête 
 |---|---|---|---|---|---|---|---|---|---|
 | direction | aucune | haut | haut-droite | droite | bas-droite | bas | bas-gauche | gauche | haut-gauche |
 
-Le bouton du milieu est vu par `STRIG(1)` (−1 enfoncé, 0 sinon), et la barre d'espace par `STRIG(0)`.
+Le bouton du milieu est vu par `STRIG(1)` (−1 enfoncé, 0 sinon), et la barre d'espace par `STRIG(0)`. Pour le T6834, le bouton du milieu est la touche F6 de la matrice du clavier ; `STRIG(1)` répond aussi à F12.
 
 **Exemple :** `exemples/fleches.bas` déplace un point avec le pavé, diagonales comprises. Le bouton du milieu active ou coupe la trace (`*`), et la première ligne affiche en permanence `STICK(0)` et `STRIG(1)`. C'est aussi un moyen de relever les codes de `STICK` sur la vraie machine.
 
 ```sh
 python3 x07asm.py emu exemples/fleches.bas --fenetre
-``` Les diagonales s'obtiennent au clavier en tenant deux flèches. Les codes de `STICK` sont ceux des *Applications en assembleur* (1, 3, 5, 7). La *Référence* en donne d'autres (`$32` droite, `$36` bas) : à vérifier sur la machine.
+```
+
+Les diagonales s'obtiennent au clavier en tenant deux flèches. Les codes de `STICK` sont ceux du guide technique officiel de la carte XP-140 (tableau 6), qui confirme les *Applications en assembleur* : les *Mystères* (`$32` droite, `$36` bas) se trompent, `$32` et `$36` sont des diagonales.
 
 **Un programme machine en mémoire**, comme s'il venait d'arriver par le câble série :
 
@@ -124,7 +126,7 @@ Le **sous-processeur T6834**, qui gère l'écran, le clavier et les graphismes, 
 - **Périphériques absents :** cassette, imprimante, table traçante X-710, interface vidéo X-720.
 - **Son :** les ports du buzzer sont écrits, mais rien n'est joué.
 - **Temps :** il est compté en instructions, pas en cycles. Les rapports de vitesse donnés dans la documentation sont donc approximatifs.
-- **Codes du T6834** (touches de `STICK`, motifs des caractères…) : ils ne sont pas dans la ROM. Leurs valeurs viennent des livres.
+- **Codes du T6834** (touches de `STICK`, motifs des caractères…) : ils ne sont pas dans la ROM. Leurs valeurs viennent des livres et du guide technique XP-140.
 
 ## Extinction et rallumage
 

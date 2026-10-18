@@ -7,10 +7,13 @@ Ce document rassemble les erreurs relevées dans deux livres des Éditions Neptu
 
 Chaque correction figure aussi, en détail, dans une note « N.d.R. » de ces documents.
 
+Le **guide technique officiel de la carte XP-140** (Canon, `XP-140Guide.pdf`) a permis d'en trancher plusieurs ; ses propres coquilles sont relevées [à la fin](#guide-technique-xp-140-canon).
+
 **Colonne « Vérifié par » :**
 - **ROM** : lu dans le code de la ROM (`ROM_x07/x07.bin`) ;
 - **émul.** : constaté en exécutant la vraie ROM dans l'émulateur (`x07asm.py emu`) ;
-- **livre** : incohérence interne au livre, coquille ou erreur de recopie.
+- **livre** : incohérence interne au livre, coquille ou erreur de recopie ;
+- **guide** : confirmé par le guide technique XP-140 de Canon.
 
 Rien n'a encore été vérifié sur une machine réelle.
 
@@ -36,6 +39,8 @@ Ces erreurs changent le comportement d'un programme ou font planter la machine :
 | Table des mots-clés | Adresse de `FSET` (jeton `$B0`) | `BF36` | **`$BF56`** (table de répartition en `$F0D6` : `INIT`, `ERASE`… voisins concordent) | ROM |
 | 69–74 | Port `$F6` en lecture | « T\*RDY : réception, R\*RDY : transmission » | RXRDY = réception prête (bit 1), TXRDY = émission prête (bit 0) | ROM |
 | 74–86 | Commandes `$38`/`$39` du T6834 | « CLICK OFF déclenche, CLICK ON enclenche » | OFF = désactivé, ON = activé | livre |
+| § 7.6.1 | Codes de `STICK` (touches curseur) | `$32` droite, `$36` bas | **`$33` droite, `$35` bas** ; `$32` et `$36` sont les diagonales haut-droite et bas-gauche (tableau 6 du guide) | guide |
+| § 7.6.1 | Adresse de `RAM READ` / `RAM WRITE` (`$05`, `$06`) | octet haut, puis octet bas | **octet bas d'abord** ; `RAM WRITE` : donnée, octet bas, octet haut | ROM, guide |
 | 74–86 | `STICK`, `STRIG` | non précisé | `STICK` : commande `$82`, réponse `AND $0F`. `STRIG(0)` = `$84` (espace), `STRIG(1)` = `$83` (F6) ; −1 si enfoncée | ROM |
 | § 7.6.2 | RAM du T6834, touche F3 | `$C85A` | `$C854`, d'après le pas de `$2A` | livre |
 | § 7.6.3 | Exemple d'utilisation du T6834 | `LD B,$2B` | `LD A,$2B` | livre |
@@ -67,7 +72,6 @@ Ces erreurs changent le comportement d'un programme ou font planter la machine :
 |---|---|---|---|---|
 | 19 | Code dans un tableau, `EX(6)` | −20234 | **−20243** (`$B0ED`, `LDIR`) | livre |
 | 19–21 | Arguments par `IX` | `ARG(0)=aa00` donne `(IX+0)=aa` | `(IX+0)=00`, `(IX+1)=aa` : poids faible d'abord | livre |
-| 31–40 | Touches curseur | `$33` droite, `$35` bas | les *Mystères* donnent `$32` et `$36`. **À vérifier sur la machine** : ces codes viennent du T6834, pas de la ROM | — |
 | 31–40 | Temporisation | `DEC B` | `DEC BC`, sinon la boucle ne s'arrête jamais | livre |
 | 31–40 | Musique `$C2DF` | « IY = durée, HL = note » | IY = tonalité, H = durée (le code est juste, pas les commentaires) | ROM |
 | 31–40 | `POINT` | commande `$13` | `POINT` = `$10`, avec `LD BC,$0201`, comme le fait la ROM (`$CE0E`). Selon les *Mystères*, `$13` est PEOR | ROM, livre |
@@ -87,6 +91,21 @@ Ces erreurs changent le comportement d'un programme ou font planter la machine :
 | 91–95 | Relogeur de LLIST | fin de table testée sur un seul octet | une adresse dont l'octet faible vaut `$00` arrête la relocation | livre |
 | 96–100 | LABYRINTHE 3D | 20 points annoncés | le message du programme en indique 22 | livre |
 | 114–116 | AUTONUM | `LD ($300),(HL)` ; « mémoire morte » | `LD ($300),HL` ; RAM. Le chargeur écrit de `F-215` à `F` | livre |
+
+## Guide technique XP-140 (Canon)
+
+Le guide officiel (*Canon XP-140 Monitor Card, guide technique*) est la source la plus sûre : il confirme les adresses de la ROM des livres et les codes du T6834. Il contient pourtant quelques coquilles.
+
+| Page | Sujet | Erreur | Correction | Vérifié par |
+|---|---|---|---|---|
+| 33, 37 | `CHKBAT` et `OFFCHECK` | tous deux en `$C5A6` | `$C5A6` est **`OFFCHECK`** (teste le bit OFF) ; les messages de piles sont en `$C06C` | ROM |
+| 38 | `TBREAK` (`$E8E8`) | « Z à 1 si un bit est à 1 » | **Z = 0** (NZ) si BREAK, piles ou OFF | ROM |
+| 58 | Tableau 6 (`STICK`), bas seul | `$33` | **`$35`** (`$33` est droite) | guide |
+| 58 | Tableau 6, haut et bas ensemble | `$35` | probablement `$30` : les autres flèches opposées s'annulent (gauche et droite donnent `$30`) ; l'émulateur répond 0 | — |
+| 59 | `RAM READ`, `RAM WRITE` | « octets hauts et bas (dans cet ordre) » | **octet bas d'abord**, comme les exemples du guide (`05,06,C0` lit `$C006`) | ROM |
+| 89, 90 | Hook ABORT | `$00A8` (p. 89), `ABTHOCK = $00AB` (p. 90) | **`$00A8`** ; `$00AB` est `ERRHOCK` | ROM |
+
+Les noms officiels des routines (`KBDSNS`, `CMDPUT`, `LCDPUT`…) sont acceptés par l'assembleur, à côté de ceux des livres (voir [ROM.md](../assembleur/ROM.md)).
 
 ## Vérifié et juste
 

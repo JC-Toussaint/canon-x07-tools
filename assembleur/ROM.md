@@ -1,8 +1,8 @@
 # Carte de la ROM et de la zone système du Canon X-07
 
-Les symboles que l'assembleur connaît d'avance (`CALL INKEY`, `LD HL,(TXTTAB)`...) et que le compilateur et le désassembleur utilisent. Ils viennent des *Mystères du X-07* et ont été corrigés d'après la ROM (voir [l'errata](../ref_docs/ERRATA.md)).
+Les symboles que l'assembleur connaît d'avance (`CALL INKEY`, `LD HL,(TXTTAB)`...) et que le compilateur et le désassembleur utilisent. Ils viennent des *Mystères du X-07* et ont été corrigés d'après la ROM (voir [l'errata](../ref_docs/ERRATA.md)), puis recoupés avec le guide technique officiel de la carte XP-140. Les noms officiels de Canon (« Canon : » dans la colonne Rôle) sont aussi acceptés par l'assembleur.
 
-La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la ROM ou par l'émulateur : 109 sur 161. Les autres viennent du livre.
+La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la ROM ou par l'émulateur : 110 sur 171. Les autres viennent du livre.
 
 > Fichier produit par `python3 x07asm.py sym --md > ROM.md` à partir de `x07asm/x07sym.py` : ne pas le modifier à la main.
 
@@ -28,29 +28,30 @@ La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la 
 | `$BBAB` | `FOUT` | FAC -> texte libre, HL = début, fin 00 | ✓ |
 | `$BE5F` | `INT2ASC` | entier -> ASCII dans (HL) |  |
 | `$C000` | `ISCNTC` | test OFF/pause/piles/BREAK de l'interpréteur | ✓ |
-| `$C02D` | `CHKTIMER` | si BREAKFLAG bit 0 : efface les bits 0 et 2, vide le clavier | ✓ |
-| `$C06C` | `BATTMSG` | messages piles faibles (BREAKFLAG bits 1 et 3) | ✓ |
-| `$C0A1` | `CURSOR` | A=0 affiche le curseur, A=1 le cache |  |
-| `$C0BD` | `T6FLUSH` | vide les tampons clavier et T6834 | ✓ |
+| `$C02D` | `CHKTIMER` | si BREAKFLAG bit 0 : efface les bits 0 et 2, vide le clavier (Canon : `CHKCNTC`) | ✓ |
+| `$C03F` | `ABORT` | abandon : piles, OFF, BREAK, puis hook $00A8 | ✓ |
+| `$C06C` | `BATTMSG` | messages piles faibles (BREAKFLAG bits 1 et 3) (Canon : `CHKBAT`) | ✓ |
+| `$C0A1` | `CURSOR` | A=0 affiche le curseur, A=1 le cache (Canon : `LSETCUR`) |  |
+| `$C0BD` | `T6FLUSH` | vide les tampons clavier et T6834 (Canon : `LBUFCLR`) | ✓ |
 | `$C164` | `CURSET` | place le curseur : H=colonne, L=ligne, à partir de 1 | ✓ |
-| `$C18A` | `LCDCHR` | affiche A au curseur, le curseur avance |  |
+| `$C18A` | `LCDCHR` | affiche A au curseur, le curseur avance (Canon : `PUTTSB`) |  |
 | `$C1BE` | `LCDPUT` | écrit A à l'écran, codes de contrôle admis, registres conservés | ✓ |
-| `$C231` | `LCDPUTXY` | écrit C en X=H, Y=L, curseur immobile |  |
-| `$C2DF` | `BEEPR` | bip : IY=tonalité, H=durée, L=0 | ✓ |
-| `$C331` | `SPEAKER` | haut-parleur : IY=tonalité, HL=durée, C=FF/00 |  |
-| `$C39D` | `IOINIT` | initialise les ports |  |
-| `$C3C3` | `COLDST` | démarrage à froid | ✓ |
+| `$C231` | `LCDPUTXY` | écrit C en X=H, Y=L, curseur immobile (Canon : `LPHYDSP`) |  |
+| `$C2DF` | `BEEPR` | bip : IY=tonalité, H=durée, L=0 (Canon : `BEEP0`) | ✓ |
+| `$C331` | `SPEAKER` | haut-parleur : IY=tonalité, HL=durée, C=FF/00 (Canon : `BEEP6`) |  |
+| `$C39D` | `IOINIT` | initialise les ports (Canon : `IOCLS`) |  |
+| `$C3C3` | `COLDST` | démarrage à froid (Canon : `START`) | ✓ |
 | `$C4D1` | `CREATSYS` | « CREATE SYSTEM ? » | ✓ |
 | `$C528` | `COPYRGT` | message de copyright |  |
-| `$C557` | `EXTSW` | commutateur d'extension -> HL=4000/2000 |  |
-| `$C59B` | `SLEEPR` | SLEEP |  |
-| `$C5A6` | `CHKBATT` | si BREAKFLAG bit 7 (OFF) : éteint la machine | ✓ |
-| `$C5C3` | `POWEROFF` | coupe l'alimentation |  |
-| `$C5CD` | `STARTPRG` | programme de lancement (A=1/2) |  |
-| `$C62E` | `ISRAM` | Z=1 si HL est en RAM |  |
-| `$C8C5` | `KBWAIT` | lit le clavier avec curseur -> A | ✓ |
-| `$C90A` | `INKEY` | lit une touche (INKEY$) -> A ; Z=1 si aucune | ✓ |
-| `$C92F` | `T6CMDP` | commande T6834 : A=cmd, HL=param, B=nb, C=nb rép., DE=tampon | ✓ |
+| `$C557` | `EXTSW` | commutateur d'extension -> HL=4000/2000 (Canon : `MEMCADR`) |  |
+| `$C59B` | `SLEEPR` | SLEEP (Canon : `SLEEP`) |  |
+| `$C5A6` | `CHKBATT` | si BREAKFLAG bit 7 (OFF) : éteint la machine (Canon : `OFFCHECK`) | ✓ |
+| `$C5C3` | `POWEROFF` | coupe l'alimentation (Canon : `OFF0`) |  |
+| `$C5CD` | `STARTPRG` | programme de lancement (A=1/2) (Canon : `OFF1`) |  |
+| `$C62E` | `ISRAM` | Z=1 si HL est en RAM (Canon : `RAMCHK`) |  |
+| `$C8C5` | `KBWAIT` | lit le clavier avec curseur -> A (Canon : `CONGET`) | ✓ |
+| `$C90A` | `INKEY` | lit une touche (INKEY$) -> A ; Z=1 si aucune (Canon : `KBDSNS`) | ✓ |
+| `$C92F` | `T6CMDP` | commande T6834 : A=cmd, HL=param, B=nb, C=nb rép., DE=tampon (Canon : `CMDPUT`) | ✓ |
 | `$C9C7` | `FSIGN` | RST 18 : signe de l'accumulateur -> A = 0, 1 ou FF ; Z si nul | ✓ |
 | `$C9DC` | `FABS` | valeur absolue (ABS) | ✓ |
 | `$C9E0` | `FNEG` | FAC = -FAC, tous types | ✓ |
@@ -82,17 +83,18 @@ La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la 
 | `$CDB7` | `SMUL` | « simple » : BC:DE * FAC, calculé en double (type 8) | ✓ |
 | `$CDC2` | `SDIV` | « simple » : BC:DE / FAC, calculé en double (type 8) | ✓ |
 | `$CE9E` | `LCDCLS` | efface l'écran (CLS) | ✓ |
+| `$CED6` | `GPRPUT` | envoie A au port parallèle, avec mise en forme (BS, CR...) |  |
 | `$CEF7` | `PRTPUT` | envoie A à l'imprimante (teste BUSY/BREAK) |  |
-| `$CF11` | `PARPUT` | envoie A sur le port parallèle |  |
-| `$CF2A` | `PARWAIT` | attend BUSY=0 sur le port parallèle |  |
-| `$CFB0` | `PRTCRLF` | envoie LF+CR à l'imprimante |  |
-| `$CFB7` | `PRTINIT` | initialise l'imprimante parallèle |  |
+| `$CF11` | `PARPUT` | envoie A sur le port parallèle (Canon : `GPRON`) |  |
+| `$CF2A` | `PARWAIT` | attend BUSY=0 sur le port parallèle (Canon : `GPRBSY`) |  |
+| `$CFB0` | `PRTCRLF` | envoie LF+CR à l'imprimante (Canon : `PRTOPN`) |  |
+| `$CFB7` | `PRTINIT` | initialise l'imprimante parallèle (Canon : `GPROPN`) |  |
 | `$D5B0` | `PRTSTR` | affiche la chaîne (HL) terminée par 00/0D |  |
-| `$E327` | `RSTTIMER` | réarme la minuterie d'extinction |  |
-| `$E334` | `T6POKE` | écrit la RAM du T6834 : HL=adresse, A=donnée |  |
-| `$E348` | `T6PEEK` | lit la RAM du T6834 : HL=adresse -> A | ✓ |
-| `$E428` | `T6CMD` | commande T6834 sans paramètre (A) | ✓ |
-| `$E6A8` | `DEVOPEN` | INIT# : DE=table, IY=fichier, A=0 | ✓ |
+| `$E327` | `RSTTIMER` | réarme la minuterie d'extinction (Canon : `PTMCLR`) |  |
+| `$E334` | `T6POKE` | écrit la RAM du T6834 : HL=adresse, A=donnée (Canon : `RAMWRT`) |  |
+| `$E348` | `T6PEEK` | lit la RAM du T6834 : HL=adresse -> A (Canon : `RAMRD`) | ✓ |
+| `$E428` | `T6CMD` | commande T6834 sans paramètre (A) (Canon : `NOPCMD`) | ✓ |
+| `$E6A8` | `DEVOPEN` | INIT# : DE=table, IY=fichier, A=0 (Canon : `EXOPN`) | ✓ |
 | `$E778` | `DEV_KBD` | table du dispositif KBD: | ✓ |
 | `$E787` | `DEV_CASI` | table du dispositif CASI: | ✓ |
 | `$E796` | `DEV_CASO` | table du dispositif CASO: | ✓ |
@@ -103,16 +105,16 @@ La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la 
 | `$E7DC` | `DEV_OPT` | table du dispositif OPT: |  |
 | `$E7EA` | `DEV_CON` | table du dispositif CON: |  |
 | `$E7F8` | `DEV_LPT` | table du dispositif LPT: |  |
-| `$E827` | `DEVSEL` | choisit le fichier courant (DE) | ✓ |
-| `$E88F` | `DEVPUT` | RST 28 : envoie A au fichier courant | ✓ |
-| `$E8D4` | `DEVGET` | lit un octet du fichier courant -> A | ✓ |
-| `$E8E8` | `GETBRK` | A = BREAKFLAG AND $83 ; NZ si BREAK, piles ou OFF | ✓ |
+| `$E827` | `DEVSEL` | choisit le fichier courant (DE) (Canon : `DASSIGN`) | ✓ |
+| `$E88F` | `DEVPUT` | RST 28 : envoie A au fichier courant (Canon : `OUTCHR`) | ✓ |
+| `$E8D4` | `DEVGET` | lit un octet du fichier courant -> A (Canon : `GETAD`) | ✓ |
+| `$E8E8` | `GETBRK` | A = BREAKFLAG AND $83 ; NZ si BREAK, piles ou OFF (Canon : `TBREAK`) | ✓ |
 | `$E8EE` | `DEVPOS` | position (A) et largeur (B) du périphérique courant | ✓ |
 | `$E906` | `ARRADR` | RST 38 + octet n : n < $80 -> DE = mot en HL+n ; n >= $80 -> fonction n du pilote courant | ✓ |
 | `$E929` | `CRLF` | envoie CR LF au périphérique courant | ✓ |
 | `$EBF2` | `INPUTQ` | saisie avec « ? » -> HL=$00D4, fin 00 ; CY=1 si BREAK | ✓ |
 | `$EBFF` | `INPUTL` | saisie sans « ? » -> HL=$00D4, fin 00 ; CY=1 si BREAK | ✓ |
-| `$EE13` | `JMPTAB` | saut dans une table : HL=table, C=décalage |  |
+| `$EE13` | `JMPTAB` | saut dans une table : HL=table, C=décalage (Canon : `INDJMP`) |  |
 | `$EE45` | `CPHLDE` | RST 20 : compare HL et DE | ✓ |
 | `$F123` | `ERRTAB` | codes d'erreur sur 2 lettres : NF SN RG OD FC OV... | ✓ |
 | `$F1AA` | `SNERR` | SN ERROR | ✓ |
@@ -136,24 +138,29 @@ La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la 
 | Adresse | Nom | Rôle | Vérifié |
 |---|---|---|---|
 | `$002B` | `BRKFLG` | BREAKFLAG | ✓ |
-| `$009F` | `HKCONOUT` | hook sortie CONSOLE |  |
-| `$00A2` | `HKCONIN` | hook entrée CONSOLE |  |
-| `$00A8` | `HKABORT` | hook ABORT |  |
-| `$00AB` | `HKERROR` | hook ERREUR | ✓ |
+| `$002C` | `INTC` | vecteur INT C : minuterie de la MEM d'extension (guide XP-140) |  |
+| `$0034` | `INTB` | vecteur INT B : série et compteur de BEEP (guide XP-140) |  |
+| `$003C` | `INTA` | vecteur INT A : T6834, clavier (guide XP-140) |  |
+| `$0047` | `DEVHOOK` | 4 hooks de dispositifs de 4 octets, $0047-$0056 (guide XP-140) (Canon : `DEVHOCK`) |  |
+| `$009F` | `HKCONOUT` | hook sortie CONSOLE (Canon : `CONPUT`) |  |
+| `$00A2` | `HKCONIN` | hook entrée CONSOLE (Canon : `CONSAIS`) |  |
+| `$00A8` | `HKABORT` | hook ABORT (Canon : `ABTHOCK`) |  |
+| `$00AB` | `HKERROR` | hook ERREUR (Canon : `ERRHOCK`) | ✓ |
 | `$00B2` | `TXTTAB` | début du programme BASIC | ✓ |
 | `$00B8` | `CSRY` | ligne du curseur, à partir de 1 | ✓ |
 | `$00B9` | `CSRX` | colonne du curseur, à partir de 1 | ✓ |
 | `$00D5` | `INPBUF` | tampon d'entrée | ✓ |
+| `$01D7` | `ENDBUF` | fin du tampon d'entrée (guide XP-140) |  |
 | `$01D9` | `VALTYP` | type de donnée (2,3,4,8) | ✓ |
 | `$01DD` | `STKTOP` | fin de la pile | ✓ |
 | `$01DF` | `MEMSIZ` | fin de la zone BASIC | ✓ |
 | `$0204` | `FRETOP` | zone des chaînes libre | ✓ |
-| `$0210` | `RAMSTR` | début des fichiers RAM |  |
+| `$0210` | `RAMSTR` | début des fichiers RAM (Canon : `RAMSTRT`) |  |
 | `$0212` | `RAMEND` | fin des fichiers RAM |  |
 | `$0214` | `LCDIMG` | image de l'écran LCD (80 octets) |  |
 | `$026C` | `INTIMAG` | image du port F0 | ✓ |
 | `$026E` | `T6BUF` | tampon T6834 | ✓ |
-| `$02C5` | `FILE1` | fichier #1 (table INIT#) | ✓ |
+| `$02C5` | `FILE1` | fichier #1 (table INIT#) (Canon : `KBNTBL`) | ✓ |
 | `$02CD` | `FILE2` | fichier #2 (table INIT#) |  |
 | `$02F5` | `CURDEV` | périphérique ouvert | ✓ |
 | `$0311` | `CURLIN` | ligne en cours |  |
@@ -163,10 +170,13 @@ La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la 
 | `$0324` | `ARYTAB` | table des tableaux |  |
 | `$0326` | `STREND` | début de la zone libre |  |
 | `$0328` | `DATPTR` | pointeur des DATA | ✓ |
+| `$0344` | `PRMSTK` | rôle non décrit (guide XP-140) |  |
+| `$03AC` | `PRMPRV` | rôle non décrit (guide XP-140) |  |
 | `$044E` | `FAC` | accumulateur flottant | ✓ |
 | `$0450` | `FACINT` | entier dans l'accumulateur | ✓ |
 | `$049F` | `ARG` | accumulateur 2 | ✓ |
 | `$0507` | `T6BUF2` | 2e tampon T6834 |  |
+| `$0552` | `TSACK` | octet qui précède les programmes BASIC (guide XP-140) |  |
 | `$0553` | `BASTXT` | début des programmes BASIC | ✓ |
 
 ## Ports d'entrée/sortie (HD61L202F)

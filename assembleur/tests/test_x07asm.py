@@ -239,6 +239,19 @@ class TestDisassembler(unittest.TestCase):
         self.assertIn("DB    $81", src)
         self.assertIn("LD    A,C", src)
 
+    def test_official_canon_names(self):
+        """Les noms du guide XP-140 sont des synonymes des noms des livres."""
+        from x07asm import x07sym
+        sym = x07sym.all_symbols()
+        for official, name in x07sym.CANON.items():
+            self.assertEqual(sym[official], sym[name], official)
+        self.assertEqual((sym["KBDSNS"], sym["CMDPUT"], sym["CHKBAT"], sym["OFFCHECK"]),
+                         (0xC90A, 0xC92F, 0xC06C, 0xC5A6))
+        a = Assembler()
+        mem = a.assemble_text("        ORG $3000\nSLEEP:  CALL KBDSNS\n        JP SLEEP\n")
+        self.assertEqual([mem[0x3000 + i] for i in range(6)],
+                         [0xCD, 0x0A, 0xC9, 0xC3, 0x00, 0x30])   # étiquette du programme d'abord
+
     def test_rom_map_up_to_date(self):
         """ROM.md doit être régénéré après toute modification de x07sym.py."""
         from x07asm import x07sym

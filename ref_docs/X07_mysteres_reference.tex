@@ -278,7 +278,7 @@ variable, terminée par \hex{00}.
 \midrule\endhead
 \bottomrule\endfoot
 01 & TIME CALL & 1 & 8 & lit l'heure : année (2 octets), mois, date, jour de la semaine, heure, minutes, secondes \\
-02 & STICK & 1 & 1 & touche curseur : \hex{30} aucune, \hex{31} haut, \hex{32} droite, \hex{36} bas, \hex{37} gauche \\
+02 & STICK & 1 & 1 & touche curseur : \hex{30} aucune, \hex{31} haut, \hex{32} droite, \hex{36} bas, \hex{37} gauche (voir la note) \\
 03 & STRIG & 1 & 1 & 0 si F6 est enfoncée, sinon \hex{FF} \\
 04 & STRIG1 & 1 & 1 & 0 si la barre d'espace est enfoncée, sinon \hex{FF} \\
 05 & RAM READ & 3 & 1 & lit la RAM du T6834 (adresse : octet haut, octet bas) \\
@@ -351,6 +351,17 @@ variable, terminée par \hex{00}.
 }
 \nota{Le livre écrit « 38 CLICK OFF déclenche » et « 39 CLICK ON enclenche » ;
 on retient OFF = désactivé, ON = activé.}
+
+\nota{Codes de STICK : le guide technique officiel de la carte XP-140
+(tableau~6) donne \hex{31} haut, \hex{32} haut-droite, \hex{33} droite,
+\hex{34} bas-droite, \hex{35} bas, \hex{36} bas-gauche, \hex{37} gauche,
+\hex{38} haut-gauche : \hex{32} et \hex{36} sont des diagonales, pas
+droite et bas. Le même guide place F6 dans la matrice du clavier : c'est le
+bouton du milieu du pavé de flèches.}
+
+\nota{RAM READ et RAM WRITE : la ROM (\hex{E348}, \hex{E334}) envoie
+l'adresse \emph{octet bas d'abord} (RAM WRITE : donnée, octet bas, octet
+haut), comme les exemples du guide XP-140 (\texttt{05,06,C0} lit \hex{C006}).}
 
 \nota{Vérifié dans la ROM : \texttt{STICK} (\hex{D7E3}) envoie
 \hex{82} (commande 02, bit 7 = aucun paramètre) et garde la réponse

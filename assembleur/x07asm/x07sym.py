@@ -1,11 +1,13 @@
 """Symboles du Canon X-07, d'après « Les mystères du X-07 » et
-« Applications en assembleur » (voir X07_mysteres_reference.tex).
+« Applications en assembleur » (voir X07_mysteres_reference.tex), recoupés
+avec le guide technique officiel de la carte XP-140 (ref_docs/XP-140Guide.pdf).
 
 Trois familles :
   ROUTINES  : points d'entrée en ROM (cibles de CALL/JP)
   VARIABLES : zone de travail du système en RAM (références (nn))
   PORTS     : ports d'E/S du HD61L202F (IN/OUT)
   T6834     : codes de commande du sous-processeur (constantes)
+  CANON     : noms officiels du guide XP-140, synonymes des noms ci-dessus
 Chaque entrée : nom -> (valeur, commentaire).
 Les entrées marquées « vérifié ROM » ont été contrôlées dans le vidage de
 la ROM (ROM_x07/x07.bin) ; le livre inverse notamment $B8 (ligne) et $B9
@@ -146,10 +148,17 @@ ROUTINES = {
     "DEV_OPT":     (0xE7DC, "table du dispositif OPT:"),
     "DEV_CON":     (0xE7EA, "table du dispositif CON:"),
     "DEV_LPT":     (0xE7F8, "table du dispositif LPT:"),
+    # d'après le guide XP-140
+    "ABORT":       (0xC03F, "abandon : piles, OFF, BREAK, puis hook $00A8 (vérifié ROM)"),
+    "GPRPUT":      (0xCED6, "envoie A au port parallèle, avec mise en forme (BS, CR...)"),
 }
 
 VARIABLES = {
     "BRKFLG":   (0x002B, "BREAKFLAG (vérifié ROM)"),
+    "INTC":     (0x002C, "vecteur INT C : minuterie de la MEM d'extension (guide XP-140)"),
+    "INTB":     (0x0034, "vecteur INT B : série et compteur de BEEP (guide XP-140)"),
+    "INTA":     (0x003C, "vecteur INT A : T6834, clavier (guide XP-140)"),
+    "DEVHOOK":  (0x0047, "4 hooks de dispositifs de 4 octets, $0047-$0056 (guide XP-140)"),
     "HKCONOUT": (0x009F, "hook sortie CONSOLE"),
     "HKCONIN":  (0x00A2, "hook entrée CONSOLE"),
     "HKABORT":  (0x00A8, "hook ABORT"),
@@ -158,6 +167,7 @@ VARIABLES = {
     "CSRY":     (0x00B8, "ligne du curseur, à partir de 1 (vérifié ROM)"),
     "CSRX":     (0x00B9, "colonne du curseur, à partir de 1 (vérifié ROM)"),
     "INPBUF":   (0x00D5, "tampon d'entrée (vérifié ROM)"),
+    "ENDBUF":   (0x01D7, "fin du tampon d'entrée (guide XP-140)"),
     "VALTYP":   (0x01D9, "type de donnée (2,3,4,8) (vérifié ROM)"),
     "STKTOP":   (0x01DD, "fin de la pile (vérifié ROM)"),
     "MEMSIZ":   (0x01DF, "fin de la zone BASIC (vérifié ROM)"),
@@ -174,6 +184,8 @@ VARIABLES = {
     "ERRLIN":   (0x0317, "ligne de l'erreur"),
     "ONERR":    (0x0319, "adresse ON ERROR"),
     "VARTAB":   (0x0322, "table des variables (vérifié ROM)"),
+    "PRMSTK":   (0x0344, "rôle non décrit (guide XP-140)"),
+    "PRMPRV":   (0x03AC, "rôle non décrit (guide XP-140)"),
     "ARYTAB":   (0x0324, "table des tableaux"),
     "STREND":   (0x0326, "début de la zone libre"),
     "DATPTR":   (0x0328, "pointeur des DATA (vérifié ROM)"),
@@ -181,6 +193,7 @@ VARIABLES = {
     "FACINT":   (0x0450, "entier dans l'accumulateur (vérifié ROM)"),
     "ARG":      (0x049F, "accumulateur 2 (vérifié ROM)"),
     "T6BUF2":   (0x0507, "2e tampon T6834"),
+    "TSACK":    (0x0552, "octet qui précède les programmes BASIC (guide XP-140)"),
     "BASTXT":   (0x0553, "début des programmes BASIC (vérifié ROM)"),
 }
 
@@ -219,12 +232,32 @@ T6834 = {
 }
 
 
+# Noms officiels du guide technique XP-140 (Canon) -> nom de ce module.
+# Le guide se trompe parfois d'adresse : CHKBAT est donné en $C5A6 (celle
+# d'OFFCHECK), ABTHOCK en $00AB (celle d'ERRHOCK) ; la ROM tranche.
+CANON = {
+    "BEEP0": "BEEPR", "BEEP6": "SPEAKER", "CMDPUT": "T6CMDP", "CONGET": "KBWAIT",
+    "GPRBSY": "PARWAIT", "GPRON": "PARPUT", "GPROPN": "PRTINIT", "IOCLS": "IOINIT",
+    "KBDSNS": "INKEY", "LPHYDSP": "LCDPUTXY", "NOPCMD": "T6CMD", "PRTOPN": "PRTCRLF",
+    "PUTTSB": "LCDCHR", "RAMRD": "T6PEEK", "RAMWRT": "T6POKE", "CHKCNTC": "CHKTIMER",
+    "CHKBAT": "BATTMSG", "INDJMP": "JMPTAB", "LSETCUR": "CURSOR", "LBUFCLR": "T6FLUSH",
+    "MEMCADR": "EXTSW", "OFF0": "POWEROFF", "OFF1": "STARTPRG", "OFFCHECK": "CHKBATT",
+    "PTMCLR": "RSTTIMER", "RAMCHK": "ISRAM", "SLEEP": "SLEEPR", "TBREAK": "GETBRK",
+    "START": "COLDST", "EXOPN": "DEVOPEN", "DASSIGN": "DEVSEL", "GETAD": "DEVGET",
+    "OUTCHR": "DEVPUT", "ABTHOCK": "HKABORT", "ERRHOCK": "HKERROR", "CONPUT": "HKCONOUT",
+    "CONSAIS": "HKCONIN", "KBNTBL": "FILE1", "RAMSTRT": "RAMSTR", "DEVHOCK": "DEVHOOK",
+}
+
+
 def all_symbols():
-    """Tous les symboles prédéfinis pour l'assembleur : nom -> valeur."""
+    """Tous les symboles prédéfinis pour l'assembleur : nom -> valeur
+    (noms officiels du guide XP-140 compris)."""
     out = {}
     for table in (ROUTINES, VARIABLES, PORTS):
         out.update({k: v for k, (v, _) in table.items()})
     out.update(T6834)
+    for official, name in CANON.items():
+        out.setdefault(official, out[name])
     return out
 
 
@@ -253,11 +286,15 @@ RAM_TOP = {8: 0x1FFF, 16: 0x3FFF, 24: 0x5FFF}
 
 def markdown():
     """Carte des symboles au format Markdown (assembleur/ROM.md)."""
+    official = {name: o for o, name in CANON.items()}
+
     def rows(table, fmt):
         out = ["| Adresse | Nom | Rôle | Vérifié |", "|---|---|---|---|"]
         for name, (v, c) in sorted(table.items(), key=lambda x: x[1][0]):
             checked = "vérifié ROM" in c
             role = c.replace(" (vérifié ROM)", "").replace("|", "\\|")
+            if name in official:
+                role += " (Canon : `%s`)" % official[name]
             out.append("| `%s` | `%s` | %s | %s |" % (fmt % v, name, role, "✓" if checked else ""))
         return out
 
@@ -268,7 +305,9 @@ def markdown():
         "",
         "Les symboles que l'assembleur connaît d'avance (`CALL INKEY`, `LD HL,(TXTTAB)`...) "
         "et que le compilateur et le désassembleur utilisent. Ils viennent des *Mystères du X-07* "
-        "et ont été corrigés d'après la ROM (voir [l'errata](../ref_docs/ERRATA.md)).",
+        "et ont été corrigés d'après la ROM (voir [l'errata](../ref_docs/ERRATA.md)), puis "
+        "recoupés avec le guide technique officiel de la carte XP-140. Les noms officiels de "
+        "Canon (« Canon : » dans la colonne Rôle) sont aussi acceptés par l'assembleur.",
         "",
         "La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la ROM ou par "
         "l'émulateur : %d sur %d. Les autres viennent du livre." % (n_ok, n),
