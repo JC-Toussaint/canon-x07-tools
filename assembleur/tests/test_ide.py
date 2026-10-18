@@ -51,8 +51,16 @@ class TestSyntaxe(unittest.TestCase):
                           ("commentaire", "' fin"), ("commentaire", "rem x"),
                           ("motcle", "print"), ("chaine", '"if"'), ("fonction", "ucase$")])
 
-    def test_assembly_left_alone(self):
-        self.assertEqual(syntaxe.zones("  LD A,1  ; FOR\n", "asm"), [])
+    def test_assembly(self):
+        # « ; » dans une chaîne, AF', caractère 'x', étiquette sans « : », « * » en tête
+        self.assertEqual(self.colored('DEBUT:  LD   HL,MSG  ; (HL)\n.ATT ex af,af\'\n'
+                                      'MSG: DB "a;b",\'x\',0\nN EQU 3\n* note', "asm"),
+                         [("etiquette", "DEBUT"), ("motcle", "LD"), ("registre", "HL"),
+                          ("commentaire", "; (HL)"), ("etiquette", ".ATT"), ("motcle", "ex"),
+                          ("registre", "af"), ("registre", "af'"), ("etiquette", "MSG"),
+                          ("directive", "DB"), ("chaine", '"a;b"'), ("chaine", "'x'"),
+                          ("etiquette", "N"), ("directive", "EQU"), ("commentaire", "* note")])
+        self.assertEqual(syntaxe.zones("PRINT 1", "txt"), [])
 
 
 @needs_rom

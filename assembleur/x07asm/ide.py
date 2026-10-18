@@ -351,7 +351,8 @@ class Editeur:
 
     BG_LINE, BG_BREAK = "#fff3a8", "#ffd6d6"
     COLORS = {"motcle": "#0033b3", "fonction": "#871094", "chaine": "#a31515",
-              "commentaire": "#4f7f4f", "numero": "#8a8a8a"}
+              "commentaire": "#4f7f4f", "numero": "#8a8a8a", "directive": "#00777a",
+              "registre": "#a35a00", "etiquette": "#6b3f00"}
 
     def __init__(self, path=None, ram=16, zoom=3, memoire=None):
         self.memoire = memoire
@@ -402,6 +403,7 @@ class Editeur:
         for tag, color in self.COLORS.items():           # coloration syntaxique
             self.text.tag_configure(tag, foreground=color)
         self.text.tag_configure("commentaire", font=mono + ("italic",))
+        self.text.tag_configure("etiquette", font=mono + ("bold",))
         self.text.tag_configure("courante", background=self.BG_LINE)
         self.text.tag_configure("arret", background=self.BG_BREAK)
         self.text.tag_raise("courante")
@@ -647,7 +649,8 @@ class Editeur:
 
     def colorize(self):
         """Mots-clés, fonctions, chaînes, commentaires et numéros de ligne en
-        couleur (BASIC X-07 et QuickBASIC)."""
+        couleur (BASIC X-07 et QuickBASIC) ; instructions, directives, registres
+        et étiquettes en assembleur."""
         self.recolor_pending = None
         t = self.text
         for tag in syntaxe.CATEGORIES:

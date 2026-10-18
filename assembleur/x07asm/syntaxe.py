@@ -1,14 +1,16 @@
-"""Coloration syntaxique de l'éditeur : découpe un programme BASIC X-07 ou
-QuickBASIC en zones (mot-clé, fonction, chaîne, commentaire, numéro de ligne).
+"""Coloration syntaxique de l'éditeur : découpe un programme BASIC X-07,
+QuickBASIC ou assembleur en zones (mot-clé, fonction, chaîne, commentaire,
+numéro de ligne ; en assembleur, instruction, directive, registre, étiquette).
 
 zones(texte, sorte) rend des (catégorie, ligne, colonne de début, colonne de
 fin) ; les lignes comptent depuis 1, les colonnes depuis 0, comme tkinter."""
 import functools
 import re
 
-from . import basic, qbasic
+from . import asm, basic, qbasic, z80
 
-CATEGORIES = ("motcle", "fonction", "chaine", "commentaire", "numero")
+CATEGORIES = ("motcle", "fonction", "chaine", "commentaire", "numero", "directive",
+              "registre", "etiquette")
 
 # BASIC X-07 : le découpage de la ROM, mots-clés reconnus même collés (FORI=1TO9)
 BAS_FUNCS = set(basic.NUM_FUNCS) | set(basic.STR_FUNCS) | {
@@ -22,7 +24,7 @@ _QB_TOKEN = re.compile(r'"[^"]*"?|\'.*|[A-Za-z_][A-Za-z0-9_.]*[$%!#&]?|&[HhOo][0
 
 
 def zones(text, kind):
-    line_zones = {"bas": _bas_line, "qbas": _qb_line}.get(kind)
+    line_zones = {"bas": _bas_line, "qbas": _qb_line, "asm": _asm_line}.get(kind)
     if line_zones is None:
         return []
     return [(c, n, a, b) for n, line in enumerate(text.split("\n"), 1)
@@ -93,4 +95,63 @@ def _qb_line(text):
             out.append(("numero", a, b))
         if not tok.isspace():
             start = tok == ":"
+    return tuple(out)
+
+
+# Assembleur : les règles de x07asm/asm.py (commentaire « ; » ou « * » en tête,
+# étiquette en colonne 1 ou suivie de « : », AF', caractère 'x')
+_ASM_TOKEN = re.compile(r'"[^"]*"?|[A-Za-z_.@?][\w.@?]*|\'[^\']*\'?|.')
+
+
+def _asm_comment(text):
+    """Position du « ; » qui commence le commentaire (hors chaînes), ou None."""
+    i, q = 0, None
+    while i < len(text):
+        c = text[i]
+        if q:
+            q = None if c == q else q
+        elif c == ";":
+            return i
+        elif c == '"':
+            q = c
+        elif c == "'":
+            if text[max(0, i - 2):i].upper() == "AF" and not (i >= 3 and text[i - 3].isalnum()):
+                pass                                # AF'
+            elif i + 2 < len(text) and text[i + 2] == "'":
+                i += 2                              # 'x'
+            else:
+                q = c
+        i += 1
+    return None
+
+
+@functools.lru_cache(maxsize=4096)
+def _asm_line(text):
+    out = []
+    if text.startswith("*"):
+        return (("commentaire", 0, len(text)),)
+    end = _asm_comment(text)
+    code = text if end is None else text[:end]
+    label, kw, _ = asm.parse_line(code)
+    i = 0
+    if label:
+        i = code.index(label)
+        out.append(("etiquette", i, i + len(label)))
+        i += len(label)
+    m = kw and re.compile(r"(?i)(?<![\w.@?])%s(?![\w.@?])" % re.escape(kw)).search(code, i)
+    if m:                                           # absent pour « X = 3 »
+        out.append(("motcle" if kw in z80.MNEMONICS else "directive", m.start(), m.end()))
+        i = m.end()
+    while i < len(code):
+        m = _ASM_TOKEN.match(code, i)
+        tok, a, i = m.group(), m.start(), m.end()
+        up = tok.upper()
+        if tok[0] in "\"'":
+            out.append(("chaine", a, i))
+        elif up in z80.REGISTERS:
+            if up == "AF" and code[i:i + 1] == "'":
+                i += 1
+            out.append(("registre", a, i))
+    if end is not None:
+        out.append(("commentaire", end, len(text)))
     return tuple(out)
