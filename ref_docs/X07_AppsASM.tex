@@ -450,8 +450,10 @@ FLECHE & CALL \$C0BD & vide les tampons du clavier \\
  & RET & \hex{30} : aucune touche \\
 \end{src}
 \nota{Les \emph{Mystères} (§\,7.6.1) donnent \hex{32} pour droite et
-\hex{36} pour bas ; ce livre utilise \hex{33} et \hex{35}. À vérifier sur la
-machine.}
+\hex{36} pour bas ; ce livre utilise \hex{33} et \hex{35}, et il a raison :
+le guide technique officiel de la carte XP-140 (tableau~6) donne \hex{31}
+haut, \hex{32} haut-droite, \hex{33} droite, \hex{34} bas-droite,
+\hex{35} bas, \hex{36} bas-gauche, \hex{37} gauche, \hex{38} haut-gauche.}
 
 \subsection{Test d'une touche (commande \hex{28}, TEST CHR)}
 On charge A avec le code de la touche ; au retour, Z\,=\,1 si elle est
