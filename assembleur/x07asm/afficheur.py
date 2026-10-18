@@ -167,25 +167,24 @@ class Pave:
         touches.on_change = self.redraw
         self.canvas = tk.Canvas(parent, width=size, height=size, bg=bg,
                                 highlightthickness=0)
-        u = size / 3.0
+        # comme sur la machine : quatre touches trapézoïdales autour d'un bouton carré
+        lo, hi, gap = 3, size - 3, max(2, size // 30)
+        inner = size * 0.32                                  # côté du bouton du milieu
+        p, q = (size - inner) / 2, (size + inner) / 2
         self.items = {}
-        boxes = {"haut": (u, 0, 2 * u, u), "bas": (u, 2 * u, 2 * u, 3 * u),
-                 "gauche": (0, u, u, 2 * u), "droite": (2 * u, u, 3 * u, 2 * u)}
-        c, pad = self.canvas, 3
-        for name, (x0, y0, x1, y1) in boxes.items():
-            key = c.create_rectangle(x0 + pad, y0 + pad, x1 - pad, y1 - pad, fill=self.KEY,
-                                     outline=self.EDGE, width=2, tags=(name,))
-            cx, cy, r = (x0 + x1) / 2, (y0 + y1) / 2, u / 5
-            tri = {"haut": (cx, cy - r, cx - r, cy + r, cx + r, cy + r),
-                   "bas": (cx, cy + r, cx - r, cy - r, cx + r, cy - r),
-                   "gauche": (cx - r, cy, cx + r, cy - r, cx + r, cy + r),
-                   "droite": (cx + r, cy, cx - r, cy - r, cx - r, cy + r)}[name]
-            c.create_polygon(*tri, fill=self.MARK, tags=(name,))
+        c = self.canvas
+        place = {"haut": lambda x, y: (x, y), "bas": lambda x, y: (x, size - y),
+                 "gauche": lambda x, y: (y, x), "droite": lambda x, y: (size - y, x)}
+        trap = ((lo + gap, lo), (hi - gap, lo), (q, p - gap), (p, p - gap))   # celle du haut
+        cx, cy, r = size / 2, (lo + p - gap) / 2, size / 14
+        tri = ((cx, cy - r), (cx - r, cy + 0.7 * r), (cx + r, cy + 0.7 * r))
+        for name, f in place.items():
+            key = c.create_polygon(*[f(x, y) for x, y in trap], fill=self.KEY,
+                                   outline=self.EDGE, width=2, tags=(name,))
+            c.create_polygon(*[f(x, y) for x, y in tri], fill=self.MARK, tags=(name,))
             self.items[name] = key
-        r = u / 2 - pad
-        self.items["milieu"] = c.create_oval(1.5 * u - r, 1.5 * u - r, 1.5 * u + r,
-                                             1.5 * u + r, fill=self.KEY, outline=self.EDGE,
-                                             width=2, tags=("milieu",))
+        self.items["milieu"] = c.create_rectangle(p, p, q, q, fill=self.KEY, outline=self.EDGE,
+                                                  width=2, tags=("milieu",))
         self.mouse = None
         for name in self.items:
             c.tag_bind(name, "<ButtonPress-1>", lambda e, n=name: self.click(n))
