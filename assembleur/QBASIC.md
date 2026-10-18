@@ -183,7 +183,10 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 | `TIMER`, `RANDOMIZE TIMER` | calcul à partir de `TIME$` (interpréteur seulement, voir plus bas) |
 | `SLEEP` | attente d'une touche |
 | `SCREEN`, `COLOR`, `WIDTH`, `VIEW`, `KEY` | ignorés, avec un avertissement |
-| `SOUND` | `BEEP` (avertissement) ; `LONG` → double précision (avertissement) |
+| `BEEP` | `BEEP 240,5` : 800 Hz pendant 1/4 s, comme sur PC |
+| `BEEP note, durée` | gardé tel quel : c'est le `BEEP` du X-07 (note 1 à 48 par demi-tons depuis le do, 49 à 4095 : 192 000/note Hz ; durée × 50 ms) |
+| `SOUND f, durée` | `BEEP 192000/f, durée × 1,1` (durée en tops de 1/18,2 s) ; le X-07 joue de 47 à 3918 Hz, 12,75 s au plus (avertissement si une constante en sort, ou si l'expression est variable) |
+| `LONG` | double précision (avertissement) |
 
 ## Ce qui n'est pas traduit
 

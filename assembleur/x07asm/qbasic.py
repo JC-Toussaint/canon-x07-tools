@@ -18,6 +18,19 @@ import re
 from .basic import KEYWORDS as X07_KEYWORDS
 
 
+
+def const_number(e):
+    """Valeur d'une constante numérique écrite (5, -3, 2.5), sinon None."""
+    if e[0] == "un" and e[1] == "-":
+        v = const_number(e[2])
+        return -v if v is not None else None
+    if e[0] == "num" and not e[1].startswith("&"):
+        try:
+            return float(e[1].rstrip("!#%&").replace("D", "E"))
+        except ValueError:
+            return None
+    return None
+
 class QBError(Exception):
     pass
 
@@ -884,13 +897,34 @@ class Parser:
         return ("locate", row, col)
 
     def st_BEEP(self):
-        return ("raw", "BEEP")
+        """BEEP seul (QuickBASIC : 800 Hz, 1/4 s) = BEEP 240,5 du X-07 ;
+        BEEP note, durée : la forme du X-07, gardée telle quelle."""
+        if self.at_sep():
+            return ("beep", ("num", "240", "i"), ("num", "5", "i"), None)
+        note = self.expr()
+        self.expect_op(",")
+        return ("beep", note, self.expr(), None)
 
     def st_SOUND(self):
-        self.expr()
+        """SOUND fréquence, durée (en tops de 1/18,2 s) -> BEEP 192000/f, durée x 1,1
+        (le X-07 : note 49 à 4095 = 192000/note Hz, durée x 50 ms)."""
+        f = self.expr()
         self.expect_op(",")
-        self.expr()
-        return ("warnraw", "SOUND remplacé par BEEP (sons différents)", "BEEP")
+        d = self.expr()
+        fv, dv = const_number(f), const_number(d)
+        if fv is not None and dv is not None and fv > 0:
+            note = min(max(int(round(192000 / fv)), 49), 4095)
+            dur = min(max(int(round(dv * 20 / 18.2)), 0), 255)
+            warn = None
+            if not 47 <= fv <= 3918 or dv * 20 / 18.2 > 255.5:
+                warn = ("SOUND %g, %g : le X-07 joue de 47 à 3918 Hz pendant 12,75 s au plus "
+                        "(BEEP %d,%d)" % (fv, dv, note, dur))
+            return ("beep", ("num", str(note), "i"), ("num", str(dur), "i"), warn)
+        note = ("call", "INT", [("bin", "/", ("num", "192000", "s"), f)])
+        dur = ("call", "INT", [("bin", "+", ("bin", "*", d, ("num", "1.1", "s")),
+                                ("num", ".5", "s"))])
+        return ("beep", note, dur, "SOUND : BEEP 192000/f, durée x 1,1 ; le X-07 joue "
+                                   "de 47 à 3918 Hz pendant 12,75 s au plus")
 
     def st_SWAP(self):
         a = self.target()
@@ -1811,7 +1845,8 @@ class Translator:
         self.place(end)
 
     def simple_inline(self, body):
-        simple = ("let", "print", "goto", "gosub", "return", "end", "raw", "pset", "circle")
+        simple = ("let", "print", "goto", "gosub", "return", "end", "raw", "pset", "circle",
+                  "beep")
         return all(st[0] in simple for st in body) and not self.has_ufn(body) and len(body) <= 3
 
     def has_ufn(self, node):
@@ -1876,10 +1911,6 @@ class Translator:
 
     def g_warn(self, s, ctx):
         self.warn(s[1])
-
-    def g_warnraw(self, s, ctx):
-        self.warn(s[1])
-        self.emit(s[2])
 
     def g_end(self, s, ctx):
         self.emit("END")
@@ -2129,6 +2160,12 @@ class Translator:
         else:
             t = self.temp("i")
             self.emit("FOR %s=%s TO %s:LINE(%s,%s)-(%s,%s):NEXT" % (t, y1, y2, x1, t, x2, t))
+
+    def g_beep(self, s, ctx):
+        _, note, dur, warn = s
+        if warn:
+            self.warn(warn)
+        self.emit("BEEP %s,%s" % (self.x(self.hoist(note)), self.x(self.hoist(dur))))
 
     def g_circle(self, s, ctx):
         _, (x, y), r = s

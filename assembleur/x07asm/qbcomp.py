@@ -768,8 +768,6 @@ class Lowering:
         word = s[1].split()[0]
         if word == "CLS":
             self.emit(("cls",))
-        elif word == "BEEP":
-            self.emit(("beep", None, None))
         elif word == "STOP":
             self.emit(("end",))
         else:
@@ -781,9 +779,11 @@ class Lowering:
     def g_warn(self, s, ctx):
         self.warn(s[1])
 
-    def g_warnraw(self, s, ctx):
-        self.warn(s[1])
-        self.emit(("beep", None, None))
+    def g_beep(self, s, ctx):
+        _, note, dur, warn = s
+        if warn:
+            self.warn(warn)
+        self.emit(("beep", self.value(note), self.value(dur)))
 
     def g_end(self, s, ctx):
         self.emit(("end",))
