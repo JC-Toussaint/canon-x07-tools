@@ -296,5 +296,38 @@ class TestPad(unittest.TestCase):
             self.assertEqual(m.held, {"milieu"})
             send_key(m, Ev("KP_5", "5"), t)              # verrou allumé : un chiffre
             self.assertEqual(m.keys[-1], "5")
+            # le bouton du milieu est F6 : il frappe KEY$(6), une fois par appui
+            release_key(Ev("KP_Begin"), t)
+            pump(0.2)
+            m.keys.clear()
+            m.udk[5] = b"RUN\r"
+            send_key(m, Ev("KP_Begin"), t)
+            send_key(m, Ev("KP_Begin"), t)               # répétition : rien de plus
+            self.assertEqual(m.keys, list("RUN\r"))
+            release_key(Ev("KP_Begin"), t)
+            pump(0.2)
+            pad.click("milieu")
+            pad.unclick()
+            self.assertEqual(m.keys, list("RUN\r") * 2)
+            pump(0.2)
+            send_key(m, Ev("space", " "), t)             # l'espace ne frappe pas F6
+            self.assertEqual(m.keys[-1], " ")
+            release_key(Ev("space", " "), t)
+            m.udk_on = False                              # UDK OFF ($19)
+            pump(0.2)
+            m.keys.clear()
+            pad.click("milieu")
+            pad.unclick()
+            self.assertEqual(m.keys, [])
         finally:
             root.destroy()
+
+    def test_function_key_definitions(self):
+        # KEY$(n) = ... (UDK WRITE $16), KEY$(n) (UDK READ $17, réponse terminée par 00)
+        src = ('10 KEY$(6)="?"+CHR$(34)+"F6"+CHR$(34)+CHR$(13)\n'
+               '20 PRINT "[";KEY$(6);"]";LEN(KEY$(6));LEN(KEY$(12))\n')
+        out, m = emu.run_basic(src)
+        self.assertEqual(m.udk[5], b'?"F6"\r')
+        self.assertIn(" 6  0", out)
+        m.function_key(6)                                # bouton du milieu à l'invite
+        self.assertEqual("".join(m.keys), '?"F6"\r')

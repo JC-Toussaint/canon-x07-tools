@@ -13,7 +13,8 @@ Le pavé de flèches du X-07 (quatre flèches et un bouton au milieu) est
 dessiné à côté de l'écran ; on le manie à la souris ou au clavier :
   flèches du PC, ou pavé numérique verrou éteint : flèches du X-07,
       tenues tant qu'on appuie (STICK) et tapées (éditeur, INKEY$)
-  5 du pavé numérique (verrou éteint) : bouton du milieu (STRIG(1))
+  5 du pavé numérique (verrou éteint) : bouton du milieu (STRIG(1)), qui
+      est aussi la touche F6 : il frappe sa définition (KEY$(6))
   barre d'espace : espace tapé, barre d'espace (STRIG(0)) et bouton du milieu
 """
 import threading
@@ -79,6 +80,7 @@ HELD_KEYS = {"Up": (("haut",), "\x1e"), "KP_Up": (("haut",), "\x1e"),
              "KP_Begin": (("milieu",), None),
              "space": (("espace", "milieu"), " ")}
 ARROWS = {"haut": "\x1e", "bas": "\x1f", "gauche": "\x1d", "droite": "\x1c"}
+FKEYS = {"KP_Begin": 6}   # le bouton du milieu du pavé est la touche F6 (guide XP-140)
 RELEASE_DELAY = 80        # ms : la répétition automatique envoie appui et relâchement
 
 
@@ -93,10 +95,12 @@ class Touches:
         self.pending = {}
         self.on_change = None
 
-    def press(self, names, char=None):
+    def press(self, names, char=None, fkey=None):
         m = self.get_m()
         if m is None:
             return
+        if fkey and any(n not in m.held for n in names):    # pas de répétition
+            m.function_key(fkey)
         for n in names:
             self.pending.pop(n, None)
             m.held.add(n)
@@ -134,7 +138,7 @@ def send_key(m, ev, touches=None):
     flèches et barre d'espace : aussi tenues pour STICK / STRIG (touches)."""
     if touches is not None and ev.keysym in HELD_KEYS:
         names, char = HELD_KEYS[ev.keysym]
-        touches.press(names, char)
+        touches.press(names, char, FKEYS.get(ev.keysym))
         return
     if ev.keysym == "F9":
         m.debug_pause = True
@@ -159,7 +163,7 @@ class Pave:
     KEY, KEY_DOWN, EDGE, MARK = "#d8d8d4", "#8f8f8a", "#55554f", "#2b2b2e"
     TIPS = {"haut": "flèche haut (STICK 1)", "bas": "flèche bas (STICK 5)",
             "gauche": "flèche gauche (STICK 7)", "droite": "flèche droite (STICK 3)",
-            "milieu": "bouton du milieu (STRIG(1))"}
+            "milieu": "bouton du milieu (F6, STRIG(1))"}
 
     def __init__(self, parent, touches, size=120, bg=BEZEL):
         import tkinter as tk
@@ -192,7 +196,7 @@ class Pave:
 
     def click(self, name):
         self.mouse = name
-        self.touches.press((name,), ARROWS.get(name))
+        self.touches.press((name,), ARROWS.get(name), 6 if name == "milieu" else None)
 
     def unclick(self, event=None):
         if self.mouse:

@@ -15,6 +15,8 @@ EXIT = 0xFFFF                  # adresse de retour fictive (« retour au BASIC �
 REAL = "rom"                  # valeur rendue par une imitation : « exécute la vraie routine »
 
 
+T6CMDV = 0xC951     # commande T6834 à réponse de longueur variable (vérifié ROM)
+
 class SimError(Exception):
     pass
 
@@ -674,6 +676,7 @@ class X07(CPU):
         T[sym["INPUTQ"]] = lambda c: self._input(True)
         T[sym["INPUTL"]] = lambda c: self._input(False)
         T[sym["T6CMDP"]] = self._t6
+        T[T6CMDV] = self._t6v
         T[sym["BEEPR"]] = self._beep
         T[sym["CURSET"]] = self._curset
         T[sym["CHKBATT"]] = self._chkbatt
@@ -688,6 +691,8 @@ class X07(CPU):
         self.held = set()             # touches tenues : "haut", "bas", "gauche", "droite",
         #                               "milieu" (STRIG(1)), "espace" (STRIG(0))
         self.on_state = 0             # réponse à ON STATE ($22) : bit 0 = rallumée après OFF
+        self.udk = [b""] * 12         # touches de fonction F1-F12 (KEY$) ; d'usine : inconnues
+        self.udk_on = True            # UDK ON ($18) / UDK OFF ($19)
         from collections import deque
         self.serial_in = deque()      # octets envoyés par le PC, pas encore arrivés
         self.serial_out = []          # octets émis par le X-07
@@ -954,6 +959,28 @@ class X07(CPU):
         c.set16("HL", hl + n)
         self._t6_exec(cmd, params, de)
 
+    def _t6v(self, c):
+        """$C951 : comme $C92F, mais réponse de longueur variable terminée par
+        00 (UDK READ, SP READ).  C=$FE : compte seulement ; C=$FF : range en
+        (DE).  Au retour, A = ($020F) = nombre d'octets."""
+        cmd = c.r["A"] & 0x7F
+        n = 0 if c.r["A"] & 0x80 else c.r["B"]
+        hl, de = c.get16("HL"), c.get16("DE")
+        params = [c.rd(hl + i) for i in range(n)]
+        resp = self._t6_exec(cmd, params, None)[:0xFE]
+        if c.r["C"] == 0xFF:
+            for i, b in enumerate(resp):
+                c.mem[de + i] = b
+        c.mem[0x020F] = len(resp)
+        c.mem[0x026D] = 0
+        c.r["A"] = len(resp)
+
+    def function_key(self, n):
+        """Touche de fonction Fn enfoncée : le T6834 frappe sa définition
+        (KEY$(n)).  Le bouton du milieu du pavé est F6."""
+        if self.udk_on:
+            self.keys.extend(chr(b) for b in self.udk[n - 1])
+
     def _t6_exec(self, cmd, params, de):
         """Imitation des commandes du sous-processeur T6834."""
         c = self
@@ -1007,9 +1034,20 @@ class X07(CPU):
             resp = [0x00 if "milieu" in self.held else 0xFF]
         elif cmd == 0x04:                        # STRIG(0) : barre d'espace
             resp = [0x00 if "espace" in self.held else 0xFF]
+        elif cmd in (0x16, 0x35) and params and 1 <= p[0] <= 12:   # UDK WRITE, UDK CONT
+            text = bytes(params[1:]).split(b"\0")[0]
+            k = p[0] - 1
+            self.udk[k] = (self.udk[k] if cmd == 0x35 else b"") + text
+        elif cmd == 0x17 and params and 1 <= p[0] <= 12:            # UDK READ
+            resp = list(self.udk[p[0] - 1])
+        elif cmd == 0x40:                        # UDK INIT
+            self.udk = [b""] * 12
+        elif cmd in (0x18, 0x19):                # UDK ON / UDK OFF
+            self.udk_on = cmd == 0x18
         if de is not None:
             for i, b in enumerate(resp):
                 c.mem[de + i] = b
+        return resp
 
     def stick(self):
         """Direction des flèches tenues, numérotée comme STICK (codes des
