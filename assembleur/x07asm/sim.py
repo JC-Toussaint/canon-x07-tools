@@ -664,6 +664,8 @@ class X07(CPU):
         self.interactive = False      # touches et saisies fournies en direct (fenêtre)
         self.t6log = []
         self.beeps = []
+        self.notes = []               # bips joués : (fréquence en Hz, 0 = silence ; durée en s)
+        self.on_note = None           # fonction (fréquence, durée) : haut-parleur du PC
         self.empty_polls = 0
         sym = x07sym.all_symbols()
         self.CSRX, self.CSRY = sym["CSRX"], sym["CSRY"]
@@ -678,6 +680,7 @@ class X07(CPU):
         T[sym["T6CMDP"]] = self._t6
         T[T6CMDV] = self._t6v
         T[sym["BEEPR"]] = self._beep
+        T[sym["SPEAKER"]] = self._speaker      # tous les bips de la ROM passent par $C331
         T[sym["CURSET"]] = self._curset
         T[sym["CHKBATT"]] = self._chkbatt
         T[sym["BATTMSG"]] = self._battmsg
@@ -1060,7 +1063,25 @@ class X07(CPU):
                 (1, 0, 1, 0): 8}.get((up, down, left, right), 0)
 
     def _beep(self, c):
+        """$C2DF sans la ROM : comme elle, dépile l'adresse de retour puis celle
+        que l'appelant a empilée avant le CALL (HL = cette dernière)."""
         self.beeps.append((c.iy, c.r["H"]))
+        ret = c.pop()
+        c.set16("HL", c.pop())
+        c.pc = ret
+
+    def _speaker(self, c):
+        """$C331 (BEEP6) : IY = diviseur, HL = demi-périodes, C = $FF : silence.
+        Le buzzer sonne à 192000/IY Hz (BEEP 1 = do 262 Hz, BEEP 10 = la 440) et
+        HL compte ses demi-périodes : durée = HL x IY / 384000 s, soit
+        <durée> x 50 ms comme le dit le manuel.  Le vrai code s'exécute ensuite."""
+        iy = c.iy or 0x10000
+        freq = 0.0 if c.r["C"] & 0x80 else 192000.0 / iy
+        dur = c.get16("HL") * iy / 384000.0
+        self.notes.append((round(freq, 1), round(dur, 3)))
+        if self.on_note:
+            self.on_note(freq, dur)
+        return REAL
 
 
 def run_program(mem, entry, keys="", lines=None, max_steps=20_000_000, echo=None,

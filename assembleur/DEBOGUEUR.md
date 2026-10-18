@@ -334,6 +334,7 @@ Sans fenêtre, les réponses aux `INPUT` sont demandées dans le terminal, et le
 | `--ram 8\|16\|24` | mémoire de la machine (16 Ko par défaut) |
 | `--org`, `--entry` | adresse de chargement d'un `.bin`, adresse de départ |
 | `--fenetre`, `--zoom N` | écran dans une fenêtre |
+| `--muet` | fenêtre sans son (`BEEP`) |
 
 ## Limites
 

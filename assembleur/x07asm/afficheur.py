@@ -210,10 +210,19 @@ class Pave:
             self.canvas.itemconfigure(item, fill=self.KEY_DOWN if name in held else self.KEY)
 
 
+def connect_speaker(m, hp):
+    """Les bips de la machine m sur le haut-parleur hp (son.HautParleur) ;
+    l'attente d'un bip s'interrompt si on arrête la machine."""
+    m.on_note = lambda f, d: hp.note(f, d, lambda: m.stop_requested or
+                                     getattr(m, "debug_pause", False))
+
+
 class Fenetre:
-    def __init__(self, title="Canon X-07", zoom=5):
+    def __init__(self, title="Canon X-07", zoom=5, muet=False):
         import tkinter as tk
+        from .son import HautParleur
         self.tk = tk
+        self.hp = HautParleur(muet)
         self.zoom = zoom
         self.m = None
         self.status = "démarrage..."
@@ -246,6 +255,7 @@ class Fenetre:
     def attach(self, m):
         """À appeler (setup) avec la machine, avant son exécution."""
         m.interactive = True
+        connect_speaker(m, self.hp)
         self.m = m
         self.status = "en cours"
 
@@ -292,4 +302,5 @@ class Fenetre:
     def _close(self):
         if self.m is not None:
             self.m.stop_requested = True
+        self.hp.close()
         self.root.destroy()

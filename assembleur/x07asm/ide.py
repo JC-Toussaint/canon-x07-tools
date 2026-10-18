@@ -17,6 +17,7 @@ import re
 import threading
 
 from . import debug, emu, syntaxe
+from .afficheur import connect_speaker
 from .sim import EXIT
 
 TEMPLATES = {   # point de départ d'un nouveau programme
@@ -354,12 +355,14 @@ class Editeur:
               "commentaire": "#4f7f4f", "numero": "#8a8a8a", "directive": "#00777a",
               "registre": "#a35a00", "etiquette": "#6b3f00"}
 
-    def __init__(self, path=None, ram=16, zoom=3, memoire=None):
+    def __init__(self, path=None, ram=16, zoom=3, memoire=None, muet=False):
         self.memoire = memoire
         import tkinter as tk
         from tkinter import ttk
         from .afficheur import Ecran, Pave, Touches
+        from .son import HautParleur
         self.tk = tk
+        self.hp = HautParleur(muet)
         self.ram = ram
         self.session = None
         self.path = None
@@ -677,6 +680,7 @@ class Editeur:
         self.sync_breaks_from_text()              # après d'éventuelles modifications
         try:
             warns = self.session.build()
+            connect_speaker(self.session.m, self.hp)
         except Exception as e:                       # erreur de compilation : on l'affiche
             self.session.m = None
             self.set_status("erreur : %s" % e)
@@ -945,6 +949,7 @@ class Editeur:
             self.session.m.stop_requested = True
         if self.recolor_pending is not None:
             self.root.after_cancel(self.recolor_pending)
+        self.hp.close()
         self.root.destroy()
 
     def mainloop(self):

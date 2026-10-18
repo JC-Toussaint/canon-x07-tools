@@ -314,11 +314,11 @@ def _show_screen(m, args):
         print("image de l'écran ->", args.png)
 
 
-def _window(title, zoom, target):
+def _window(title, zoom, target, muet=False):
     """Ouvre la fenêtre de l'afficheur et y fait tourner target(setup)."""
     from . import afficheur
     try:
-        f = afficheur.Fenetre(title, zoom)
+        f = afficheur.Fenetre(title, zoom, muet)
     except Exception as e:                       # pas d'affichage graphique
         print("erreur : fenêtre impossible (%s). Essayez --ecran ou --png." % e,
               file=sys.stderr)
@@ -363,7 +363,7 @@ def cmd_run(args):
             setup(m)
             _exec(m, mem, a.entry, 10 ** 12)
         return _window("Canon X-07 : %s (compilé)" % os.path.basename(args.source),
-                       args.zoom, target)
+                       args.zoom, target, args.muet)
 
     m = None
     try:
@@ -486,7 +486,7 @@ def cmd_emu(args):
         holder = {}
         from . import afficheur
         try:
-            f = afficheur.Fenetre("Canon X-07 : %s" % name, args.zoom)
+            f = afficheur.Fenetre("Canon X-07 : %s" % name, args.zoom, args.muet)
         except Exception as e:
             print("erreur : fenêtre impossible (%s). Essayez --ecran ou --png." % e,
                   file=sys.stderr)
@@ -670,7 +670,7 @@ def cmd_debug(args):
         from . import afficheur
         try:
             f = afficheur.Fenetre("Canon X-07 : %s (débogueur)" % os.path.basename(src),
-                                  args.zoom)
+                                  args.zoom, args.muet)
         except Exception as e:
             print("erreur : fenêtre impossible (%s)" % e, file=sys.stderr)
             return 1
@@ -694,7 +694,8 @@ def cmd_ide(args):
     """Éditeur-débogueur visuel (fenêtre)."""
     from . import ide
     try:
-        e = ide.Editeur(args.source, ram=args.ram, zoom=args.zoom, memoire=args.memoire)
+        e = ide.Editeur(args.source, ram=args.ram, zoom=args.zoom, memoire=args.memoire,
+                        muet=args.muet)
     except Exception as ex:                      # pas d'affichage graphique
         print("erreur : fenêtre impossible (%s)" % ex, file=sys.stderr)
         return 1
@@ -830,6 +831,8 @@ def main(argv=None):
     g.add_argument("--fenetre", action="store_true",
                    help="écran du X-07 dans une fenêtre, commandes dans le terminal")
     g.add_argument("--zoom", type=int, default=5, help="taille de la fenêtre (défaut : 5)")
+    g.add_argument("--muet", action="store_true",
+                   help="fenêtre sans son (les BEEP gardent leur durée)")
     g.add_argument("--direct", action="store_true",
                    help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
                         "(récursivité, tableaux par adresse)")
@@ -840,6 +843,8 @@ def main(argv=None):
     ed.add_argument("--ram", type=int, choices=(8, 16, 24), default=16,
                     help="mémoire du X-07 en Ko (défaut : 16)")
     ed.add_argument("--zoom", type=int, default=3, help="taille de l'écran du X-07 (défaut : 3)")
+    ed.add_argument("--muet", action="store_true",
+                    help="fenêtre sans son (les BEEP gardent leur durée)")
     ed.add_argument("--memoire", metavar="FICHIER",
                     help="mémoire du X-07 gardée d'une exécution à l'autre (fichiers en RAM)")
     ed.set_defaults(func=cmd_ide)
@@ -878,6 +883,8 @@ def main(argv=None):
                    help="écran final en points (caractères braille) dans le terminal")
     r.add_argument("--png", metavar="FICHIER", help="image PNG de l'écran final")
     r.add_argument("--zoom", type=int, default=5, help="agrandissement (défaut : 5)")
+    r.add_argument("--muet", action="store_true",
+                   help="fenêtre sans son (les BEEP gardent leur durée)")
     r.add_argument("--direct", action="store_true",
                    help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
                         "(récursivité, tableaux par adresse)")
@@ -906,6 +913,8 @@ def main(argv=None):
                    help="écran final en points (caractères braille) dans le terminal")
     e.add_argument("--png", metavar="FICHIER", help="image PNG de l'écran final")
     e.add_argument("--zoom", type=int, default=5, help="agrandissement (défaut : 5)")
+    e.add_argument("--muet", action="store_true",
+                   help="fenêtre sans son (les BEEP gardent leur durée)")
     e.add_argument("--direct", action="store_true",
                    help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
                         "(récursivité, tableaux par adresse)")

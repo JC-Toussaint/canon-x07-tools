@@ -77,6 +77,17 @@ Un `.asm` ou un `.bin` se charge ainsi (ou se lance par `run`) : `emu prog.asm` 
 
 Sous WSL2, la fenêtre s'ouvre grâce à WSLg (Windows 11 ou Windows 10 récent). Sans affichage graphique, utilisez `--png` ou `--ecran`.
 
+**Son :** les `BEEP` sont joués dans la fenêtre (onde carrée, par `ffplay` et le PulseAudio de WSLg). Comme sur la machine, un `BEEP` rend la main tout de suite et le suivant attend la fin du précédent : une mélodie garde son rythme. `--muet` coupe le son sans changer les durées.
+
+| `BEEP n,d` | Son |
+|---|---|
+| `n` = 0 | silence |
+| `n` = 1 à 48 | demi-tons à partir du do à 262 Hz (`BEEP 10` : la à 440 Hz ; `BEEP 13` : do à 524 Hz) |
+| `n` = 49 à 4095 | 192 000 / `n` Hz |
+| `d` = 0 à 255 | `d` × 50 ms |
+
+Le manuel de référence écrit « 19200/⟨note⟩ » : il manque un zéro, voir l'[errata](../ref_docs/ERRATA.md).
+
 **Graphismes reproduits :** `PSET`, `PRESET`, PEOR, `LINE`, `CIRCLE`, `POINT` (qui voit aussi le texte, comme sur la machine), les caractères redéfinis (UDC WRITE), le défilement et l'effacement d'une ligne. Les tracés de `LINE` et `CIRCLE` suivent les algorithmes classiques : ceux du T6834 ne sont pas dans la ROM, et un point peut donc différer en bout de tracé.
 
 ## Options
@@ -88,6 +99,7 @@ Sous WSL2, la fenêtre s'ouvre grâce à WSLg (Windows 11 ou Windows 10 récent)
 | `--ram 8\|16\|24` | oui (défaut 16) | oui (défaut 8) | mémoire de la machine, en Ko |
 | `--max N` | oui | oui | arrêt après N instructions (boucle sans fin) |
 | `--fenetre`, `--zoom N` | oui | oui | affichage graphique en direct |
+| `--muet` | oui | oui | fenêtre sans son ; les `BEEP` gardent leur durée |
 | `--memoire FICHIER` | oui | — | mémoire du X-07 gardée d'une session à l'autre : rallumé avec elle, éteint par `OFF` à la fin (dans la fenêtre : taper `OFF`). Voir [FICHIERS.md](FICHIERS.md) |
 | `--charger FICHIER` (`--org`, `--entry`) | oui, avec `--fenetre` | — | programme machine mis en mémoire, à lancer par `EXEC` |
 | `--png FICHIER`, `--ecran` | oui | oui | écran final en image, ou en points dans le terminal |
@@ -118,6 +130,7 @@ Le **sous-processeur T6834**, qui gère l'écran, le clavier et les graphismes, 
 | `$C90A` INKEY, `$C8C5` attente de touche | touches fournies par `-k` |
 | `$EBF2` / `$EBFF` saisie d'une ligne | lignes fournies par `-i`. Le tampon et HL sont rendus comme par la ROM |
 | `$C92F` commande avec paramètres | graphismes (`PSET`, `PRESET`, PEOR, `LINE`, `CIRCLE`, `POINT`), caractères redéfinis, effacement d'une ligne, défilement |
+| `$C331` haut-parleur | fréquence et durée relevées (`m.notes`), puis jouées dans les fenêtres ; le vrai code s'exécute ensuite |
 | `$C92F`, `$C951` touches de fonction | `KEY$(n)` : définition gardée (UDK WRITE), relue avec sa réponse de longueur variable (UDK READ) ; F6 frappée par le bouton du milieu |
 | `$E428`, `$E334`, `$E348`, `$C0BD` | autres échanges avec le T6834 |
 | `$C5A6` | demande d'extinction (OFF) : comptée, la machine ne s'éteint pas |
@@ -127,7 +140,7 @@ Le **sous-processeur T6834**, qui gère l'écran, le clavier et les graphismes, 
 - **Graphismes :** les tracés de `LINE` et `CIRCLE` sont des algorithmes classiques, pas ceux du T6834.
 - **Interruptions :** pas d'interruption clavier (INT A) ni d'horloge ; les touches arrivent par les routines imitées. Pas de NMI.
 - **Périphériques absents :** cassette, imprimante, table traçante X-710, interface vidéo X-720.
-- **Son :** les ports du buzzer sont écrits, mais rien n'est joué.
+- **Son :** joué seulement dans les fenêtres (`--fenetre`, éditeur), par `ffplay` ; ailleurs, les notes sont relevées sans être jouées. Le timbre est une onde carrée idéale, pas celle du buzzer. Le caractère 7 (sonnerie) est envoyé au T6834, dont le son n'est pas connu : il reste muet.
 - **Temps :** il est compté en instructions, pas en cycles. Les rapports de vitesse donnés dans la documentation sont donc approximatifs.
 - **Codes du T6834** (touches de `STICK`, motifs des caractères…) : ils ne sont pas dans la ROM. Leurs valeurs viennent des livres et du guide technique XP-140.
 
