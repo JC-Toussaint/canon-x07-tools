@@ -53,6 +53,8 @@ Un curseur clignote quand le X-07 attend une touche. Fermer la fenêtre arrête 
 
 Le bouton du milieu est vu par `STRIG(1)` (−1 enfoncé, 0 sinon), et la barre d'espace par `STRIG(0)`. Pour le T6834, le bouton du milieu est la touche F6 de la matrice du clavier ; `STRIG(1)` répond aussi à F12.
 
+Comme sur la machine, le bouton du milieu **frappe la définition de F6** (`KEY$(6)`), une fois par appui. Elle est vide au départ, et `KEY$(6)="RUN"+CHR$(13)` en fait par exemple un raccourci pour relancer le programme. `KEY$(n)` se relit aussi. Les définitions d'usine des touches de fonction sont dans le T6834 et ne sont pas connues : l'émulateur les laisse vides.
+
 **Exemple :** `exemples/fleches.bas` déplace un point avec le pavé, diagonales comprises. Le bouton du milieu active ou coupe la trace (`*`), et la première ligne affiche en permanence `STICK(0)` et `STRIG(1)`. C'est aussi un moyen de relever les codes de `STICK` sur la vraie machine.
 
 ```sh
@@ -116,6 +118,7 @@ Le **sous-processeur T6834**, qui gère l'écran, le clavier et les graphismes, 
 | `$C90A` INKEY, `$C8C5` attente de touche | touches fournies par `-k` |
 | `$EBF2` / `$EBFF` saisie d'une ligne | lignes fournies par `-i`. Le tampon et HL sont rendus comme par la ROM |
 | `$C92F` commande avec paramètres | graphismes (`PSET`, `PRESET`, PEOR, `LINE`, `CIRCLE`, `POINT`), caractères redéfinis, effacement d'une ligne, défilement |
+| `$C92F`, `$C951` touches de fonction | `KEY$(n)` : définition gardée (UDK WRITE), relue avec sa réponse de longueur variable (UDK READ) ; F6 frappée par le bouton du milieu |
 | `$E428`, `$E334`, `$E348`, `$C0BD` | autres échanges avec le T6834 |
 | `$C5A6` | demande d'extinction (OFF) : comptée, la machine ne s'éteint pas |
 
