@@ -14,6 +14,7 @@ sys.path.insert(0, ROOT)
 
 from x07asm import emu                        # noqa: E402
 from x07asm.ide import Session                # noqa: E402
+from x07asm import syntaxe                    # noqa: E402
 
 needs_rom = unittest.skipUnless(emu.rom_path() is not None, "ROM_x07/x07.bin absente")
 EX = os.path.join(ROOT, "exemples")
@@ -26,6 +27,32 @@ def has_display():
         return True
     except Exception:
         return False
+
+
+class TestSyntaxe(unittest.TestCase):
+    def colored(self, text, kind):
+        lines = text.split("\n")
+        return [(c, lines[n - 1][a:b]) for c, n, a, b in syntaxe.zones(text, kind)]
+
+    def test_basic_x07(self):
+        # comme la ROM : mots-clés collés reconnus, rien dans les chaînes, REM, DATA, &H
+        self.assertEqual(self.colored('10 FORI=1TO9:PRINT"FOR";MID$(A$,I):NEXT\n'
+                                      '20 X=&HFF:DATA TO,1:REM FOR\n30 A=1\'NEXT', "bas"),
+                         [("numero", "10"), ("motcle", "FOR"), ("motcle", "TO"),
+                          ("motcle", "PRINT"), ("chaine", '"FOR"'), ("fonction", "MID$"),
+                          ("motcle", "NEXT"), ("numero", "20"), ("motcle", "DATA"),
+                          ("commentaire", "REM FOR"), ("numero", "30"),
+                          ("commentaire", "'NEXT")])
+
+    def test_quickbasic(self):
+        self.assertEqual(self.colored('DO WHILE fin <> 0: total = LEN(a$) \' fin\n'
+                                      'rem x\nprint "if"; ucase$(nom$)', "qbas"),
+                         [("motcle", "DO"), ("motcle", "WHILE"), ("fonction", "LEN"),
+                          ("commentaire", "' fin"), ("commentaire", "rem x"),
+                          ("motcle", "print"), ("chaine", '"if"'), ("fonction", "ucase$")])
+
+    def test_assembly_left_alone(self):
+        self.assertEqual(syntaxe.zones("  LD A,1  ; FOR\n", "asm"), [])
 
 
 @needs_rom
@@ -168,6 +195,21 @@ class TestWindow(unittest.TestCase):
                 e.toggle(28)                                   # occupé : refusé sans erreur
             finally:
                 e.close()
+
+    def test_syntax_colors(self):
+        from x07asm.ide import Editeur
+        e = Editeur(os.path.join(EX, "fleches_x07.bas"))
+        try:
+            e.root.update()
+            t = e.text
+            self.assertEqual(t.get(*t.tag_ranges("motcle")[:2]), "CLEAR")
+            self.assertIn("STICK", [t.get(a, b) for a, b in zip(*[iter(t.tag_ranges("fonction"))] * 2)])
+            t.insert("end", "180 GOTO 10\n")            # recoloré après la frappe
+            e.colorize()
+            self.assertIn("GOTO", [t.get(a, b) for a, b in zip(*[iter(t.tag_ranges("motcle"))] * 2)])
+        finally:
+            e.text.edit_modified(False)
+            e.close()
 
     def test_arrow_pad(self):
         from x07asm.ide import Editeur

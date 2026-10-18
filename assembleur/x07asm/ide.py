@@ -16,7 +16,7 @@ import os
 import re
 import threading
 
-from . import debug, emu
+from . import debug, emu, syntaxe
 from .sim import EXIT
 
 TEMPLATES = {   # point de départ d'un nouveau programme
@@ -350,6 +350,8 @@ class Editeur:
     """La fenêtre de l'éditeur-débogueur."""
 
     BG_LINE, BG_BREAK = "#fff3a8", "#ffd6d6"
+    COLORS = {"motcle": "#0033b3", "fonction": "#871094", "chaine": "#a31515",
+              "commentaire": "#4f7f4f", "numero": "#8a8a8a"}
 
     def __init__(self, path=None, ram=16, zoom=3, memoire=None):
         self.memoire = memoire
@@ -397,11 +399,17 @@ class Editeur:
                             yscrollcommand=lambda *a: (scroll.set(*a), self.draw_gutter()))
         self.text.pack(side="left", fill="both", expand=True)
         scroll.configure(command=lambda *a: (self.text.yview(*a), self.draw_gutter()))
+        for tag, color in self.COLORS.items():           # coloration syntaxique
+            self.text.tag_configure(tag, foreground=color)
+        self.text.tag_configure("commentaire", font=mono + ("italic",))
         self.text.tag_configure("courante", background=self.BG_LINE)
         self.text.tag_configure("arret", background=self.BG_BREAK)
         self.text.tag_raise("courante")
         self.gutter.bind("<Button-1>", self.gutter_click)
         self.text.bind("<<Modified>>", self.on_modified)
+        self.recolor_pending = None
+        for ev in ("<KeyRelease>", "<<Paste>>", "<<Cut>>", "<<Undo>>", "<<Redo>>"):
+            self.text.bind(ev, self.schedule_colors, add="+")
         self.text.bind("<Configure>", lambda e: self.draw_gutter())
         panes.add(left, stretch="always", minsize=420)
 
@@ -618,6 +626,7 @@ class Editeur:
         self.text.insert("1.0", content)
         self.text.edit_modified(False)
         self.text.edit_reset()
+        self.colorize()
         self.root.title("Canon X-07 : %s" % os.path.basename(path))
         self.set_status("%s ouvert : Compiler, puis ▶" % os.path.basename(path))
         self.refresh()
@@ -631,6 +640,21 @@ class Editeur:
         self.dirty = True                   # à recompiler
         self.set_status("enregistré")
         return True
+
+    def schedule_colors(self, event=None):
+        if self.recolor_pending is None:
+            self.recolor_pending = self.root.after(60, self.colorize)
+
+    def colorize(self):
+        """Mots-clés, fonctions, chaînes, commentaires et numéros de ligne en
+        couleur (BASIC X-07 et QuickBASIC)."""
+        self.recolor_pending = None
+        t = self.text
+        for tag in syntaxe.CATEGORIES:
+            t.tag_remove(tag, "1.0", "end")
+        kind = os.path.splitext(self.path or "")[1].lower().lstrip(".")
+        for tag, line, a, b in syntaxe.zones(t.get("1.0", "end-1c"), kind):
+            t.tag_add(tag, "%d.%d" % (line, a), "%d.%d" % (line, b))
 
     def on_modified(self, event=None):
         if self.text.edit_modified():
@@ -916,6 +940,8 @@ class Editeur:
             return
         if self.session and self.session.m:
             self.session.m.stop_requested = True
+        if self.recolor_pending is not None:
+            self.root.after_cancel(self.recolor_pending)
         self.root.destroy()
 
     def mainloop(self):
