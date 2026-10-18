@@ -169,6 +169,40 @@ class TestWindow(unittest.TestCase):
             finally:
                 e.close()
 
+    def test_arrow_pad(self):
+        from x07asm.ide import Editeur
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "s.bas")
+            with open(p, "w") as f:
+                f.write('10 S=STICK(0):T=STRIG(1):IF INKEY$<>"Q" THEN 10\n')
+            e = Editeur(p)
+            r = e.root
+
+            def pump(t):
+                end = time.time() + t
+                while time.time() < end:
+                    r.update()
+                    time.sleep(0.02)
+            try:
+                pump(0.2)
+                self.assertIsNone(e.running_machine())          # rien ne tourne
+                e.pave.click("droite")                          # sans effet, sans erreur
+                e.pave.unclick()
+                e.compile()
+                e.do_run()
+                pump(0.8)
+                e.pave.click("droite")
+                pump(0.4)
+                e.do_pause()
+                for _ in range(40):
+                    pump(0.05)
+                    if not e.busy():
+                        break
+                self.assertIn("S# = 3", e.panels["variables"].get("1.0", "end"))
+                e.pave.unclick()
+            finally:
+                e.close()
+
     def test_menus_and_toolbar(self):
         from x07asm.ide import Editeur, TOOLBAR
         e = Editeur(os.path.join(EX, "table.bas"))

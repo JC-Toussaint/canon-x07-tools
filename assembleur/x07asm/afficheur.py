@@ -8,6 +8,13 @@ l'écran de 120 x 32 points dès qu'il change et transmet les touches :
   Suppr, Inser, Origine   DEL, INS, HOME
   Échap       BREAK
   F9          interrompt le programme (débogueur)
+
+Le pavé de flèches du X-07 (quatre flèches et un bouton au milieu) est
+dessiné à côté de l'écran ; on le manie à la souris ou au clavier :
+  flèches du PC, ou pavé numérique verrou éteint : flèches du X-07,
+      tenues tant qu'on appuie (STICK) et tapées (éditeur, INKEY$)
+  5 du pavé numérique (verrou éteint) : bouton du milieu (STRIG(1))
+  barre d'espace : espace tapé, barre d'espace (STRIG(0)) et bouton du milieu
 """
 import threading
 import time
@@ -64,8 +71,71 @@ class Ecran:
         self._img = img                         # garder une référence
 
 
-def send_key(m, ev):
-    """Touche du PC -> X-07 (m.keys) ; Échap : BREAK ; F9 : arrêt (débogueur)."""
+# touches tenues : nom pour STICK / STRIG (sim.X07.held), caractère tapé
+HELD_KEYS = {"Up": (("haut",), "\x1e"), "KP_Up": (("haut",), "\x1e"),
+             "Down": (("bas",), "\x1f"), "KP_Down": (("bas",), "\x1f"),
+             "Left": (("gauche",), "\x1d"), "KP_Left": (("gauche",), "\x1d"),
+             "Right": (("droite",), "\x1c"), "KP_Right": (("droite",), "\x1c"),
+             "KP_Begin": (("milieu",), None),
+             "space": (("espace", "milieu"), " ")}
+ARROWS = {"haut": "\x1e", "bas": "\x1f", "gauche": "\x1d", "droite": "\x1c"}
+RELEASE_DELAY = 80        # ms : la répétition automatique envoie appui et relâchement
+
+
+class Touches:
+    """Touches tenues du pavé de flèches (souris ou clavier), pour STICK et
+    STRIG.  Un relâchement n'est pris en compte qu'après un court délai sans
+    nouvel appui : la répétition automatique du système ne fait pas clignoter
+    la direction."""
+
+    def __init__(self, widget, get_machine):
+        self.widget, self.get_m = widget, get_machine
+        self.pending = {}
+        self.on_change = None
+
+    def press(self, names, char=None):
+        m = self.get_m()
+        if m is None:
+            return
+        for n in names:
+            self.pending.pop(n, None)
+            m.held.add(n)
+        if char:
+            m.keys.append(char)
+        self.changed()
+
+    def release(self, names):
+        for n in names:
+            token = object()
+            self.pending[n] = token
+            self.widget.after(RELEASE_DELAY, lambda n=n, t=token: self._release(n, t))
+
+    def _release(self, name, token):
+        if self.pending.get(name) is not token:
+            return                                # appuyée de nouveau entre-temps
+        del self.pending[name]
+        m = self.get_m()
+        if m is not None:
+            m.held.discard(name)
+        self.changed()
+
+    def changed(self):
+        if self.on_change:
+            self.on_change()
+
+
+def release_key(ev, touches):
+    if touches is not None and ev.keysym in HELD_KEYS:
+        touches.release(HELD_KEYS[ev.keysym][0])
+
+
+def send_key(m, ev, touches=None):
+    """Touche du PC -> X-07 (m.keys) ; Échap : BREAK ; F9 : arrêt (débogueur) ;
+    flèches et barre d'espace : aussi tenues pour STICK / STRIG (touches)."""
+    if touches is not None and ev.keysym in HELD_KEYS:
+        names, char = HELD_KEYS[ev.keysym]
+        touches.press(names, char)
+        return
     if ev.keysym == "F9":
         m.debug_pause = True
         return
@@ -82,6 +152,61 @@ def send_key(m, ev):
         m.keys.append(k)
 
 
+class Pave:
+    """Le pavé de flèches du X-07 : quatre flèches et un bouton au milieu,
+    actifs à la souris (tenus tant que le bouton est enfoncé)."""
+
+    KEY, KEY_DOWN, EDGE, MARK = "#d8d8d4", "#8f8f8a", "#55554f", "#2b2b2e"
+    TIPS = {"haut": "flèche haut (STICK 1)", "bas": "flèche bas (STICK 5)",
+            "gauche": "flèche gauche (STICK 7)", "droite": "flèche droite (STICK 3)",
+            "milieu": "bouton du milieu (STRIG(1))"}
+
+    def __init__(self, parent, touches, size=120, bg=BEZEL):
+        import tkinter as tk
+        self.touches = touches
+        touches.on_change = self.redraw
+        self.canvas = tk.Canvas(parent, width=size, height=size, bg=bg,
+                                highlightthickness=0)
+        u = size / 3.0
+        self.items = {}
+        boxes = {"haut": (u, 0, 2 * u, u), "bas": (u, 2 * u, 2 * u, 3 * u),
+                 "gauche": (0, u, u, 2 * u), "droite": (2 * u, u, 3 * u, 2 * u)}
+        c, pad = self.canvas, 3
+        for name, (x0, y0, x1, y1) in boxes.items():
+            key = c.create_rectangle(x0 + pad, y0 + pad, x1 - pad, y1 - pad, fill=self.KEY,
+                                     outline=self.EDGE, width=2, tags=(name,))
+            cx, cy, r = (x0 + x1) / 2, (y0 + y1) / 2, u / 5
+            tri = {"haut": (cx, cy - r, cx - r, cy + r, cx + r, cy + r),
+                   "bas": (cx, cy + r, cx - r, cy - r, cx + r, cy - r),
+                   "gauche": (cx - r, cy, cx + r, cy - r, cx + r, cy + r),
+                   "droite": (cx + r, cy, cx - r, cy - r, cx - r, cy + r)}[name]
+            c.create_polygon(*tri, fill=self.MARK, tags=(name,))
+            self.items[name] = key
+        r = u / 2 - pad
+        self.items["milieu"] = c.create_oval(1.5 * u - r, 1.5 * u - r, 1.5 * u + r,
+                                             1.5 * u + r, fill=self.KEY, outline=self.EDGE,
+                                             width=2, tags=("milieu",))
+        self.mouse = None
+        for name in self.items:
+            c.tag_bind(name, "<ButtonPress-1>", lambda e, n=name: self.click(n))
+        c.bind("<ButtonRelease-1>", self.unclick)
+
+    def click(self, name):
+        self.mouse = name
+        self.touches.press((name,), ARROWS.get(name))
+
+    def unclick(self, event=None):
+        if self.mouse:
+            self.touches.release((self.mouse,))
+            self.mouse = None
+
+    def redraw(self):
+        m = self.touches.get_m()
+        held = m.held if m is not None else set()
+        for name, item in self.items.items():
+            self.canvas.itemconfigure(item, fill=self.KEY_DOWN if name in held else self.KEY)
+
+
 class Fenetre:
     def __init__(self, title="Canon X-07", zoom=5):
         import tkinter as tk
@@ -96,15 +221,22 @@ class Fenetre:
         self.root.resizable(False, False)
         tk.Label(self.root, text="CANON  X-07", fg="#c8c8c8", bg=BEZEL,
                  font=("Helvetica", 11, "bold")).pack(pady=(10, 4))
-        self.ecran = Ecran(self.root, zoom)
-        self.ecran.canvas.pack(padx=18, pady=4)
+        row = tk.Frame(self.root, bg=BEZEL)
+        row.pack(padx=18, pady=4)
+        self.ecran = Ecran(row, zoom)
+        self.ecran.canvas.pack(side="left")
+        self.touches = Touches(self.root, lambda: self.m)
+        self.pave = Pave(row, self.touches, size=int(self.ecran.canvas["height"]))
+        self.pave.canvas.pack(side="left", padx=(16, 0))
         self.info = tk.Label(self.root, text="", fg="#d0d0d0", bg=BEZEL, anchor="w",
                              font=("Helvetica", 9))
         self.info.pack(fill="x", padx=18)
-        tk.Label(self.root, text="Échap = BREAK   ·   flèches : édition plein écran   ·   "
-                                 "Maj = minuscules", fg="#8a8a8a", bg=BEZEL,
+        tk.Label(self.root, text="Échap = BREAK   ·   flèches : pavé du X-07 (STICK)   ·   "
+                                 "espace : bouton du milieu (STRIG(1))   ·   Maj = minuscules",
+                 fg="#8a8a8a", bg=BEZEL,
                  font=("Helvetica", 8)).pack(pady=(0, 8))
         self.root.bind("<Key>", self._key)
+        self.root.bind("<KeyRelease>", lambda e: release_key(e, self.touches))
         self.root.protocol("WM_DELETE_WINDOW", self._close)
 
     # -------------------------------------------------- émulation
@@ -152,7 +284,7 @@ class Fenetre:
         m = self.m
         if m is None or self.done:
             return
-        send_key(m, ev)
+        send_key(m, ev, self.touches)
 
     def _close(self):
         if self.m is not None:

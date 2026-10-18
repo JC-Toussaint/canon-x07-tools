@@ -355,7 +355,7 @@ class Editeur:
         self.memoire = memoire
         import tkinter as tk
         from tkinter import ttk
-        from .afficheur import Ecran
+        from .afficheur import Ecran, Pave, Touches
         self.tk = tk
         self.ram = ram
         self.session = None
@@ -408,11 +408,18 @@ class Editeur:
         right = tk.Frame(panes)
         self.screen_hint = tk.Label(right, anchor="w")
         self.screen_hint.pack(fill="x")
-        self.ecran = Ecran(right, zoom)
-        self.ecran.canvas.pack(anchor="w", pady=2)
+        row = tk.Frame(right)                    # l'écran, et le pavé de flèches du X-07
+        row.pack(anchor="w", pady=2)
+        self.ecran = Ecran(row, zoom)
+        self.ecran.canvas.pack(side="left")
+        self.touches = Touches(self.root, self.running_machine)
+        self.pave = Pave(row, self.touches, size=int(self.ecran.canvas["height"]),
+                         bg=row["bg"])                  # aussi haut que l'écran
+        self.pave.canvas.pack(side="left", padx=(14, 0))
         c = self.ecran.canvas
         c.bind("<Button-1>", lambda e: c.focus_set())
         c.bind("<Key>", self.screen_key)
+        c.bind("<KeyRelease>", self.screen_key_release)
         c.bind("<FocusIn>", lambda e: self.show_focus(True))
         c.bind("<FocusOut>", lambda e: self.show_focus(False))
         line = tk.Frame(right)                   # saisie sûre : une ligne, puis Entrée
@@ -874,13 +881,23 @@ class Editeur:
         if s and s.m and not s.finished:
             from .afficheur import send_key
             before = len(s.m.keys)
-            send_key(s.m, event)
+            send_key(s.m, event, self.touches)
             if not self.busy() and len(s.m.keys) > before:
                 self.set_status("touches gardées pour le programme : %r ; ▶ pour continuer"
                                 % "".join(s.m.keys))
         elif s and s.finished:
             self.set_status("programme terminé : ↺ pour recommencer, puis tapez")
         return "break"
+
+    def screen_key_release(self, event):
+        from .afficheur import release_key
+        release_key(event, self.touches)
+        return "break"
+
+    def running_machine(self):
+        """Machine du programme (pour le pavé de flèches), None s'il n'y en a pas."""
+        s = self.session
+        return s.m if s is not None and s.m is not None and not s.finished else None
 
     def send_line(self):
         """Champ « Taper pour le X-07 » : le texte tel quel, puis Entrée."""

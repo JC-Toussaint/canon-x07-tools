@@ -37,11 +37,21 @@ Dans ce mode, **la ROM affiche elle-même** : elle démarre à froid (« Copyrig
 |---|---|
 | lettres | majuscules, comme le X-07 ; avec Maj, minuscules |
 | Entrée | RETURN : valide la ligne où se trouve le curseur |
-| flèches | déplacent le curseur dans l'écran (`$1C` à `$1F`, lus aussi par `INKEY$`) |
+| flèches (et pavé numérique, verrou éteint) | flèches du X-07 : déplacent le curseur (`$1C` à `$1F`, lus aussi par `INKEY$`), et sont **tenues** pour `STICK` tant qu'on appuie |
+| 5 du pavé numérique (verrou éteint) | bouton du milieu du pavé (`STRIG(1)`) |
+| barre d'espace | espace tapé ; tenue, c'est aussi la barre d'espace (`STRIG(0)`) et le bouton du milieu (`STRIG(1)`) |
 | Retour arrière, Suppr, Inser, Origine | BS, DEL, INS, HOME |
 | Échap | BREAK : arrête un programme, ou interrompt une saisie |
 
 Un curseur clignote quand le X-07 attend une touche. Fermer la fenêtre arrête l'émulation.
+
+**Le pavé de flèches du X-07** (quatre flèches et un bouton au milieu) est dessiné à droite de l'écran. Un clic sur une flèche la frappe (éditeur, `INKEY$`) et la **tient** tant que le bouton de la souris reste enfoncé. Un programme voit donc la direction par `STICK(0)` :
+
+| `STICK(0)` | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|---|
+| direction | aucune | haut | haut-droite | droite | bas-droite | bas | bas-gauche | gauche | haut-gauche |
+
+Le bouton du milieu est vu par `STRIG(1)` (−1 enfoncé, 0 sinon), et la barre d'espace par `STRIG(0)`. Les diagonales s'obtiennent au clavier en tenant deux flèches. Les codes de `STICK` sont ceux des *Applications en assembleur* (1, 3, 5, 7). La *Référence* en donne d'autres (`$32` droite, `$36` bas) : à vérifier sur la machine.
 
 **Un programme machine en mémoire**, comme s'il venait d'arriver par le câble série :
 

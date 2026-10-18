@@ -685,6 +685,8 @@ class X07(CPU):
         self.brk = sym["BRKFLG"]
         self.powered_off = 0
         self.real_off = False         # OFF exécuté par la ROM (rangement de l'état, coupure)
+        self.held = set()             # touches tenues : "haut", "bas", "gauche", "droite",
+        #                               "milieu" (STRIG(1)), "espace" (STRIG(0))
         self.on_state = 0             # réponse à ON STATE ($22) : bit 0 = rallumée après OFF
         from collections import deque
         self.serial_in = deque()      # octets envoyés par le PC, pas encore arrivés
@@ -999,13 +1001,25 @@ class X07(CPU):
         elif cmd == 0x41:                        # CHAR WRITE : motif au curseur
             x, y = self._cursor()
             lcd.put_pattern(x, y, p[0:8])
-        elif cmd == 0x02:
-            resp = [0x30]
-        elif cmd in (0x03, 0x04):
-            resp = [0xFF]
+        elif cmd == 0x02:                        # STICK : direction tenue (0 aucune, 1 haut,
+            resp = [0x30 + self.stick()]         # 3 droite, 5 bas, 7 gauche, 2 4 6 8 diagonales)
+        elif cmd == 0x03:                        # STRIG(1) : bouton du milieu du pavé
+            resp = [0x00 if "milieu" in self.held else 0xFF]
+        elif cmd == 0x04:                        # STRIG(0) : barre d'espace
+            resp = [0x00 if "espace" in self.held else 0xFF]
         if de is not None:
             for i, b in enumerate(resp):
                 c.mem[de + i] = b
+
+    def stick(self):
+        """Direction des flèches tenues, numérotée comme STICK (codes des
+        Applications en assembleur : 1 haut, 3 droite, 5 bas, 7 gauche)."""
+        h = self.held
+        up, down = "haut" in h and "bas" not in h, "bas" in h and "haut" not in h
+        left, right = "gauche" in h and "droite" not in h, "droite" in h and "gauche" not in h
+        return {(1, 0, 0, 0): 1, (1, 0, 0, 1): 2, (0, 0, 0, 1): 3, (0, 1, 0, 1): 4,
+                (0, 1, 0, 0): 5, (0, 1, 1, 0): 6, (0, 0, 1, 0): 7,
+                (1, 0, 1, 0): 8}.get((up, down, left, right), 0)
 
     def _beep(self, c):
         self.beeps.append((c.iy, c.r["H"]))
