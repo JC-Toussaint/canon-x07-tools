@@ -8,7 +8,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from x07asm import emu                       # noqa: E402
+from x07asm import emu, qbasic, qbcomp       # noqa: E402
 from x07asm.lcd import LCD, WIDTH, HEIGHT, load_font   # noqa: E402
 from x07asm.basic import compile_basic       # noqa: E402
 from x07asm.asm import Assembler             # noqa: E402
@@ -200,25 +200,36 @@ class TestStickStrig(unittest.TestCase):
             out, _ = emu.run_basic(self.SRC, setup=lambda m, h=held: m.held.update(h))
             self.assertEqual(out.strip(), expected, held)
 
-    def test_example_fleches(self):
-        with open(os.path.join(ROOT, "exemples", "fleches.bas")) as f:
-            src = f.read().replace("170 CLS:END", "170 END")   # garder l'écran final
+    def test_examples_fleches(self):
+        # fleches.bas, fleches_x07.bas et qbasic/fleches.qbas (traduit, et compilé directement)
+        def read(name):
+            with open(os.path.join(ROOT, "exemples", name)) as f:
+                return f.read()
+        keep = lambda s: s.replace("170 CLS:END", "170 END")    # garder l'écran final
+        qb = read("qbasic/fleches.qbas").replace("\nCLS\nEND", "\nEND")
+        programs = {"fleches.bas": ("bas", keep(read("fleches.bas"))),
+                    "fleches_x07.bas": ("bas", keep(read("fleches_x07.bas"))),
+                    "fleches.qbas": ("bas", qbasic.translate(qb)[0]),
+                    "fleches.qbas --direct": ("asm", qbcomp.compile_qbasic(qb, "T", 0x3000)[0])}
         cases = (({"droite"}, "aaaaaQ", [(66, 20)]),          # 6 pas vers la droite
                  ({"haut", "gauche"}, "aaaQ", [(56, 16)]),     # diagonale (STICK 8)
                  ({"droite", "milieu"}, "aaaaQ", [(x, 20) for x in range(60, 66)]))  # trace
-        for held, keys, points in cases:
-            for compiled in (False, True):
-                if compiled:
-                    asm, _ = compile_basic(src, "T", 0x3000)
-                    a = Assembler()
-                    m = emu.prepare_binary(a.assemble_text(asm), a.entry, keys=keys)
-                    m.held.update(held)
-                    m.run(50_000_000)
-                else:
-                    _, m = emu.run_basic(src, keys=keys,
-                                         setup=lambda m, h=held: m.held.update(h))
-                lit = [(x, y) for x in range(6, 120) for y in range(11, 32) if m.lcd.get(x, y)]
-                self.assertEqual(sorted(lit), points, (held, compiled))
+        for name, (kind, src) in programs.items():
+            for held, keys, points in cases:
+                for compiled in (False, True) if kind == "bas" else (True,):
+                    asm = src if kind == "asm" else compile_basic(src, "T", 0x3000)[0] \
+                        if compiled else None
+                    if compiled:
+                        a = Assembler()
+                        m = emu.prepare_binary(a.assemble_text(asm), a.entry, keys=keys)
+                        m.held.update(held)
+                        m.run(50_000_000)
+                    else:
+                        _, m = emu.run_basic(src, keys=keys,
+                                             setup=lambda m, h=held: m.held.update(h))
+                    lit = [(x, y) for x in range(6, 120) for y in range(11, 32)
+                           if m.lcd.get(x, y)]
+                    self.assertEqual(sorted(lit), points, (name, held, compiled))
 
     def test_compiled(self):
         asm, _ = compile_basic(self.SRC, "T", 0x3000)
