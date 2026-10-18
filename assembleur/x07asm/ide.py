@@ -291,6 +291,61 @@ class Session:
         return out
 
 
+# barre d'outils : clé, symbole, bulle d'aide, (méthode, arguments...)
+TOOLBAR = (
+    ("compiler", "⚙", "Compiler", ("compile",)),
+    ("continuer", "▶", "Continuer (F5)", ("do_run",)),
+    ("pause", "‖", "Pause (F9)", ("do_pause",)),       # (⏸ s'afficherait en émoji, non grisé)
+    (None, None, None, None),
+    ("ligne", "⤼", "Ligne suivante (F10)", ("do_step", "over")),
+    ("entrer", "↓", "Entrer dans la procédure (F11)", ("do_step", "into")),
+    ("sortir", "↑", "Sortir de la procédure (Maj+F11)", ("do_step", "out")),
+    ("instr", "·", "Une instruction machine", ("do_step", "instr")),
+    (None, None, None, None),
+    ("reinit", "↺", "Recommencer : recompiler et repartir du début", ("restart",)),
+)
+
+AIDE = """Éditeur-débogueur du Canon X-07
+
+Points d'arrêt : clic dans la marge, ou F9 sur la ligne du curseur.
+Continuer F5 · Ligne suivante F10 · Entrer F11 · Sortir Maj+F11
+Pause : bouton ‖ ou F9 (hors du source).
+
+Écran du X-07 : cliquez dessus pour lui donner le clavier (cadre vert),
+ou tapez une valeur dans le champ « Taper pour le X-07 », puis Entrée.
+Échap = BREAK.  Sur un clavier AZERTY, les chiffres demandent Maj.
+
+La mémoire du X-07 (fichiers en RAM) est gardée d'un lancement à
+l'autre ; --memoire FICHIER la garde d'une session à l'autre."""
+
+
+class Bulle:
+    """Bulle d'aide qui apparaît au survol d'un widget."""
+
+    def __init__(self, widget, text):
+        self.widget, self.text, self.win = widget, text, None
+        widget.bind("<Enter>", self.show)
+        widget.bind("<Leave>", self.hide)
+        widget.bind("<ButtonPress>", self.hide)
+
+    def show(self, event=None):
+        import tkinter as tk
+        if self.win is not None:
+            return
+        x = self.widget.winfo_rootx() + 4
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.win = tk.Toplevel(self.widget)
+        self.win.wm_overrideredirect(True)
+        self.win.wm_geometry("+%d+%d" % (x, y))
+        tk.Label(self.win, text=self.text, bg="#ffffe0", relief="solid", bd=1,
+                 padx=5, pady=2, font=("Helvetica", 9)).pack()
+
+    def hide(self, event=None):
+        if self.win is not None:
+            self.win.destroy()
+            self.win = None
+
+
 class Editeur:
     """La fenêtre de l'éditeur-débogueur."""
 
@@ -312,30 +367,19 @@ class Editeur:
         mono = ("DejaVu Sans Mono", 10)
         self.mono = mono
 
+        self.build_menus()
         bar = tk.Frame(self.root)
-        bar.pack(fill="x", padx=4, pady=3)
-        nouveau = tk.Menubutton(bar, text="Nouveau ▾", relief="raised")
-        menu = tk.Menu(nouveau, tearoff=False)
-        for ext, label in KINDS:
-            menu.add_command(label="%s (%s)" % (label, ext),
-                             command=lambda e=ext: self.new_dialog(e))
-        nouveau.configure(menu=menu)
-        nouveau.pack(side="left", padx=2)
-        self.buttons = {"nouveau": nouveau}
-        for key, text, cmd in (
-                ("ouvrir", "Ouvrir…", self.open_dialog),
-                ("enregistrer", "Enregistrer", self.save),
-                ("enregistrer_sous", "Enregistrer sous…", self.save_as_dialog),
-                ("compiler", "Compiler", self.compile),
-                ("continuer", "▶ Continuer (F5)", self.do_run),
-                ("pause", "⏸ Pause", self.do_pause),
-                ("ligne", "Ligne suivante (F10)", lambda: self.do_step("over")),
-                ("entrer", "Entrer (F11)", lambda: self.do_step("into")),
-                ("sortir", "Sortir (Maj+F11)", lambda: self.do_step("out")),
-                ("instr", "Instruction", lambda: self.do_step("instr")),
-                ("reinit", "↺ Recommencer", self.restart)):
-            b = tk.Button(bar, text=text, command=cmd)
-            b.pack(side="left", padx=2)
+        bar.pack(fill="x", padx=4, pady=2)
+        self.buttons = {}
+        for key, symbol, tip, cmd in TOOLBAR:
+            if key is None:                       # séparateur
+                tk.Frame(bar, width=2, bd=1, relief="sunken").pack(side="left", fill="y",
+                                                                   padx=6, pady=2)
+                continue
+            b = tk.Button(bar, text=symbol, width=2, font=("DejaVu Sans", 13),
+                          command=lambda c=cmd: getattr(self, c[0])(*c[1:]))
+            b.pack(side="left", padx=1)
+            Bulle(b, tip)
             self.buttons[key] = b
         self.status = tk.Label(self.root, text="", anchor="w", fg="#222", relief="sunken",
                                padx=6)
@@ -410,6 +454,65 @@ class Editeur:
             self.load(path)
         self.update_buttons()
         self.root.after(40, self.tick)
+
+    # -------------------------------------------------- menus
+    def build_menus(self):
+        tk = self.tk
+        bar = tk.Menu(self.root)
+        self.menu_items = []                      # (menu, libellé, clé d'état)
+
+        def add(menu, label, cmd, key, accel=None):
+            menu.add_command(label=label, command=cmd, accelerator=accel)
+            self.menu_items.append((menu, label, key))
+
+        fichier = tk.Menu(bar, tearoff=False)
+        nouveau = tk.Menu(fichier, tearoff=False)
+        for ext, label in KINDS:
+            nouveau.add_command(label="%s (%s)" % (label, ext),
+                                command=lambda e=ext: self.new_dialog(e))
+        fichier.add_cascade(label="Nouveau", menu=nouveau)
+        self.menu_items.append((fichier, "Nouveau", "nouveau"))
+        add(fichier, "Ouvrir…", self.open_dialog, "ouvrir", "Ctrl+O")
+        add(fichier, "Enregistrer", self.save, "enregistrer", "Ctrl+S")
+        add(fichier, "Enregistrer sous…", self.save_as_dialog, "enregistrer_sous",
+            "Ctrl+Maj+S")
+        fichier.add_separator()
+        fichier.add_command(label="Quitter", command=self.close)
+        bar.add_cascade(label="Fichier", menu=fichier)
+
+        execution = tk.Menu(bar, tearoff=False)
+        add(execution, "Compiler", self.compile, "compiler")
+        add(execution, "Continuer", self.do_run, "continuer", "F5")
+        add(execution, "Pause", self.do_pause, "pause", "F9")
+        execution.add_separator()
+        add(execution, "Ligne suivante", lambda: self.do_step("over"), "ligne", "F10")
+        add(execution, "Entrer dans la procédure", lambda: self.do_step("into"), "entrer",
+            "F11")
+        add(execution, "Sortir de la procédure", lambda: self.do_step("out"), "sortir",
+            "Maj+F11")
+        add(execution, "Une instruction machine", lambda: self.do_step("instr"), "instr")
+        execution.add_separator()
+        add(execution, "Recommencer", self.restart, "reinit")
+        add(execution, "Enlever tous les points d'arrêt", self.clear_breaks, "reinit")
+        bar.add_cascade(label="Exécution", menu=execution)
+
+        aide = tk.Menu(bar, tearoff=False)
+        aide.add_command(label="Utilisation…", command=self.show_help)
+        bar.add_cascade(label="Aide", menu=aide)
+        self.root.configure(menu=bar)
+        self.menubar = bar
+
+    def show_help(self):
+        from tkinter import messagebox
+        messagebox.showinfo("Aide", AIDE, parent=self.root)
+
+    def clear_breaks(self):
+        if self.session is None:
+            return
+        for line in list(self.session.break_lines):
+            self.session.toggle_break(line)
+        self.sync_text_from_breaks()
+        self.refresh()
 
     # -------------------------------------------------- fichier
     FILETYPES = [("Programmes X-07", "*.bas *.qbas *.asm"), ("BASIC du X-07", "*.bas"),
@@ -719,16 +822,19 @@ class Editeur:
         self.draw_gutter()
         self.update_buttons()
 
-    def update_buttons(self):
+    def state_of(self, key):
         run = self.busy()
-        has = self.session is not None
+        if key == "pause":
+            return "normal" if run else "disabled"
+        if key in ("ouvrir", "nouveau"):
+            return "disabled" if run else "normal"
+        return "normal" if self.session is not None and not run else "disabled"
+
+    def update_buttons(self):
         for k, b in self.buttons.items():
-            if k == "pause":
-                b.configure(state="normal" if run else "disabled")
-            elif k in ("ouvrir", "nouveau"):
-                b.configure(state="disabled" if run else "normal")
-            else:
-                b.configure(state="normal" if has and not run else "disabled")
+            b.configure(state=self.state_of(k))
+        for menu, label, key in getattr(self, "menu_items", []):
+            menu.entryconfigure(label, state=self.state_of(key))
 
     def tick(self):
         s = self.session

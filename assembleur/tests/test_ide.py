@@ -169,6 +169,35 @@ class TestWindow(unittest.TestCase):
             finally:
                 e.close()
 
+    def test_menus_and_toolbar(self):
+        from x07asm.ide import Editeur, TOOLBAR
+        e = Editeur(os.path.join(EX, "table.bas"))
+        r = e.root
+
+        def pump(t):
+            end = time.time() + t
+            while time.time() < end:
+                r.update()
+                time.sleep(0.02)
+        try:
+            pump(0.2)
+            labels = [e.menubar.entrycget(k, "label") for k in range(1, 4)]
+            self.assertEqual(labels, ["Fichier", "Exécution", "Aide"])
+            self.assertEqual(set(e.buttons), {k for k, *_ in TOOLBAR if k})
+            # largeur : la barre d'outils tient dans une petite partie de la fenêtre
+            self.assertLess(e.buttons["reinit"].master.winfo_reqwidth(), 500)
+            states = {label: menu.entrycget(label, "state") for menu, label, _ in e.menu_items}
+            self.assertEqual(states["Pause"], "disabled")          # rien ne tourne
+            self.assertEqual(states["Continuer"], "normal")
+            self.assertEqual(str(e.buttons["pause"]["state"]), "disabled")
+            e.compile()
+            e.toggle(4)
+            e.toggle(5)
+            e.clear_breaks()                                       # Exécution › Enlever...
+            self.assertEqual(e.session.break_lines, set())
+        finally:
+            e.close()
+
     def test_typing_while_stopped_and_input_field(self):
         from x07asm.ide import Editeur
         e = Editeur(os.path.join(EX, "table.bas"))
