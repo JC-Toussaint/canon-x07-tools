@@ -35,6 +35,23 @@ class TestQBasic(unittest.TestCase):
             self.assertEqual(mc.output().rstrip("\n"), ref.rstrip("\n"), "\n" + out)
         return out, warns
 
+    BEEP_SRC = ('DEFINT A-Z\nbeep 10, 1\nBEEP\nSOUND 440, 18.2\nf = 880: d = 9\n'
+                'SOUND f, d\nIF f > 0 THEN BEEP 13, 2\nSOUND 20000, 5\n')
+    BEEP_NOTES = [(440.4, 0.05), (800.0, 0.247), (440.4, 0.999), (880.7, 0.5),
+                  (524.6, 0.099), (3918.4, 0.249)]
+
+    def test_beep_and_sound(self):
+        # BEEP n, d : celui du X-07 ; BEEP seul : 800 Hz, 1/4 s ; SOUND f, d : BEEP 192000/f
+        out, warns, _ = qbasic.translate(self.BEEP_SRC)
+        self.assertIn("BEEP 10,1:BEEP 240,5:BEEP 436,20", out)
+        self.assertIn("BEEP INT(192000/F%),INT(D%*1.1+.5)", out)
+        self.assertEqual(len(warns), 2)                     # SOUND variable, 20000 Hz
+        _, m = emu.run_basic(out)
+        self.assertEqual(m.notes, self.BEEP_NOTES)
+        asm, _ = compile_basic(out, "T", 0x3000)
+        a = Assembler()
+        self.assertEqual(emu.run_binary(a.assemble_text(asm), a.entry).notes, self.BEEP_NOTES)
+
     def test_blocks_sub_function_by_reference(self):
         out, _ = self.qb('''
 ' Essai

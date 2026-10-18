@@ -43,6 +43,11 @@ class TestDirect(unittest.TestCase):
         self.assertIn("; 4: PRINT x\nLN_4:", asm)
         self.assertNotIn("; 2:", asm)                         # pas de code : pas de ligne
 
+    def test_beep_and_sound(self):
+        m, _, warns = run(test_qbasic.TestQBasic.BEEP_SRC)
+        self.assertEqual(m.notes, test_qbasic.TestQBasic.BEEP_NOTES)
+        self.assertEqual(len(warns), 2)
+
     def test_recursive_functions_and_sub(self):
         self.qb('''
 DECLARE FUNCTION Fact# (n%)
