@@ -82,6 +82,7 @@ class Lowering:
 
     def __init__(self, text):
         self.warnings = []
+        self.source = text.split("\n")            # pour le listing : ligne -> texte
         toks = tokenize(text)
         funcs, subs = set(), set()
         for k, t in enumerate(toks[:-1]):
@@ -1060,6 +1061,10 @@ class QBCompiler(basic.Compiler):
             self.cur_line = None
             if line and line not in seen_lines and s[0] not in ("data", "dim", "deffn"):
                 seen_lines.add(line)               # ligne du source : débogueur (b ligne 12)
+                if line <= len(lowering.source):   # le texte QuickBASIC, dans le listing
+                    self.emit("")
+                    self.emit("; %d: %s" % (line, lowering.source[line - 1].strip()
+                                                     .replace("\t", " ")))
                 self.label("LN_%d" % line)
             if self.debug and line and line != last_line and s[0] not in ("data", "dim"):
                 self.emit("LD   HL,%d" % line)
