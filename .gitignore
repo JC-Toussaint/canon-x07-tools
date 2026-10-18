@@ -18,3 +18,6 @@ __pycache__/
 assembleur/exemples/qbasic/*.bas
 assembleur/exemples/qbasic/*.asm
 assembleur/exemples/qbasic/*.bin
+# mémoire du X-07 enregistrée par --memoire (emu, run, ide)
+*.mem
+assembleur/mem
