@@ -57,20 +57,26 @@ La même mécanique que la commande `debug`, dans une fenêtre :
   - *Pile*.
   - *Messages* : avertissements de compilation, erreurs.
 
-| Bouton | Touche | Rôle |
-|---|---|---|
-| Nouveau ▾ | | nouveau programme : BASIC du X-07 (`.bas`), QuickBASIC (`.qbas`) ou assembleur (`.asm`) ; on choisit le nom, et le programme part d'un petit modèle qui fonctionne |
-| Ouvrir… | Ctrl+O | ouvrir un programme |
-| Enregistrer | Ctrl+S | |
-| Enregistrer sous… | Ctrl+Maj+S | enregistrer sous un autre nom, qui devient le fichier ouvert ; les points d'arrêt sont gardés. L'extension choisit le langage |
-| Compiler | | enregistre puis compile (aussi fait automatiquement avant de lancer un programme modifié) |
-| ▶ Continuer | F5 | jusqu'au prochain point d'arrêt, ou la fin |
-| ⏸ Pause | F9 hors du source | interrompt le programme, même s'il attend une touche |
-| Ligne suivante | F10 | une **ligne du source**, sans entrer dans les procédures appelées |
-| Entrer | F11 | une ligne du source, en entrant dans les `SUB`, `FUNCTION`, `GOSUB` |
-| Sortir | Maj+F11 | jusqu'à la fin de la routine en cours |
-| Instruction | | une seule instruction machine |
-| ↺ Recommencer | | recompile et repart du début |
+Les commandes sont dans la **barre de menus** (Fichier, Exécution, Aide). Celles du débogage ont aussi un **bouton à symbole**, avec une bulle d'aide au survol :
+
+| Menu | Bouton | Touche | Rôle |
+|---|---|---|---|
+| Fichier › Nouveau | | | nouveau programme : BASIC du X-07 (`.bas`), QuickBASIC (`.qbas`) ou assembleur (`.asm`) ; on choisit le nom, et le programme part d'un petit modèle qui fonctionne |
+| Fichier › Ouvrir… | | Ctrl+O | ouvrir un programme |
+| Fichier › Enregistrer | | Ctrl+S | |
+| Fichier › Enregistrer sous… | | Ctrl+Maj+S | enregistrer sous un autre nom, qui devient le fichier ouvert ; les points d'arrêt sont gardés. L'extension choisit le langage |
+| Exécution › Compiler | ⚙ | | enregistre puis compile (aussi fait automatiquement avant de lancer un programme modifié) |
+| Exécution › Continuer | ▶ | F5 | jusqu'au prochain point d'arrêt, ou la fin |
+| Exécution › Pause | ‖ | F9 hors du source | interrompt le programme, même s'il attend une touche |
+| Exécution › Ligne suivante | ⤼ | F10 | une **ligne du source**, sans entrer dans les procédures appelées |
+| Exécution › Entrer dans la procédure | ↓ | F11 | une ligne du source, en entrant dans les `SUB`, `FUNCTION`, `GOSUB` |
+| Exécution › Sortir de la procédure | ↑ | Maj+F11 | jusqu'à la fin de la routine en cours |
+| Exécution › Une instruction machine | · | | une seule instruction du Z80 |
+| Exécution › Recommencer | ↺ | | recompile et repart du début |
+| Exécution › Enlever tous les points d'arrêt | | | |
+| Aide › Utilisation… | | | rappel des touches et de l'usage de l'écran du X-07 |
+
+Un bouton ou une commande de menu est grisé quand il ne peut pas servir : Pause seulement pendant l'exécution, les autres seulement à l'arrêt.
 
 Avant d'ouvrir ou de créer un autre programme, ou en fermant la fenêtre, l'éditeur propose d'enregistrer les modifications en cours.
 
