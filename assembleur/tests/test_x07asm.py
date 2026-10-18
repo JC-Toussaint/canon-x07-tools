@@ -282,5 +282,19 @@ class TestFormats(unittest.TestCase):
         self.assertEqual(m, {0x800: 17, 0x801: 150, 0x802: 231})
 
 
+
+class TestCliEmu(unittest.TestCase):
+    def test_emu_refuses_machine_programs(self):
+        # emu tape un texte BASIC au X-07 : un .asm doit passer par run, --charger ou ide
+        import contextlib
+        import io
+        from x07asm.cli import main
+        for name in ("exemples/bonjour.asm", "prog.bin"):
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(main(["emu", name]), 1)
+            self.assertIn("run %s --fenetre" % name, err.getvalue())
+            self.assertIn("--charger %s" % name, err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

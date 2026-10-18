@@ -415,6 +415,14 @@ def cmd_emu(args):
         print("erreur : --charger s'utilise avec --fenetre", file=sys.stderr)
         return 1
     src = ""
+    if args.source and args.source.lower().endswith((".asm", ".bin", ".rom")):
+        # un programme machine, pas un texte BASIC à taper au X-07
+        print("erreur : %s n'est pas un programme BASIC ; pour le lancer :\n"
+              "  python3 x07asm.py run %s --fenetre\n"
+              "  python3 x07asm.py emu --fenetre --charger %s   (puis EXEC &H...)\n"
+              "  python3 x07asm.py ide %s"
+              % ((args.source,) * 4), file=sys.stderr)
+        return 1
     if args.source:
         from . import basic
         try:
