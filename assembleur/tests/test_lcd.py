@@ -183,3 +183,87 @@ class TestScreenEditor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@needs_rom
+class TestStickStrig(unittest.TestCase):
+    """Pavé de flèches du X-07 : directions et boutons tenus (sim.X07.held)."""
+
+    CASES = ((set(), "0  0  0"), ({"haut"}, "1  0  0"), ({"droite"}, "3  0  0"),
+             ({"bas"}, "5  0  0"), ({"gauche"}, "7  0  0"), ({"haut", "droite"}, "2  0  0"),
+             ({"bas", "gauche"}, "6  0  0"), ({"haut", "bas"}, "0  0  0"),
+             ({"milieu"}, "0  0 -1"), ({"espace"}, "0 -1  0"))
+    SRC = "10 PRINT STICK(0);STRIG(0);STRIG(1)"
+
+    def test_rom_basic(self):
+        for held, expected in self.CASES:
+            out, _ = emu.run_basic(self.SRC, setup=lambda m, h=held: m.held.update(h))
+            self.assertEqual(out.strip(), expected, held)
+
+    def test_compiled(self):
+        asm, _ = compile_basic(self.SRC, "T", 0x3000)
+        a = Assembler()
+        mem = a.assemble_text(asm)
+        for held, expected in self.CASES:
+            m = emu.prepare_binary(mem, a.entry)
+            m.held.update(held)
+            m.run(20_000_000)
+            self.assertEqual(m.output().strip(), expected, held)
+
+
+def has_display():
+    try:
+        import tkinter
+        tkinter.Tk().destroy()
+        return True
+    except Exception:
+        return False
+
+
+@needs_rom
+@unittest.skipUnless(has_display(), "pas d'affichage graphique")
+class TestPad(unittest.TestCase):
+    def test_touches_debounce_and_pad(self):
+        import time
+        import tkinter as tk
+        from x07asm.afficheur import Pave, Touches, send_key, release_key
+        root = tk.Tk()
+        m = emu.boot(16)
+
+        def pump(t):
+            end = time.time() + t
+            while time.time() < end:
+                root.update()
+                time.sleep(0.01)
+
+        class Ev:
+            def __init__(self, sym, ch=""):
+                self.keysym, self.char = sym, ch
+        try:
+            t = Touches(root, lambda: m)
+            pad = Pave(root, t)
+            pad.click("gauche")                          # souris : tenue et tapée
+            self.assertEqual((m.held, m.keys), ({"gauche"}, ["\x1d"]))
+            pad.unclick()
+            pump(0.2)
+            self.assertEqual(m.held, set())
+            # répétition automatique : relâchement suivi aussitôt d'un appui
+            send_key(m, Ev("Up"), t)
+            release_key(Ev("Up"), t)
+            send_key(m, Ev("Up"), t)
+            pump(0.2)
+            self.assertEqual(m.held, {"haut"})
+            release_key(Ev("Up"), t)
+            pump(0.2)
+            self.assertEqual(m.held, set())
+            m.keys.clear()
+            send_key(m, Ev("space", " "), t)             # espace : tapé et tenu
+            self.assertEqual((m.held, m.keys), ({"espace", "milieu"}, [" "]))
+            release_key(Ev("space", " "), t)
+            send_key(m, Ev("KP_Begin"), t)               # 5 du pavé numérique
+            pump(0.2)
+            self.assertEqual(m.held, {"milieu"})
+            send_key(m, Ev("KP_5", "5"), t)              # verrou allumé : un chiffre
+            self.assertEqual(m.keys[-1], "5")
+        finally:
+            root.destroy()
