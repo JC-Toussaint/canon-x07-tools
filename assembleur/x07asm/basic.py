@@ -1577,7 +1577,11 @@ class Compiler:
         self.emit("LD   L,0")
         self.emit("PUSH DE")
         self.emit("POP  IY")
+        back = self.newlabel()                   # $C2DF dépile une adresse de trop :
+        self.emit("LD   BC,%s" % back)           # on la fournit, comme le livre
+        self.emit("PUSH BC")
         self.emit("CALL BEEPR")
+        self.label(back)
 
     def s_t6(self, s):
         cmd, args = s[1], s[2]

@@ -181,6 +181,45 @@ class TestScreenEditor(unittest.TestCase):
         self.assertNotIn("Error", " ".join(screen))
 
 
+
+@needs_rom
+class TestBeep(unittest.TestCase):
+    # BEEP <note>,<durée> : 1 à 48 par demi-tons depuis le do (262 Hz), 49 à 4095 :
+    # 192000/<note> Hz ; durée x 50 ms (manuel).  Relevé en $C331 (BEEP6).
+    SRC = "10 BEEP 1,5\n20 BEEP 10,20\n30 BEEP 0,4\n40 BEEP 100,2\n50 PRINT \"FIN\"\n"
+    NOTES = [(262.3, 0.248), (440.4, 0.999), (0.0, 0.2), (1920.0, 0.099)]
+
+    def test_rom(self):
+        out, m = emu.run_basic(self.SRC)
+        self.assertEqual(m.notes, self.NOTES)
+        self.assertIn("FIN", out)
+
+    def test_compiled_goes_on_after_beep(self):
+        # $C2DF dépile une adresse de plus : le code compilé doit la fournir
+        asm, _ = compile_basic(self.SRC, "T", 0x3000)
+        a = Assembler()
+        m = emu.run_binary(a.assemble_text(asm), a.entry)
+        self.assertEqual(m.notes, self.NOTES)
+        self.assertIn("FIN", m.lcd.text()[0])
+
+    def test_speaker_keeps_time(self):
+        import time
+        from x07asm.son import HautParleur, square
+        hp = HautParleur(muet=True)
+        t = time.monotonic()
+        for _ in range(3):
+            hp.note(440, 0.1)                       # le 2e attend la fin du 1er...
+        self.assertGreaterEqual(time.monotonic() - t, 0.19)
+        t = time.monotonic()
+        hp.note(440, 0.1, cancel=lambda: True)      # arrêt demandé : pas d'attente
+        self.assertLess(time.monotonic() - t, 0.05)
+        wave = square(1000, 0.01, rate=8000)        # 4 échantillons par demi-période
+        self.assertEqual(len(wave), 160)
+        self.assertEqual(wave[0:8], wave[0:2] * 4)
+        self.assertNotEqual(wave[0:2], wave[8:10])
+        self.assertEqual(square(0, 0.01, rate=8000), bytes(160))
+
+
 if __name__ == "__main__":
     unittest.main()
 

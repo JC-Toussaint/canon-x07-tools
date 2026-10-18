@@ -2,7 +2,7 @@
 
 Les symboles que l'assembleur connaît d'avance (`CALL INKEY`, `LD HL,(TXTTAB)`...) et que le compilateur et le désassembleur utilisent. Ils viennent des *Mystères du X-07* et ont été corrigés d'après la ROM (voir [l'errata](../ref_docs/ERRATA.md)), puis recoupés avec le guide technique officiel de la carte XP-140. Les noms officiels de Canon (« Canon : » dans la colonne Rôle) sont aussi acceptés par l'assembleur.
 
-La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la ROM ou par l'émulateur : 110 sur 171. Les autres viennent du livre.
+La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la ROM ou par l'émulateur : 111 sur 171. Les autres viennent du livre.
 
 > Fichier produit par `python3 x07asm.py sym --md > ROM.md` à partir de `x07asm/x07sym.py` : ne pas le modifier à la main.
 
@@ -37,8 +37,8 @@ La colonne « Vérifié » signale une entrée contrôlée dans le vidage de la 
 | `$C18A` | `LCDCHR` | affiche A au curseur, le curseur avance (Canon : `PUTTSB`) |  |
 | `$C1BE` | `LCDPUT` | écrit A à l'écran, codes de contrôle admis, registres conservés | ✓ |
 | `$C231` | `LCDPUTXY` | écrit C en X=H, Y=L, curseur immobile (Canon : `LPHYDSP`) |  |
-| `$C2DF` | `BEEPR` | bip : IY=tonalité, H=durée, L=0 (Canon : `BEEP0`) | ✓ |
-| `$C331` | `SPEAKER` | haut-parleur : IY=tonalité, HL=durée, C=FF/00 (Canon : `BEEP6`) |  |
+| `$C2DF` | `BEEPR` | bip : IY=note, H=durée, L=0 ; empiler d'abord l'adresse de retour, puis CALL (Canon : `BEEP0`) | ✓ |
+| `$C331` | `SPEAKER` | haut-parleur : 192000/IY Hz, HL demi-périodes, C=00 son / FF silence ; empiler d'abord l'adresse de retour (Canon : `BEEP6`) | ✓ |
 | `$C39D` | `IOINIT` | initialise les ports (Canon : `IOCLS`) |  |
 | `$C3C3` | `COLDST` | démarrage à froid (Canon : `START`) | ✓ |
 | `$C4D1` | `CREATSYS` | « CREATE SYSTEM ? » | ✓ |

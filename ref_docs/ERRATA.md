@@ -39,6 +39,7 @@ Ces erreurs changent le comportement d'un programme ou font planter la machine :
 | Table des mots-clés | Adresse de `FSET` (jeton `$B0`) | `BF36` | **`$BF56`** (table de répartition en `$F0D6` : `INIT`, `ERASE`… voisins concordent) | ROM |
 | 69–74 | Port `$F6` en lecture | « T\*RDY : réception, R\*RDY : transmission » | RXRDY = réception prête (bit 1), TXRDY = émission prête (bit 0) | ROM |
 | 74–86 | Commandes `$38`/`$39` du T6834 | « CLICK OFF déclenche, CLICK ON enclenche » | OFF = désactivé, ON = activé | livre |
+| Routines, buzzer | `$C2DF` (bip) et `$C331` (haut-parleur) | « IY = tonalité, H = durée », sans plus | elles dépilent un mot de plus qu'elles n'empilent : **empiler une adresse de retour avant le `CALL`** (comme « Musique » des *Applications*) ; en `$C331`, **C = `$FF` donne le silence** | ROM |
 | § 7.6.1 | Codes de `STICK` (touches curseur) | `$32` droite, `$36` bas | **`$33` droite, `$35` bas** ; `$32` et `$36` sont les diagonales haut-droite et bas-gauche (tableau 6 du guide) | guide |
 | § 7.6.1 | Adresse de `RAM READ` / `RAM WRITE` (`$05`, `$06`) | octet haut, puis octet bas | **octet bas d'abord** ; `RAM WRITE` : donnée, octet bas, octet haut | ROM, guide |
 | 74–86 | `STICK`, `STRIG` | non précisé | `STICK` : commande `$82`, réponse `AND $0F`. `STRIG(0)` = `$84` (espace), `STRIG(1)` = `$83` (F6) ; −1 si enfoncée | ROM |
@@ -103,9 +104,16 @@ Le guide officiel (*Canon XP-140 Monitor Card, guide technique*) est la source l
 | 58 | Tableau 6 (`STICK`), bas seul | `$33` | **`$35`** (`$33` est droite) | guide |
 | 58 | Tableau 6, haut et bas ensemble | `$35` | probablement `$30` : les autres flèches opposées s'annulent (gauche et droite donnent `$30`) ; l'émulateur répond 0 | — |
 | 59 | `RAM READ`, `RAM WRITE` | « octets hauts et bas (dans cet ordre) » | **octet bas d'abord**, comme les exemples du guide (`05,06,C0` lit `$C006`) | ROM |
+| 24 | `BEEP6` (`$C331`) | f = 19200 / (IY + 1) Hz ; t = HL / f | **f = 192 000 / IY Hz** ; **t = HL × IY / 384 000 s** (HL compte des demi-périodes) | ROM, manuel |
 | 89, 90 | Hook ABORT | `$00A8` (p. 89), `ABTHOCK = $00AB` (p. 90) | **`$00A8`** ; `$00AB` est `ERRHOCK` | ROM |
 
 Les noms officiels des routines (`KBDSNS`, `CMDPUT`, `LCDPUT`…) sont acceptés par l'assembleur, à côté de ceux des livres (voir [ROM.md](../assembleur/ROM.md)).
+
+## Manuel de référence du BASIC (Canon)
+
+| Page | Sujet | Erreur | Correction | Vérifié par |
+|---|---|---|---|---|
+| 34 | `BEEP`, notes 49 à 4095 | « 19200/⟨note⟩ en Hz » | **192 000 / ⟨note⟩ Hz**. Avec 19 200, `BEEP 1` ferait 26 Hz au lieu du do annoncé ; avec 192 000, la ROM donne 262 Hz pour `BEEP 1` et 440 Hz pour `BEEP 10` (la). La durée de 50 ms par unité confirme ce facteur | ROM |
 
 ## Vérifié et juste
 

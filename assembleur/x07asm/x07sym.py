@@ -42,8 +42,8 @@ ROUTINES = {
     "FSIGN":       (0xC9C7, "RST 18 : signe de l'accumulateur -> A = 0, 1 ou FF ; Z si nul (vérifié ROM)"),
     "ARRADR":      (0xE906, "RST 38 + octet n : n < $80 -> DE = mot en HL+n ; n >= $80 -> fonction n du pilote courant (vérifié ROM)"),
     # buzzer
-    "BEEPR":       (0xC2DF, "bip : IY=tonalité, H=durée, L=0 (vérifié ROM)"),
-    "SPEAKER":     (0xC331, "haut-parleur : IY=tonalité, HL=durée, C=FF/00"),
+    "BEEPR":       (0xC2DF, "bip : IY=note, H=durée, L=0 ; empiler d'abord l'adresse de retour, puis CALL (vérifié ROM)"),
+    "SPEAKER":     (0xC331, "haut-parleur : 192000/IY Hz, HL demi-périodes, C=00 son / FF silence ; empiler d'abord l'adresse de retour (vérifié ROM)"),
     # clavier
     "KBWAIT":      (0xC8C5, "lit le clavier avec curseur -> A (vérifié ROM)"),
     "INKEY":       (0xC90A, "lit une touche (INKEY$) -> A ; Z=1 si aucune (vérifié ROM)"),

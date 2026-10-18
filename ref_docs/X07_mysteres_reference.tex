@@ -808,6 +808,14 @@ arithmétique, il faut positionner l'indicateur de type \hex{01D9}
 C2DF & IY = tonalité, H = durée, L = 0 & bip (comme BEEP) & -- & AF BC DE HL IY, EI \\
 C331 & IY = tonalité, HL = durée, C = FF marche / 00 arrêt & commande le haut-parleur & -- & AF BC DE HL, EI \\
 \end{routines}
+\nota{Vérifié dans la ROM : ces deux routines finissent par \texttt{POP HL}
+puis \texttt{RET}, et dépilent donc un mot de plus qu'elles n'empilent. Il
+faut empiler une adresse de retour avant le \texttt{CALL}, comme le fait le
+programme « Musique » des \emph{Applications en assembleur} ; sinon la routine
+revient à l'appelant de l'appelant. En \hex{C331}, C\,=\,\hex{FF} donne
+le \emph{silence} (BEEP~0) et C\,=\,\hex{00} le son. Le buzzer sonne à
+192\,000\,/\,IY~Hz et HL compte ses demi-périodes : durée = HL\,×\,IY\,/\,384\,000~s,
+soit ⟨durée⟩\,×\,50~ms pour BEEP.}
 
 \subsubsection*{Clavier}
 \begin{routines}
