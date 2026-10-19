@@ -35,6 +35,42 @@ class TestQBasic(unittest.TestCase):
             self.assertEqual(mc.output().rstrip("\n"), ref.rstrip("\n"), "\n" + out)
         return out, warns
 
+    def test_redim(self):
+        # REDIM : ERASE s'il existe (sinon FC Error sur le X-07), puis DIM ; remis à zéro
+        out, _ = self.qb('''
+DEFINT A-Z
+DECLARE SUB S (k)
+n = 3
+REDIM a(n)
+a(3) = 7
+n = 6
+REDIM a(n)
+a(6) = 9
+PRINT a(3); a(6)
+DIM b(2)
+b(2) = 4
+ERASE b
+REDIM b(5)
+b(5) = 1
+PRINT b(5)
+FOR k = 1 TO 3
+    REDIM t(k)
+    t(k) = k * 10
+    PRINT t(k);
+NEXT
+PRINT
+S 2
+S 5
+SUB S (k)
+REDIM u$(k)
+u$(k) = "U"
+PRINT u$(k); k;
+END SUB
+''', " 0  9 \n 1 \n 10  20  30 \nU 2 U 5 ", compiled=False)   # ERASE : ROM seulement
+        self.assertIn("THEN ERASE A%", out)
+        with self.assertRaises(qbasic.QBError):
+            qbasic.translate("REDIM PRESERVE a(5)\n")
+
     BEEP_SRC = ('DEFINT A-Z\nbeep 10, 1\nBEEP\nSOUND 440, 18.2\nf = 880: d = 9\n'
                 'SOUND f, d\nIF f > 0 THEN BEEP 13, 2\nSOUND 20000, 5\n')
     BEEP_NOTES = [(440.4, 0.05), (800.0, 0.247), (440.4, 0.999), (880.7, 0.5),

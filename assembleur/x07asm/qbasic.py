@@ -779,7 +779,10 @@ class Parser:
                 break
         return ("dim", shared, decls)
 
-    st_REDIM = None
+    def st_REDIM(self):
+        if self.cur.kind == "id" and self.cur.val.upper() == "PRESERVE":
+            self.err("REDIM PRESERVE n'existe pas en QuickBASIC 4.5 (copiez le tableau)")
+        return ("redim",) + self.st_DIM()[1:]
 
     def st_SHARED(self):
         names = []
@@ -1526,13 +1529,16 @@ class Translator:
     def translate(self):
         self.name_map = []
         self.global_shared = set()
+        self.redim_names = set()                           # tableaux qui passent par REDIM
+        self.redim_flags = {}                              # nom X-07 -> variable témoin
+        self.find_redims((self.main, list(self.procs.values())))
         for s in self.main:                                # DIM SHARED, CONST, DEF...
-            if s[0] == "dim" and s[1]:
+            if s[0] in ("dim", "redim") and s[1]:
                 for n, _, _ in s[2]:
                     self.global_shared.add(base(n))
             if s[0] == "deftype":
                 self.apply_deftype(s)
-            if s[0] == "dim":
+            if s[0] in ("dim", "redim"):
                 for n, _, typ in s[2]:
                     if typ:
                         self.global_scope.declared[base(n)] = typ
@@ -2092,6 +2098,46 @@ class Translator:
             self.emit("IF %s=0 THEN DIM %s:%s=1" % (flag, ",".join(out), flag), True)
         elif out:
             self.emit("DIM " + ",".join(out))
+        hoisted = {n for n, _, _, _ in local}
+        for name, dims, _ in decls:                       # REDIM saura qu'il existe
+            if dims is not None and base(name) in self.redim_names and name not in hoisted:
+                self.emit("%s=1" % self.redim_flag(self.xvar(name, True)))
+
+    def find_redims(self, node):
+        if isinstance(node, dict):
+            node = list(node.values())
+        if isinstance(node, (list, tuple)):
+            if isinstance(node, tuple) and node and node[0] == "redim":
+                self.redim_names.update(base(n) for n, _, _ in node[2])
+            for c in node:
+                if isinstance(c, (list, tuple, dict)):
+                    self.find_redims(c)
+
+    def redim_flag(self, xn):
+        """Variable témoin d'un tableau redimensionné : 1 s'il existe (le X-07
+        répond FC Error à l'ERASE d'un tableau absent)."""
+        if xn not in self.redim_flags:
+            self.redim_flags[xn] = self.temp("i")
+        return self.redim_flags[xn]
+
+    def g_redim(self, s, ctx):
+        """REDIM a(n) : ERASE (s'il existe déjà) puis DIM, contenu remis à zéro."""
+        _, shared, decls = s
+        for name, dims, typ in decls:
+            if typ:
+                self.scope.declared[base(name)] = typ
+            if dims is None:
+                raise QBError("REDIM %s : dimensions attendues" % name)
+            sizes = []
+            for lo, hi in dims:
+                if lo is not None and self.const_value(lo) not in (0, 1):
+                    raise QBError("REDIM %s(%s TO ...) : sur le X-07, les indices vont "
+                                  "toujours de 0 à n (décalez les indices)" % (name, self.x(lo)))
+                sizes.append(self.x(self.hoist(hi)))
+            xn = self.xvar(name, True)
+            flag = self.redim_flag(xn)
+            self.emit("IF %s THEN ERASE %s" % (flag, xn), True)
+            self.emit("DIM %s(%s):%s=1" % (xn, ",".join(sizes), flag))
 
     def g_shared(self, s, ctx):
         pass
@@ -2192,6 +2238,9 @@ class Translator:
 
     def g_erase(self, s, ctx):
         self.emit("ERASE " + ",".join(self.xvar(n, True) for n in s[1]))
+        for n in s[1]:
+            if base(n) in self.redim_names:
+                self.emit("%s=0" % self.redim_flag(self.xvar(n, True)))
 
     def g_callsub(self, s, ctx):
         name = s[1]
