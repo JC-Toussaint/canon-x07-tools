@@ -727,6 +727,12 @@ RT_JPHL:                        ; EXEC adresse
 """)
 
 # ------------------------------------------------------------- nombres (ROM)
+_r("RT_PUSING", """
+RT_PUSING:                      ; PRINT USING d'un nombre (FAC) : A = indicateurs,
+        CALL $BBAC              ; B, C = chiffres avant / après le point, comme
+        JP   $D5B1              ; la ROM ($D0EA) ; puis affichage de la chaîne (HL)
+""")
+
 _r("RT_PRNUM", """
 RT_PRNUM:                       ; PRINT d'un nombre (FAC), copie de la ROM ($EA2C)
         CALL FOUT               ; HL = texte terminé par 00

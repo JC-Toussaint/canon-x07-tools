@@ -29,6 +29,7 @@ from .qbasic import (FILE_SIZE, FILE_SPACE, FUNCTIONS, NOT_ON_X07, REL, Parser, 
                      check_argument, num_literal, ram_file_name, tokenize)
 
 SUFFIX = {"i": "%", "s": "!", "d": "#", "$": "$"}
+T6BUF = 0x026E                 # tampon des réponses du T6834 (x07sym)
 SIZE = {"i": 2, "s": 4, "d": 8}
 
 # fonctions que le compilateur connaît sous le même nom
@@ -37,7 +38,6 @@ SAME = {"ABS", "SGN", "INT", "FIX", "CSNG", "CDBL", "SQR", "LOG", "EXP", "SIN", 
         "HEX$", "LEFT$", "RIGHT$", "MID$", "STRING$", "INKEY$"}
 NOT_COMPILED = {
     "INSTR": "INSTR n'est pas géré par le compilateur",
-    "TIMER": "TIMER : le compilateur n'a pas accès à l'horloge (TIME$)",
     "TIME$": "TIME$ n'est pas géré par le compilateur",
     "DATE$": "DATE$ n'est pas géré par le compilateur",
     "ERR": "ERR : ON ERROR n'est pas géré par le compilateur",
@@ -75,6 +75,60 @@ class Scope:
         self.shared = set()
         self.statics = set()
 
+
+
+def parse_using(fmt, err):
+    """Format de PRINT USING -> [("lit", texte) | ("num", B, C, A) | ("str", "!"|"&"|"\\", n)].
+    Pour un nombre, les registres de la routine de la ROM ($BBAC), relevés sur son
+    PRINT USING : B = longueur de la partie entière du champ (« + », « , », « ** »,
+    « $$ » compris), C = chiffres après le point, point compris (0 sans point),
+    A = $80 + $40 (« , ») + $20 (« ** ») + $10 (« $$ ») + $08 (signe « + »)
+    + $04 (signe derrière)."""
+    out, lit, i = [], "", 0
+
+    def flush():
+        nonlocal lit
+        if lit:
+            out.append(("lit", lit))
+            lit = ""
+    while i < len(fmt):
+        c = fmt[i]
+        rest = fmt[i:]
+        if c == "_" and i + 1 < len(fmt):             # caractère pris tel quel
+            lit += fmt[i + 1]
+            i += 2
+            continue
+        if c in "!&":
+            flush()
+            out.append(("str", c, 1))
+            i += 1
+            continue
+        if c == "\\":
+            j = fmt.find("\\", i + 1)
+            if j > 0 and not fmt[i + 1:j].strip():
+                flush()
+                out.append(("str", "\\", j - i + 1))
+                i = j + 1
+                continue
+        m = re.match(r"(\+?)(\*\*\$?|\$\$)?(#[#,]*)?(\.#*)?(\^\^\^\^)?([-+]?)", rest)
+        if m and (m.group(2) or m.group(3) or "#" in (m.group(4) or "")):
+            if m.group(5):
+                err("PRINT USING : notation ^^^^ non gérée par le compilateur")
+            plus, fill, ints = m.group(1), m.group(2) or "", m.group(3) or ""
+            point, trail = m.group(4) or "", m.group(6)
+            if plus and trail:                        # « +##+ » : le second + reste du texte
+                trail = ""
+            flush()
+            flags = (0x80 | (0x40 if "," in ints else 0) | (0x20 if "*" in fill else 0)
+                     | (0x10 if "$" in fill else 0) | (0x08 if plus or trail == "+" else 0)
+                     | (0x04 if trail else 0))
+            out.append(("num", len(plus) + len(fill) + len(ints), len(point), flags))
+            i += len(plus) + len(fill) + len(ints) + len(point) + len(trail)
+            continue
+        lit += c
+        i += 1
+    flush()
+    return out
 
 class Lowering:
     """Programme QuickBASIC -> éléments pour QBCompiler :
@@ -266,6 +320,14 @@ class Lowering:
         k = e[0]
         if k == "bound":                          # UBOUND / LBOUND : voir QBCompiler
             return ("c", ("qbound", self.cvar(e[2], True), e[3] - 1, e[1]), "i")
+        if k == "call" and e[1] == "TIMER":       # heure du T6834 (TIME CALL), en secondes
+            self.emit(("qtime",))
+            h, m, s = (self.temp("i") for _ in range(3))
+            for var, off in ((h, 5), (m, 6), (s, 7)):
+                self.emit(("let", ("var", var), ("call", "PEEK", [("int", T6BUF + off)])))
+            return ("c", ("bin", "+", ("bin", "+",
+                                       ("bin", "*", ("var", h), ("flt", "3600")),
+                                       ("bin", "*", ("var", m), ("int", 60))), ("var", s)), "s")
         if k == "ufn":
             proc = self.procs[e[1]]
             self.call_proc(proc, e[2])
@@ -611,7 +673,46 @@ class Lowering:
         self.emit(("print", items, nl))
 
     def g_using(self, s, ctx):
-        self.err("PRINT USING n'est pas géré par le compilateur")
+        """PRINT USING : un champ numérique est mis en forme par la ROM, comme
+        son propre PRINT USING ($BBAC) ; un champ de chaîne par LEFT$."""
+        fmt = s[1]
+        if fmt[0] != "str":
+            self.err("PRINT USING : format constant attendu (compilateur)")
+        parts = parse_using(fmt[1], self.err)
+        if not any(p[0] != "lit" for p in parts):
+            self.err("PRINT USING : le format n'a aucun champ")
+        values = [i for i in s[2] if not isinstance(i, str)]
+        items, k = [], 0
+
+        def lits(stop_at_end=False):
+            nonlocal k
+            while parts[k % len(parts)][0] == "lit":
+                items.extend([("expr", ("str", parts[k % len(parts)][1])), ("sep", ";")])
+                k += 1
+                if stop_at_end and k % len(parts) == 0:
+                    return
+        for v in values:
+            lits()
+            items.extend([self.using_field(parts[k % len(parts)], v), ("sep", ";")])
+            k += 1
+        if k % len(parts) or not values:              # texte jusqu'au champ suivant,
+            lits(stop_at_end=True)                    # sans revenir au début du format
+        nl = not s[2] or isinstance(s[2][-1], tuple)
+        self.emit(("print", items, nl))
+
+    def using_field(self, part, v):
+        if part[0] == "str":
+            if self.etype(v) != "$":
+                self.err("PRINT USING : chaîne attendue pour le champ %s" % part[1])
+            if part[1] == "&":
+                return ("expr", self.value(v))
+            n = ("num", str(1 if part[1] == "!" else part[2]), "i")
+            pad = ("call", "STRING$", [n, ("str", " ")])
+            return ("expr", self.value(("call", "LEFT$", [("bin", "+", v, pad), n])))
+        _, before, after, flags = part
+        if self.etype(v) == "$":
+            self.err("PRINT USING : nombre attendu pour le champ numérique")
+        return ("using", (self.value(v), flags, before, after))
 
     # -------------------------------------------------- fichiers en RAM (FICHIERS.md)
     file_space, file_size = FILE_SPACE, FILE_SIZE
@@ -1205,6 +1306,13 @@ class QBCompiler(basic.Compiler):
 
     def s_qjf(self, s):
         self.gen_cond(s[1], s[2])
+
+    def s_qtime(self, s):
+        """TIME CALL : année, mois, date, jour, heure, minute, seconde dans T6BUF."""
+        self.emit("LD   A,$81")
+        self.emit("LD   BC,$0008")
+        self.emit("LD   DE,T6BUF")
+        self.emit("CALL T6CMDP")
 
     def s_qcall(self, s):
         self.emit("CALL %s" % s[1])

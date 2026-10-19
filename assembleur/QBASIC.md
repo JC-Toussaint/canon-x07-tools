@@ -157,7 +157,9 @@ Ces différences ont été mesurées dans l'émulateur, qui exécute la vraie RO
 
 Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonnes), opérateurs et priorités, vrai = -1, `MOD`, `\`, `&H`, `&O`, fonctions de chaînes, `DATA`/`READ`/`RESTORE`, `ON ... GOTO/GOSUB`, `DEF FN`, et sortie d'une boucle `FOR` par `GOTO` (tolérée par la ROM).
 
-`INSTR`, `LINE INPUT`, `PRINT USING`, `ON ERROR`/`RESUME` existent dans la ROM. Ils sont donc traduits, mais le compilateur ne les accepte pas encore : avec eux, seul le chemin « BASIC du X-07 » fonctionne. Un avertissement le signale.
+`INSTR`, `LINE INPUT`, `PRINT USING`, `ON ERROR`/`RESUME` existent dans la ROM. Ils sont donc traduits, mais le compilateur BASIC ne les accepte pas encore : avec eux, la traduction ne fonctionne qu'avec la ROM. Un avertissement le signale. `PRINT USING` passe aussi par la compilation directe (voir plus bas).
+
+`PRINT USING` de la ROM ne connaît pas les champs de chaîne `&` et `\  \` (seulement `!`) : un avertissement le signale ; la compilation directe les gère comme QuickBASIC.
 
 ## Ce que fait la traduction
 
@@ -182,7 +184,7 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 | `SWAP a, b` | trois affectations |
 | `LINE ...,B` / `,BF`, `PSET (x,y),0` | 4 lignes / boucle de lignes ; `PRESET` |
 | `RANDOMIZE n`, `RND` | `RND(-n)`, `RND(1)` |
-| `TIMER`, `RANDOMIZE TIMER` | calcul à partir de `TIME$` (interpréteur seulement, voir plus bas) |
+| `TIMER`, `RANDOMIZE TIMER` | calcul à partir de `TIME$` ; en compilation directe, lecture de l'horloge du T6834 (`TIME CALL`) |
 | `SLEEP` | attente d'une touche |
 | `SCREEN`, `COLOR`, `WIDTH`, `VIEW`, `KEY` | ignorés, avec un avertissement |
 | `BEEP` | `BEEP 240,5` : 800 Hz pendant 1/4 s, comme sur PC |
@@ -262,7 +264,9 @@ Avec le débogueur, `ligne N` désigne la ligne N du **source QuickBASIC**, et `
 | `SUB`, `FUNCTION` | `GOSUB` | `CALL` / `RET` |
 | récursivité | refusée | **permise** |
 | tableau en paramètre | une copie de la procédure par tableau | **une seule copie** : le tableau est passé par adresse |
-| `INSTR`, `LINE INPUT`, `PRINT USING`, `ON ERROR`, `TIME$` | traduits (ROM seulement) | refusés (absents du compilateur) |
+| `INSTR`, `LINE INPUT`, `ON ERROR`, `TIME$` | traduits (ROM seulement) | refusés (absents du compilateur) |
+| `PRINT USING` | `PRINT USING` de la ROM : champs `&` et `\  \` inconnus | champs numériques mis en forme par la routine de la ROM (`$BBAC`), donc un affichage identique : `#`, `.`, `,`, `**`, `$$`, `+` et `-` ; champs `!`, `&`, `\  \` comme QuickBASIC. Format constant ; `^^^^` refusé |
+| `TIMER` | calcul à partir de `TIME$` | heure du T6834 (`TIME CALL`) |
 | `DIM t(n)` avec n variable | accepté par la ROM | refusé : dimensions constantes |
 | `REDIM` | `ERASE` puis `DIM` | refusé : tableaux de taille fixe |
 | résultat | BASIC du X-07 + assembleur | assembleur seulement |
@@ -291,12 +295,12 @@ L'accès indirect aux tableaux et les recopies de paramètres coûtent environ 2
 - **Messages d'erreur :** les erreurs d'exécution donnent la ligne du source QuickBASIC, avec l'option du compilateur `--debug` (`debug` l'active toujours).
 
 **Quand choisir quoi :**
-- **Traduction :** si l'on veut un programme en BASIC du X-07, à taper ou à lire sur la machine, ou si le programme emploie `INSTR`, `PRINT USING`, `ON ERROR`.
+- **Traduction :** si l'on veut un programme en BASIC du X-07, à taper ou à lire sur la machine, ou si le programme emploie `INSTR`, `ON ERROR`.
 - **Compilation directe :** dès qu'il y a de la récursivité, ou une procédure qui travaille sur plusieurs tableaux.
 
 ## Pistes pour aller plus loin
 
-1. Ajouter au compilateur ce que la ROM sait déjà faire et que la traduction produit : `INSTR`, `LINE INPUT`, `PRINT USING`, `TIME$`, `ON ERROR`. Les deux voies en profiteraient.
+1. Ajouter au compilateur ce que la ROM sait déjà faire et que la traduction produit : `INSTR`, `LINE INPUT`, `TIME$`, `ON ERROR` (et `PRINT USING` dans le compilateur BASIC). Les deux voies en profiteraient.
 2. Compilation directe : entiers 32 bits (`LONG`), dimensions variables (`DIM t(n)`), tableaux par adresse à plus de 2 dimensions.
 3. Arrondi exact de QuickBASIC (demi au pair) dans une petite routine.
 4. `TYPE` traduit en tableaux parallèles.
