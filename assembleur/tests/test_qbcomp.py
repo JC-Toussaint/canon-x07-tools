@@ -206,7 +206,6 @@ END FUNCTION''')
 
     def test_refused(self):
         for src, msg in (("PRINT INSTR(\"AB\", \"B\")", "INSTR"),
-                         ("PRINT USING \"##\"; 3", "PRINT USING"),
                          ("n = 3\nDIM t(n)", "constantes"),
                          ("PRINT UCASE$(\"a\")", "UCASE$")):
             with self.assertRaises(qbasic.QBError) as cm:
@@ -235,6 +234,33 @@ class TestDirectAgainstTranslatorSuite(test_qbasic.TestQBasic):
         m, asm, warns = run(src, inputs)
         self.assertEqual(m.output().rstrip("\n"), expected.rstrip("\n"), src)
         return asm, warns
+
+    def test_print_using_like_the_rom(self):
+        # champs numériques : la routine de la ROM ($BBAC), comme son PRINT USING
+        vals = ["0", "-3", "1234", "0.5", "-2.345", "99.996", "1E6"]
+        fmts = ["####", "##.##", "+##.#", "##.#-", ".##", "X=#### Y=##.#", "#,###",
+                "##,##.##", "**##", "$$##.##", "**$##.#", "###+"]
+        src = "".join('PRINT USING "%s"; %s\n' % (f, v) for f in fmts for v in vals)
+        src += 'PRINT USING "##"; 1; 2; 3\nPRINT USING "A=## "; 7;\nPRINT "/"\n'
+        out, _, _ = qbasic.translate(src)
+        rom, _ = emu.run_basic(out)
+        m, _, _ = run(src)
+        self.assertEqual(m.output(), rom)
+        # chaînes (que la ROM ne connaît pas) : comme QuickBASIC
+        m, _, _ = run('PRINT USING "! & [\\  \\]"; "ABCD"; "EFGH"; "IJKLMN"\n')
+        self.assertEqual(m.output(), "A EFGH [IJKL]\n")
+        for bad in ('PRINT USING "#.##^^^^"; 1', 'f$ = "#"\nPRINT USING f$; 1'):
+            with self.assertRaises(qbasic.QBError):
+                run(bad + "\n")
+
+    def test_timer(self):
+        import datetime
+        asm, _, _ = qbcomp.compile_qbasic("t! = TIMER\nPRINT t!\nRANDOMIZE TIMER\n", "T", 0x3000)
+        a = Assembler()
+        m = emu.prepare_binary(a.assemble_text(asm), a.entry)
+        m.clock = lambda: datetime.datetime(2026, 10, 18, 12, 3, 30)
+        m.run(5_000_000)
+        self.assertEqual(m.output().strip(), str(12 * 3600 + 3 * 60 + 30))
 
     def test_ubound_variable_size(self):
         with self.assertRaises(qbasic.QBError):                  # tailles fixes seulement

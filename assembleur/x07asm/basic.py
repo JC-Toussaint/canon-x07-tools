@@ -1269,6 +1269,12 @@ class Compiler:
             elif kind in ("tab", "spc"):
                 self.gen_i(_fold(e), 0)
                 self.emit("CALL RT_%s" % kind.upper())
+            elif kind == "using":                  # PRINT USING : routine de la ROM
+                v, flags, before, after = e
+                self.gen_x(_fold(v), 0)
+                self.emit("LD   A,$%02X" % flags)
+                self.emit("LD   BC,$%02X%02X" % (before, after))
+                self.emit("CALL RT_PUSING")
             else:
                 e = _fold(e)
                 if self.et(e) == "s":

@@ -131,6 +131,7 @@ Le **sous-processeur T6834**, qui gère l'écran, le clavier et les graphismes, 
 | `$EBF2` / `$EBFF` saisie d'une ligne | lignes fournies par `-i`. Le tampon et HL sont rendus comme par la ROM |
 | `$C92F` commande avec paramètres | graphismes (`PSET`, `PRESET`, PEOR, `LINE`, `CIRCLE`, `POINT`), caractères redéfinis, effacement d'une ligne, défilement |
 | `$C331` haut-parleur | fréquence et durée relevées (`m.notes`), puis jouées dans les fenêtres ; le vrai code s'exécute ensuite |
+| `$C92F` horloge (`TIME CALL`) | l'heure et la date du PC pour `TIME$`, `DATE$` et `TIMER` (jour de la semaine codé comme dans le guide XP-140) ; un programme Python peut fixer `m.clock` |
 | `$C92F`, `$C951` touches de fonction | `KEY$(n)` : définition gardée (UDK WRITE), relue avec sa réponse de longueur variable (UDK READ) ; F6 frappée par le bouton du milieu |
 | `$E428`, `$E334`, `$E348`, `$C0BD` | autres échanges avec le T6834 |
 | `$C5A6` | demande d'extinction (OFF) : comptée, la machine ne s'éteint pas |

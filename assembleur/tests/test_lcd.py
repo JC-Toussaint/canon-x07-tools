@@ -361,6 +361,14 @@ class TestPad(unittest.TestCase):
         finally:
             root.destroy()
 
+    def test_clock(self):
+        # TIME CALL ($01) : l'heure du PC, ou celle de m.clock ; jour de la semaine
+        # codé comme le dit le guide XP-140 (bit 6 - jour à 0, dimanche = 0)
+        import datetime
+        out, _ = emu.run_basic('10 PRINT TIME$;" ";DATE$\n', setup=lambda m: setattr(
+            m, "clock", lambda: datetime.datetime(2026, 10, 18, 12, 3, 30)))
+        self.assertEqual(out.strip(), "12:03:30 26/10/18,SUN")
+
     def test_function_key_definitions(self):
         # KEY$(n) = ... (UDK WRITE $16), KEY$(n) (UDK READ $17, réponse terminée par 00)
         src = ('10 KEY$(6)="?"+CHR$(34)+"F6"+CHR$(34)+CHR$(13)\n'

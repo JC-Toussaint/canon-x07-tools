@@ -696,6 +696,7 @@ class X07(CPU):
         self.on_state = 0             # réponse à ON STATE ($22) : bit 0 = rallumée après OFF
         self.udk = [b""] * 12         # touches de fonction F1-F12 (KEY$) ; d'usine : inconnues
         self.udk_on = True            # UDK ON ($18) / UDK OFF ($19)
+        self.clock = None             # horloge du T6834 : fonction -> datetime (défaut : le PC)
         from collections import deque
         self.serial_in = deque()      # octets envoyés par le PC, pas encore arrivés
         self.serial_out = []          # octets émis par le X-07
@@ -1043,6 +1044,12 @@ class X07(CPU):
             self.udk[k] = (self.udk[k] if cmd == 0x35 else b"") + text
         elif cmd == 0x17 and params and 1 <= p[0] <= 12:            # UDK READ
             resp = list(self.udk[p[0] - 1])
+        elif cmd == 0x01:                        # TIME CALL : année (2 octets, poids fort
+            import datetime                      # d'abord), mois, date, jour, heure, min, s
+            t = (self.clock or datetime.datetime.now)()
+            dow = (t.weekday() + 1) % 7          # dimanche = 0 : son bit (6 - dow) à 0
+            resp = [t.year >> 8, t.year & 0xFF, t.month, t.day, 0xFF & ~(1 << (6 - dow)),
+                    t.hour, t.minute, t.second]
         elif cmd == 0x40:                        # UDK INIT
             self.udk = [b""] * 12
         elif cmd in (0x18, 0x19):                # UDK ON / UDK OFF
