@@ -175,6 +175,7 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 | paramètre tableau `t()` | une **copie de la procédure pour chaque tableau reçu** (avertissement) ; ses variables simples restent communes. Un tableau peut aussi être transmis d'une procédure à une autre |
 | tableau local (`DIM` dans une procédure) | `DIM` une seule fois en tête du programme ; remis à zéro à chaque appel par une boucle, sauf `STATIC` (tailles constantes, 1 ou 2 dimensions) |
 | `CONST` | valeur recopiée dans les expressions |
+| `UBOUND(a[, n])`, `LBOUND(a[, n])` | la borne notée au `DIM` : une constante, ou une variable cachée si la taille est variable ou change par `REDIM`. `LBOUND` vaut 1 pour `DIM a(1 TO n)`, 0 sinon ; un tableau jamais dimensionné a les bornes 0 et 10. Dans une procédure, celles du tableau reçu. En compilation directe, lues dans le descripteur du tableau reçu |
 | `REDIM a(n)` | `IF témoin THEN ERASE A`, puis `DIM A(n)` : une variable témoin dit si le tableau existe déjà (le X-07 répond `FC Error` à l'`ERASE` d'un tableau absent). Le contenu est remis à zéro, comme en QuickBASIC ; `REDIM PRESERVE` n'existe pas en QuickBASIC 4.5 |
 | `DIM a(1 TO n)`, `DIM a(0 TO n)` | `DIM a(n)` : le X-07 n'a ni `TO` dans `DIM` ni `OPTION BASE`, ses indices vont toujours de 0 à n (la case 0 reste inutilisée pour `1 TO n`) |
 | `DIM x AS INTEGER/SINGLE/DOUBLE/STRING`, suffixes, `DEFINT`… | suffixe explicite `%` `#` `$` |
