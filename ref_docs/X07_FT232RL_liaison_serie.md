@@ -9,9 +9,11 @@ Source : *Canon X-07 Technical Guide / Parts Catalog* (`x07_technicalguide.pdf`)
 
 ## 1. Faisabilité
 
-**Oui, c'est possible.** Le port série du X-07 **n'est pas en niveaux RS-232** (±12 V). Il fonctionne en **logique 0 / 4,6 V** (alimentation VCC1/VCC2 = 4,6 V), avec la **polarité TTL normale** : la ligne est à l'état haut au repos. Canon vendait d'ailleurs le X-722 pour passer en vrai RS-232.
+**Oui, c'est possible.** Le port série du X-07 **n'est pas en niveaux RS-232** (±12 V). Il fonctionne en **logique 0 / 4,6 V** (alimentation VCC1/VCC2 = 4,6 V), mais avec la **polarité inversée du RS-232** : la ligne est à **0 V au repos**, et un bit 1 est à 0 V. Canon vendait d'ailleurs le X-722 pour passer en vrai RS-232.
 
-Un module FT232RL **en version TTL** se branche donc directement, **sans MAX232 et sans inversion des données**.
+Un module FT232RL **en version TTL** convient, sans MAX232, mais **à condition d'inverser TXD et RXD** : dans l'EEPROM du FT232R avec FT_Prog (voir §5), ou par un inverseur (74HC14) sur chaque ligne.
+
+> **Constaté sur la machine (octobre 2026).** Sans inversion, le « R » (`$52`) émis par le X-07 arrive sur le PC sous la forme `2B 00`, exactement ce que donne un `$52` inversé lu par un UART normal. Dans l'autre sens, le X-07 prend le repos du FT232RL (état haut) pour un octet mal formé : `INP(#1)` répond « IO Error », même quand le PC n'envoie rien. Une première version de cette fiche affirmait la polarité TTL normale, d'après le seul schéma : c'était faux.
 
 > ⚠️ N'utilisez pas un câble « USB-RS232 » à niveaux ±12 V : il faut un module ou un câble FT232RL **TTL**.
 
@@ -21,7 +23,7 @@ Un module FT232RL **en version TTL** se branche donc directement, **sans MAX232 
 
 | Broche CN9 | Signal | Circuit côté X-07 | Conséquence |
 |---|---|---|---|
-| SP-4 | **TXD** (sortie) | Transistor PNP TR201 (2SA1115) relié au +4,6 V, puis R201 = 100 Ω. ~4,6 V au repos. **Aucune résistance de rappel à la masse côté X-07** : le niveau bas est une ligne « en l'air ». | Il faut une **résistance de 10 kΩ vers GND** côté récepteur. |
+| SP-4 | **TXD** (sortie) | Transistor PNP TR201 (2SA1115) relié au +4,6 V, puis R201 = 100 Ω. Bloqué au repos : la ligne est « en l'air ». **Aucune résistance de rappel à la masse côté X-07.** | Il faut une **résistance de 10 kΩ vers GND** côté récepteur, pour un 0 V franc au repos. |
 | SP-5 | **RXD** (entrée) | R207 = 10 kΩ, puis la base du NPN TR203 (2SC2603), avec R209 = 3,3 kΩ vers la masse et une diode de protection D1 (1S1588). Seuil d'environ 2,5 V. | Accepte directement du 3,3 V ou du 5 V. |
 | SP-6 | **CTS** (entrée) | Même circuit que RXD (R210 = 10 kΩ, TR204, R211). Si la broche est en l'air, /CTS est tiré à l'état haut par 47 kΩ, donc **CTS est inactif**. | **Il faut forcer CTS à l'état haut**, sinon le X-07 n'émet pas. |
 | SP-7 | RTS (sortie) | PNP TR202, même montage que TXD. | Optionnel, non utilisé. |
@@ -108,7 +110,12 @@ FT232RL (VCCIO = 5V)            Canon X-07 CN9
 
 1. **VCCIO = 5 V** (cavalier 3,3 V / 5 V sur la plupart des modules). Le X-07 envoie du 4,6 V : en 5 V, les niveaux lus sont sûrs. En 3,3 V, l'entrée RXD du X-07 fonctionne aussi (seuil d'environ 2,5 V), mais avec moins de marge.
 2. **Ne pas relier le VCC du FTDI à l'alimentation du X-07.** Seule la masse est commune. Le +5 V ne va que sur SP-6 (CTS), qui est une entrée à travers 10 kΩ (environ 0,4 mA).
-3. **Pas d'inversion, pas de reprogrammation.** Les lignes TXD et RXD du FT232RL ont déjà la bonne polarité. FT_Prog n'est **pas nécessaire**.
+3. **Inverser TXD et RXD dans l'EEPROM du FT232R**, une fois pour toutes, avec l'outil FT_Prog de FTDI (Windows) :
+   - *Scan and Parse*, puis **Hardware Specific → Invert RS232 Signals** ;
+   - cocher **Invert TXD** et **Invert RXD**, et seulement ceux-là ;
+   - *Program*, puis débrancher et rebrancher le module (la puce relit son EEPROM à la mise sous tension).
+
+   Sous WSL2, détachez d'abord le module (`usbipd detach --busid <n°>`), puis rattachez-le après le rebranchement. Certains clones de FT232R n'acceptent pas ce réglage : il faut alors un inverseur 74HC14 sur chaque ligne.
 
 > Note : FT_Prog ne servirait que pour un contrôle de flux matériel. RTS# et CTS# du FTDI sont actifs à l'état bas, alors que CTS et RTS du X-07 sont actifs à l'état haut. Il faudrait alors les inverser dans l'EEPROM (« Invert RTS », « Invert CTS ») et mettre 10 kΩ vers GND sur SP-7. C'est inutile avec le câblage minimal ci-dessus.
 
@@ -122,10 +129,10 @@ X-07 allumé, câble FTDI débranché, multimètre par rapport à GND (SP-8 ou S
 
 | Broche | Tension attendue |
 |---|---|
-| SP-4 (TXD) | environ **4,6 V** au repos |
+| SP-4 (TXD) | ligne au repos : transistor bloqué, environ **0 V** (ou flottante sans charge) |
 | SP-9 (VBB) | **tension des piles**, environ 6 V |
 
-Si vous trouvez ces deux tensions là où le dessin les place, l'orientation est la bonne.
+La tension des piles sur SP-9 est le repère le plus sûr : si vous la trouvez là où le dessin la place, l'orientation est la bonne.
 
 ---
 

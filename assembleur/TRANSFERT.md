@@ -2,6 +2,8 @@
 
 `x07asm.py send` envoie un programme machine au X-07 par sa prise série. Le câble est un module FT232RL relié à la prise SERIAL du X-07 ; le câblage est décrit dans [ref_docs/X07_FT232RL_liaison_serie.md](../ref_docs/X07_FT232RL_liaison_serie.md).
 
+> ⚠️ **Le X-07 a une liaison série en logique inversée** (0 V au repos). Il faut inverser TXD et RXD du FT232R (FT_Prog : *Invert TXD*, *Invert RXD*), sinon le récepteur s'arrête sur « IO Error in 30 ». Voir la fiche de câblage, §5.
+
 ```sh
 python3 x07asm.py recepteur                                    # à taper une fois sur le X-07
 python3 x07asm.py send jeu.bas --ram 16 --port /dev/ttyUSB0    # l'envoi
@@ -70,7 +72,7 @@ Le PC n'a jamais plus de 22 octets d'avance, ce qui tient dans le tampon de 32 o
 - **Avec le X-07 émulé**, qui fait tourner les vrais pilotes série de la ROM et une UART émulée : le binaire arrive intact à 1200, 4800 et 8000 bauds, sans octet perdu. Le cas du `CLEAR` oublié est bien détecté.
 - **Par un pseudo-port série Linux** relié au X-07 émulé : le vrai code d'envoi fonctionne, avec pyserial comme avec termios.
 
-Il reste à l'essayer avec le câble et la machine réels. Deux points sont à confirmer : le nombre de bits d'arrêt du mode `B`, et le comportement exact de l'UART, dont l'émulation est déduite du code de la ROM.
+**Avec la machine réelle**, le premier essai a montré que la liaison du X-07 est en logique inversée : le « R » arrive en `2B 00` sur un FT232RL non inversé, et le X-07 répond « IO Error in 30 ». Le transfert complet reste à confirmer une fois TXD et RXD inversés. Il reste aussi à vérifier le nombre de bits d'arrêt du mode `B`.
 
 ## Autres moyens de transfert
 
