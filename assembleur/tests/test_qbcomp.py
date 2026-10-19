@@ -236,6 +236,22 @@ class TestDirectAgainstTranslatorSuite(test_qbasic.TestQBasic):
         self.assertEqual(m.output().rstrip("\n"), expected.rstrip("\n"), src)
         return asm, warns
 
+    def test_ubound_variable_size(self):
+        with self.assertRaises(qbasic.QBError):                  # tailles fixes seulement
+            run("DEFINT A-Z\nn = 6\nDIM v(n)\nPRINT UBOUND(v)\n")
+
+    def test_recursive_function_reads_bounds_of_received_array(self):
+        m, _, _ = run('''DEFINT A-Z
+DECLARE FUNCTION Somme (t(), k)
+DIM b(1 TO 4)
+FOR i = 1 TO 4: b(i) = i * 10: NEXT
+PRINT Somme(b(), UBOUND(b))
+FUNCTION Somme (t(), k)
+IF k < LBOUND(t) THEN Somme = 0 ELSE Somme = t(k) + Somme(t(), k - 1)
+END FUNCTION
+''')
+        self.assertEqual(m.output().strip(), "100")
+
     def test_redim(self):
         # tableaux de taille fixe : REDIM refusé, avec le conseil de traduire
         with self.assertRaises(qbasic.QBError) as cm:

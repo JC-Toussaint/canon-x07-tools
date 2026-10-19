@@ -275,6 +275,22 @@ class Parser:
             if FUNCTIONS[t.val][0] in ("", "n?", "x"):
                 return ("call", t.val, [])
             self.err("« ( » attendu après %s" % t.val, t)
+        if t.kind == "id" and t.val.upper() in ("UBOUND", "LBOUND") and \
+                self.is_op("(", tok=self.peek()):
+            self.next()
+            self.expect_op("(")
+            a = self.next()
+            if a.kind != "id":
+                self.err("%s : nom de tableau attendu" % t.val.upper(), a)
+            dim = 1
+            if self.accept_op(","):
+                d = self.expr()
+                dim = const_number(d)
+                if dim is None or dim != int(dim) or dim < 1:
+                    self.err("%s : numéro de dimension constant attendu (1, 2...)"
+                             % t.val.upper())
+            self.expect_op(")")
+            return ("bound", t.val.upper(), a.val, int(dim))
         if t.kind == "id":
             self.next()
             name = t.val
@@ -1248,6 +1264,8 @@ class Translator:
         k = e[0]
         if k == "num":
             return e[2]
+        if k == "bound":
+            return "i"
         if k in ("str",):
             return "$"
         if k == "raw":
@@ -1289,6 +1307,8 @@ class Translator:
     def x(self, e, prec=0):
         """Texte X-07 de l'expression (déjà débarrassée des appels de FUNCTION)."""
         k = e[0]
+        if k == "bound":                          # sans effet de bord : pas besoin de hoist
+            return self.x(self.bound_value(e), prec)
         if k == "num":
             return e[1]
         if k == "str":
@@ -1377,6 +1397,8 @@ class Translator:
             tmp = self.temp("i")
             self.emit("%s=%s" % (tmp, f["e"]))
             return ("raw", tmp, "i")
+        if k == "bound":
+            return self.bound_value(e)
         if k == "ufn":
             args = [self.hoist(a) for a in e[2]]
             proc = self.procs[e[1]]
@@ -1531,6 +1553,8 @@ class Translator:
         self.global_shared = set()
         self.redim_names = set()                           # tableaux qui passent par REDIM
         self.redim_flags = {}                              # nom X-07 -> variable témoin
+        self.uses_bound = False                            # UBOUND / LBOUND employés
+        self.bounds = {}                                   # nom X-07 -> [(bas, haut)]
         self.find_redims((self.main, list(self.procs.values())))
         for s in self.main:                                # DIM SHARED, CONST, DEF...
             if s[0] in ("dim", "redim") and s[1]:
@@ -2054,6 +2078,7 @@ class Translator:
     def g_dim(self, s, ctx):
         _, shared, decls = s
         out, local = [], []
+        text_keep = {}                          # DIM -> affectations des bornes variables
         for name, dims, typ in decls:
             if typ:
                 self.scope.declared[base(name)] = typ
@@ -2071,6 +2096,9 @@ class Translator:
             xn = self.xvar(name, True)
             text = "%s(%s)" % (xn, ",".join(sizes))
             consts = [self.const_value(hi) for _, hi in dims]
+            keep = self.note_bounds(name, xn, dims, sizes)
+            if keep:
+                text_keep[text] = keep
             if "proc" in ctx and None not in consts and len(dims) <= 2:
                 local.append((name, xn, text, [int(c) for c in consts]))
             else:
@@ -2095,9 +2123,13 @@ class Translator:
             key = ",".join(out)                 # même DIM dans chaque copie : un seul drapeau
             flag = ctx["info"]["dimflags"].get(key) or self.temp("i")
             ctx["info"]["dimflags"][key] = flag
-            self.emit("IF %s=0 THEN DIM %s:%s=1" % (flag, ",".join(out), flag), True)
+            keep = "".join(":" + text_keep[t] for t in out if t in text_keep)
+            self.emit("IF %s=0 THEN DIM %s:%s=1%s" % (flag, ",".join(out), flag, keep), True)
         elif out:
             self.emit("DIM " + ",".join(out))
+            for t in out:
+                if t in text_keep:
+                    self.emit(text_keep[t])
         hoisted = {n for n, _, _, _ in local}
         for name, dims, _ in decls:                       # REDIM saura qu'il existe
             if dims is not None and base(name) in self.redim_names and name not in hoisted:
@@ -2109,9 +2141,43 @@ class Translator:
         if isinstance(node, (list, tuple)):
             if isinstance(node, tuple) and node and node[0] == "redim":
                 self.redim_names.update(base(n) for n, _, _ in node[2])
+            if isinstance(node, tuple) and node and node[0] == "bound":
+                self.uses_bound = True
             for c in node:
                 if isinstance(c, (list, tuple, dict)):
                     self.find_redims(c)
+
+    def note_bounds(self, name, xn, dims, sizes):
+        """Bornes d'un tableau pour UBOUND / LBOUND : constantes, ou gardées dans
+        des variables cachées (taille variable, ou REDIM) ; rend les affectations
+        à faire après le DIM."""
+        if not self.uses_bound:
+            return ""
+        old = self.bounds.get(xn)
+        entry, sets = [], []
+        for k, ((lo, hi), size) in enumerate(zip(dims, sizes)):
+            low = int(self.const_value(lo)) if lo is not None else 0
+            v = self.const_value(hi)
+            if v is not None and base(name) not in self.redim_names:
+                entry.append((low, ("num", str(int(v)), "i")))
+                continue
+            var = old[k][1][1] if old and k < len(old) and old[k][1][0] == "raw" \
+                else self.temp("i")
+            entry.append((low, ("raw", var, "i")))
+            sets.append("%s=%s" % (var, size))
+        self.bounds[xn] = entry
+        return ":".join(sets)
+
+    def bound_value(self, e):
+        """UBOUND(a[, n]) / LBOUND(a[, n]) : bornes notées au DIM ; un tableau jamais
+        dimensionné a les bornes 0 et 10, comme en QuickBASIC."""
+        _, which, name, dim = e
+        entry = self.bounds.get(self.xvar(name, True), [(0, ("num", "10", "i"))])
+        if dim > len(entry):
+            raise QBError("%s(%s, %d) : le tableau n'a que %d dimension(s)"
+                          % (which, name, dim, len(entry)))
+        low, high = entry[dim - 1]
+        return ("num", str(low), "i") if which == "LBOUND" else high
 
     def redim_flag(self, xn):
         """Variable témoin d'un tableau redimensionné : 1 s'il existe (le X-07
@@ -2136,8 +2202,9 @@ class Translator:
                 sizes.append(self.x(self.hoist(hi)))
             xn = self.xvar(name, True)
             flag = self.redim_flag(xn)
+            keep = self.note_bounds(name, xn, dims, sizes)
             self.emit("IF %s THEN ERASE %s" % (flag, xn), True)
-            self.emit("DIM %s(%s):%s=1" % (xn, ",".join(sizes), flag))
+            self.emit("DIM %s(%s):%s=1%s" % (xn, ",".join(sizes), flag, ":" + keep if keep else ""))
 
     def g_shared(self, s, ctx):
         pass

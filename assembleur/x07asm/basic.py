@@ -259,6 +259,8 @@ def etype(e, ty):
         if op in ("/", "^"):
             return "x"
         return "i" if a == b == "i" else "x"
+    if k in ("adesc", "qbound"):          # compilation directe : descripteur, UBOUND
+        return "i"
     raise ValueError(e)
 
 

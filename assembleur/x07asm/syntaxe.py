@@ -18,7 +18,7 @@ BAS_FUNCS = set(basic.NUM_FUNCS) | set(basic.STR_FUNCS) | {
 
 # QuickBASIC : des mots entiers, en majuscules ou non
 QB_KEYWORDS = set(qbasic.STATEMENT_WORDS) | set(qbasic.OPERATOR_WORDS) | {"REM"}
-QB_FUNCS = set(qbasic.FUNCTIONS)
+QB_FUNCS = set(qbasic.FUNCTIONS) | {"UBOUND", "LBOUND"}
 _QB_TOKEN = re.compile(r'"[^"]*"?|\'.*|[A-Za-z_][A-Za-z0-9_.]*[$%!#&]?|&[HhOo][0-9A-Fa-f]+'
                        r'|\d[\d.]*(?:[EeDd][+-]?\d+)?[%!#&]?|.')
 

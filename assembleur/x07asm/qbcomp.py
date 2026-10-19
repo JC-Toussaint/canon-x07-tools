@@ -82,6 +82,7 @@ class Lowering:
 
     def __init__(self, text):
         self.warnings = []
+        self.lows = {}                             # tableau -> bornes basses (DIM a(1 TO n))
         self.source = text.split("\n")            # pour le listing : ligne -> texte
         toks = tokenize(text)
         funcs, subs = set(), set()
@@ -181,6 +182,8 @@ class Lowering:
         k = e[0]
         if k == "num":
             return e[2]
+        if k == "bound":
+            return "i"
         if k == "str":
             return "$"
         if k == "paren":
@@ -261,6 +264,8 @@ class Lowering:
         if not isinstance(e, tuple):
             return e
         k = e[0]
+        if k == "bound":                          # UBOUND / LBOUND : voir QBCompiler
+            return ("c", ("qbound", self.cvar(e[2], True), e[3] - 1, e[1]), "i")
         if k == "ufn":
             proc = self.procs[e[1]]
             self.call_proc(proc, e[2])
@@ -281,6 +286,8 @@ class Lowering:
     def x(self, e):
         """Expression du compilateur (appels de FUNCTION déjà sortis)."""
         k = e[0]
+        if k == "bound":
+            return self.x(self.hoist(e))
         if k == "c":
             return e[1]
         if k == "num":
@@ -912,6 +919,8 @@ class Lowering:
                     self.err("DIM %s : dimensions constantes seulement (compilateur)" % name)
                 sizes.append(int(v))
             cname = self.cvar(name, True)
+            self.lows[cname] = [int(self.const_value(lo)) if lo is not None else 0
+                                for lo, _ in dims]
             self.emit(("dim", [(cname, sizes)]))
             if "proc" in ctx and not ctx["proc"].static and \
                     base(name) not in self.scope.statics:
@@ -1080,10 +1089,11 @@ class QBCompiler(basic.Compiler):
         self.emit("")
         self.emit("JP   RT_END")
         self._gen_fns()
-        for d, (lab, dims) in sorted(self.descs.items()):
+        for d, (lab, dims, lows) in sorted(self.descs.items()):
             n = [x + 1 for x in dims] + [0] * (2 - len(dims))
+            lo = list(lows) + [0] * (2 - len(lows))
             self.code.append("%s:" % d)
-            self.emit("DW   %s,%d,%d" % (lab, n[0], n[1]))
+            self.emit("DW   %s,%d,%d,%d,%d" % (lab, n[0], n[1], lo[0], lo[1]))
         self._fill_frames()
         return self._assemble_text(name, org)
 
@@ -1150,13 +1160,36 @@ class QBCompiler(basic.Compiler):
             if len(dims) > 2:
                 self.err("tableau %s : 1 ou 2 dimensions pour le passer en paramètre" % e[1])
             d_lab = "QD_" + lab
-            self.descs[d_lab] = (lab, dims)
+            self.descs[d_lab] = (lab, dims, self.lw.lows.get(e[1], [0] * len(dims)))
             self.emit("LD   HL,%s" % d_lab)
+            return
+        if e[0] == "qbound":                      # UBOUND / LBOUND
+            _, name, k, which = e
+            ptr = self._ptr_of(name)
+            if ptr:                               # tableau reçu : lu dans son descripteur
+                if k > 1:
+                    self.err("%s : tableau passé en paramètre, 1 ou 2 dimensions" % which)
+                self.emit("LD   HL,(%s)" % self.var(ptr))
+                self.emit("LD   DE,%d" % ((2 if which == "UBOUND" else 6) + 2 * k))
+                self.emit("ADD  HL,DE")
+                self.emit("LD   A,(HL)")
+                self.emit("INC  HL")
+                self.emit("LD   H,(HL)")
+                self.emit("LD   L,A")
+                if which == "UBOUND":
+                    self.emit("DEC  HL")          # le descripteur garde n + 1
+                return
+            dims = self.arrays.get(self.akey(name), [10])
+            if k >= len(dims):
+                self.err("%s(%s, %d) : le tableau n'a que %d dimension(s)"
+                         % (which, name, k + 1, len(dims)))
+            lows = self.lw.lows.get(name, [0] * len(dims))
+            self.emit("LD   HL,%d" % (dims[k] if which == "UBOUND" else lows[k]))
             return
         return super().gen_i(e, d)
 
     def et(self, e):
-        if e[0] == "adesc":
+        if e[0] in ("adesc", "qbound"):
             return "i"
         return super().et(e)
 

@@ -35,6 +35,46 @@ class TestQBasic(unittest.TestCase):
             self.assertEqual(mc.output().rstrip("\n"), ref.rstrip("\n"), "\n" + out)
         return out, warns
 
+    def test_ubound_lbound(self):
+        # bornes notées au DIM (1 TO n compris) ; tableau reçu : celles de l'appelant
+        self.qb('''
+DEFINT A-Z
+DECLARE SUB Tri (t())
+DIM a(4), b(1 TO 6), m(3, 4)
+FOR i = 0 TO 4: READ a(i): NEXT
+FOR i = 1 TO 6: READ b(i): NEXT
+DATA 5, 3, 9, 1, 7
+DATA 60, 10, 50, 20, 40, 30
+Tri a()
+Tri b()
+FOR i = 0 TO UBOUND(a): PRINT a(i);: NEXT: PRINT
+FOR i = LBOUND(b) TO UBOUND(b): PRINT b(i);: NEXT: PRINT
+x! = UBOUND(b) / 4
+IF UBOUND(a) > 3 THEN PRINT "GRAND"; x!
+PRINT UBOUND(m, 1); UBOUND(m, 2); LBOUND(m, 2); UBOUND(z)
+SUB Tri (t())
+FOR i = LBOUND(t) TO UBOUND(t) - 1
+    FOR j = i + 1 TO UBOUND(t)
+        IF t(j) < t(i) THEN SWAP t(i), t(j)
+    NEXT
+NEXT
+END SUB
+''', " 1  3  5  7  9 \n 10  20  30  40  50  60 \nGRAND 1.5 \n 3  4  0  10 ")
+        with self.assertRaises(qbasic.QBError):
+            qbasic.translate("DIM a(3)\nPRINT UBOUND(a, 2)\n")
+
+    def test_ubound_variable_size(self):
+        # taille variable ou REDIM : borne gardée dans une variable (ROM seulement)
+        self.qb('''
+DEFINT A-Z
+n = 6
+DIM v(n)
+REDIM w(2)
+PRINT UBOUND(v); UBOUND(w)
+REDIM w(n + 1)
+PRINT UBOUND(w)
+''', " 6  2 \n 7 ", compiled=False)
+
     def test_redim(self):
         # REDIM : ERASE s'il existe (sinon FC Error sur le X-07), puis DIM ; remis à zéro
         out, _ = self.qb('''
