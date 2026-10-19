@@ -1015,6 +1015,10 @@ class Lowering:
     def g_poke(self, s, ctx):
         self.emit(("poke" if s[1] == "POKE" else "out", self.value(s[2]), self.value(s[3])))
 
+    def g_redim(self, s, ctx):
+        self.err("REDIM n'est pas géré par le compilateur, dont les tableaux ont une "
+                 "taille fixe : traduisez sans --direct")
+
     def g_erase(self, s, ctx):
         for n in s[1]:
             self.emit(("qzero", self.cvar(n, True)))

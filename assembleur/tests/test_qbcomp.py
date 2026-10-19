@@ -236,6 +236,12 @@ class TestDirectAgainstTranslatorSuite(test_qbasic.TestQBasic):
         self.assertEqual(m.output().rstrip("\n"), expected.rstrip("\n"), src)
         return asm, warns
 
+    def test_redim(self):
+        # tableaux de taille fixe : REDIM refusé, avec le conseil de traduire
+        with self.assertRaises(qbasic.QBError) as cm:
+            run("DEFINT A-Z\nREDIM a(5)\n")
+        self.assertIn("sans --direct", str(cm.exception))
+
     # tests propres à la traduction en BASIC, refaits pour la compilation directe
     def test_blocks_sub_function_by_reference(self):
         import inspect

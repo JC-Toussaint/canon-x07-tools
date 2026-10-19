@@ -175,6 +175,7 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 | paramètre tableau `t()` | une **copie de la procédure pour chaque tableau reçu** (avertissement) ; ses variables simples restent communes. Un tableau peut aussi être transmis d'une procédure à une autre |
 | tableau local (`DIM` dans une procédure) | `DIM` une seule fois en tête du programme ; remis à zéro à chaque appel par une boucle, sauf `STATIC` (tailles constantes, 1 ou 2 dimensions) |
 | `CONST` | valeur recopiée dans les expressions |
+| `REDIM a(n)` | `IF témoin THEN ERASE A`, puis `DIM A(n)` : une variable témoin dit si le tableau existe déjà (le X-07 répond `FC Error` à l'`ERASE` d'un tableau absent). Le contenu est remis à zéro, comme en QuickBASIC ; `REDIM PRESERVE` n'existe pas en QuickBASIC 4.5 |
 | `DIM a(1 TO n)`, `DIM a(0 TO n)` | `DIM a(n)` : le X-07 n'a ni `TO` dans `DIM` ni `OPTION BASE`, ses indices vont toujours de 0 à n (la case 0 reste inutilisée pour `1 TO n`) |
 | `DIM x AS INTEGER/SINGLE/DOUBLE/STRING`, suffixes, `DEFINT`… | suffixe explicite `%` `#` `$` |
 | `SWAP a, b` | trois affectations |
@@ -197,7 +198,7 @@ Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonn
 | fichiers autres que séquentiels (`RANDOM`, `BINARY`, `GET`, `PUT`) | — | fichiers séquentiels en RAM : `OPEN ... FOR INPUT/OUTPUT/APPEND`, voir [FICHIERS.md](FICHIERS.md) |
 | `UCASE$`, `LCASE$`, `LTRIM$`, `RTRIM$`, `OCT$` | absents de la ROM | `MID$(STR$(x),2)` pour un nombre positif |
 | `DIM t(2 TO 5)`, `OPTION BASE 1` | indices toujours de 0 à n sur le X-07 (`DIM A(1 TO 5)` et `OPTION BASE` y donnent `SN Error`) | décaler les indices |
-| `REDIM`, chaînes de longueur fixe, `RETURN étiquette`, `LINE -(x,y)` | | |
+| chaînes de longueur fixe, `RETURN étiquette`, `LINE -(x,y)` | | |
 
 **Différences qui restent**, à connaître :
 - **Arrondi :** QuickBASIC arrondit les demis au pair (`CINT(2.5)` = 2). La traduction donne 3.
@@ -262,6 +263,7 @@ Avec le débogueur, `ligne N` désigne la ligne N du **source QuickBASIC**, et `
 | tableau en paramètre | une copie de la procédure par tableau | **une seule copie** : le tableau est passé par adresse |
 | `INSTR`, `LINE INPUT`, `PRINT USING`, `ON ERROR`, `TIME$` | traduits (ROM seulement) | refusés (absents du compilateur) |
 | `DIM t(n)` avec n variable | accepté par la ROM | refusé : dimensions constantes |
+| `REDIM` | `ERASE` puis `DIM` | refusé : tableaux de taille fixe |
 | résultat | BASIC du X-07 + assembleur | assembleur seulement |
 
 **Procédures.** L'appelant range les arguments dans des cases propres à la procédure ; la procédure les recopie dans ses paramètres à l'entrée. À la sortie, elle range ses paramètres dans d'autres cases, que l'appelant recopie dans les variables passées : c'est le passage par référence de QuickBASIC, et `(x)` passe par valeur. Ces cases ne sont jamais empilées : le passage reste exact pendant la récursivité, y compris quand une procédure se transmet sa propre variable par référence.
@@ -296,7 +298,7 @@ L'accès indirect aux tableaux et les recopies de paramètres coûtent environ 2
 1. Ajouter au compilateur ce que la ROM sait déjà faire et que la traduction produit : `INSTR`, `LINE INPUT`, `PRINT USING`, `TIME$`, `ON ERROR`. Les deux voies en profiteraient.
 2. Compilation directe : entiers 32 bits (`LONG`), dimensions variables (`DIM t(n)`), tableaux par adresse à plus de 2 dimensions.
 3. Arrondi exact de QuickBASIC (demi au pair) dans une petite routine.
-4. `TYPE` traduit en tableaux parallèles ; `REDIM` par `ERASE` puis `DIM`.
+4. `TYPE` traduit en tableaux parallèles.
 5. Garder les commentaires en `REM` (option), au prix de la mémoire.
 6. Essayer des programmes QuickBASIC réels, écrits par d'autres, pour mesurer la part traduite sans retouche.
 
