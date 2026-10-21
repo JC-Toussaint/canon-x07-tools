@@ -63,6 +63,14 @@ python3 x07asm.py emu exemples/fleches.bas --fenetre
 
 Les diagonales s'obtiennent au clavier en tenant deux flèches. Les codes de `STICK` sont ceux du guide technique officiel de la carte XP-140 (tableau 6), qui confirme les *Applications en assembleur* : les *Mystères* (`$32` droite, `$36` bas) se trompent, `$32` et `$36` sont des diagonales.
 
+**Jeu :** `exemples/serpent.bas` est un serpent dirigé par les flèches (`INKEY$`) : il grandit en mangeant les pommes et meurt sur les bords ou en se mordant (`POINT`).
+
+```sh
+python3 x07asm.py emu exemples/serpent.bas --fenetre
+```
+
+**Rafraîchissement de l'écran :** la fenêtre et l'éditeur sont cadencés par l'horloge monotone du PC, pas par les minuteries de Tk (`after`). Celles-ci suivent l'horloge murale : sous WSL, quand elle est recalée sur Windows (sauts de plusieurs secondes), l'écran restait figé pendant que le programme continuait. Sous Windows, où ce mécanisme n'existe pas, la fenêtre garde `after`.
+
 **Un programme machine en mémoire**, comme s'il venait d'arriver par le câble série :
 
 ```sh
