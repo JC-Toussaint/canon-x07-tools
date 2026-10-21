@@ -17,6 +17,7 @@ dessiné à côté de l'écran ; on le manie à la souris ou au clavier :
       est aussi la touche F6 : il frappe sa définition (KEY$(6))
   barre d'espace : espace tapé, barre d'espace (STRIG(0)) et bouton du milieu
 """
+import os
 import threading
 import time
 
@@ -52,7 +53,7 @@ class Ecran:
 
     def refresh(self, lcd):
         """Redessine si l'écran (ou le clignotement du curseur) a changé."""
-        now = time.time()
+        now = time.monotonic()
         if now - self._blink_t > 0.4:
             self._blink, self._blink_t = not self._blink, now
         key = (lcd.version, lcd.cursor is not None and self._blink)
@@ -110,17 +111,19 @@ class Touches:
 
     def release(self, names):
         for n in names:
-            token = object()
-            self.pending[n] = token
-            self.widget.after(RELEASE_DELAY, lambda n=n, t=token: self._release(n, t))
+            self.pending[n] = time.monotonic() + RELEASE_DELAY / 1000
 
-    def _release(self, name, token):
-        if self.pending.get(name) is not token:
-            return                                # appuyée de nouveau entre-temps
-        del self.pending[name]
+    def poll(self):
+        """Relâche les touches dont le délai est écoulé (appelé par la Cadence)."""
+        now = time.monotonic()
+        due = [n for n, t in self.pending.items() if t <= now]
+        if not due:
+            return
         m = self.get_m()
-        if m is not None:
-            m.held.discard(name)
+        for n in due:
+            del self.pending[n]
+            if m is not None:
+                m.held.discard(n)
         self.changed()
 
     def changed(self):
@@ -210,6 +213,62 @@ class Pave:
             self.canvas.itemconfigure(item, fill=self.KEY_DOWN if name in held else self.KEY)
 
 
+class Cadence:
+    """Appelle callback() dans le fil de Tk toutes les period secondes.
+
+    Les minuteries de Tk (after) suivent l'horloge murale : quand elle recule
+    (sous WSL, son recalage sur Windows la fait sauter de plusieurs secondes),
+    elles se déclenchent d'autant plus tard et l'écran se fige pendant que
+    l'émulation continue.  Un fil cadencé par l'horloge monotone (time.sleep)
+    écrit donc un octet dans un tube que Tk surveille (createfilehandler) :
+    Tk se réveille aussitôt, dans mainloop() comme dans update(), et le fil
+    ne touche à aucun objet Tk.  Sans createfilehandler (Windows) : after()."""
+
+    def __init__(self, root, callback, period=0.04):
+        self.root, self.callback, self.period, self.running = root, callback, period, True
+        self.rfd = None
+        if hasattr(root.tk, "createfilehandler"):
+            import tkinter as tk
+            self.rfd, wfd = os.pipe()
+            os.set_blocking(wfd, False)
+            root.tk.createfilehandler(self.rfd, tk.READABLE, self._ready)
+            threading.Thread(target=self._run, args=(wfd,), daemon=True).start()
+        else:
+            root.after(int(period * 1000), self._after)
+
+    def _run(self, fd):
+        # le fil ferme lui-même son bout du tube : jamais d'écriture sur un
+        # descripteur fermé, peut-être déjà réattribué à un autre fichier
+        try:
+            while self.running:
+                time.sleep(self.period)
+                try:
+                    os.write(fd, b".")
+                except BlockingIOError:         # tube plein : Tk est occupé
+                    pass
+                except OSError:                 # lecteur fermé : arrêt
+                    return
+        finally:
+            os.close(fd)
+
+    def _ready(self, fd, mask):
+        os.read(fd, 4096)                       # les tics en retard ne comptent qu'une fois
+        if self.running:
+            self.callback()
+
+    def _after(self):
+        if self.running:
+            self.callback()
+            self.root.after(int(self.period * 1000), self._after)
+
+    def stop(self):
+        self.running = False
+        if self.rfd is not None:
+            self.root.tk.deletefilehandler(self.rfd)
+            os.close(self.rfd)
+            self.rfd = None
+
+
 def connect_speaker(m, hp):
     """Les bips de la machine m sur le haut-parleur hp (son.HautParleur) ;
     l'attente d'un bip s'interrompt si on arrête la machine."""
@@ -274,7 +333,7 @@ class Fenetre:
             finally:
                 self.done = True
         threading.Thread(target=worker, daemon=True).start()
-        self.root.after(40, self._refresh)
+        self.cadence = Cadence(self.root, self._refresh)
         self.root.mainloop()
 
     # -------------------------------------------------- dessin
@@ -282,6 +341,7 @@ class Fenetre:
         if getattr(self, "close_requested", False):    # demandé depuis un autre fil
             self._close()
             return
+        self.touches.poll()
         m = self.m
         if m is not None:
             lcd = m.lcd
@@ -290,7 +350,6 @@ class Fenetre:
             state = "attente du clavier" if waiting and not self.done else self.status
             self.info.configure(text="%s   ·   %s instructions" % (state, format(m.steps, ",")
                                                                   .replace(",", " ")))
-        self.root.after(40, self._refresh)
 
     # -------------------------------------------------- clavier
     def _key(self, ev):
@@ -302,5 +361,6 @@ class Fenetre:
     def _close(self):
         if self.m is not None:
             self.m.stop_requested = True
+        self.cadence.stop()
         self.hp.close()
         self.root.destroy()

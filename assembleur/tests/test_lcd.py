@@ -300,10 +300,11 @@ class TestPad(unittest.TestCase):
         root = tk.Tk()
         m = emu.boot(16)
 
-        def pump(t):
-            end = time.time() + t
-            while time.time() < end:
+        def pump(dur):                                   # comme la Cadence de la fenêtre
+            end = time.monotonic() + dur
+            while time.monotonic() < end:
                 root.update()
+                t.poll()
                 time.sleep(0.01)
 
         class Ev:

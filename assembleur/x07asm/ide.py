@@ -17,7 +17,7 @@ import re
 import threading
 
 from . import debug, emu, syntaxe
-from .afficheur import connect_speaker
+from .afficheur import Cadence, connect_speaker
 from .sim import EXIT
 
 TEMPLATES = {   # point de départ d'un nouveau programme
@@ -473,7 +473,7 @@ class Editeur:
         if path:
             self.load(path)
         self.update_buttons()
-        self.root.after(40, self.tick)
+        self.cadence = Cadence(self.root, self.tick)
 
     # -------------------------------------------------- menus
     def build_menus(self):
@@ -875,6 +875,7 @@ class Editeur:
             menu.entryconfigure(label, state=self.state_of(key))
 
     def tick(self):
+        self.touches.poll()
         s = self.session
         if s and s.m:
             self.ecran.refresh(s.m.lcd)
@@ -897,7 +898,6 @@ class Editeur:
         elif self.busy() and s and s.m:
             if s.m.lcd.cursor is not None:
                 self.set_status("le X-07 attend une touche : cliquez sur l'écran et tapez")
-        self.root.after(40, self.tick)
 
     def show_focus(self, on):
         self.screen_hint.configure(
@@ -949,6 +949,7 @@ class Editeur:
             self.session.m.stop_requested = True
         if self.recolor_pending is not None:
             self.root.after_cancel(self.recolor_pending)
+        self.cadence.stop()
         self.hp.close()
         self.root.destroy()
 
