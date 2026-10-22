@@ -1,0 +1,64 @@
+' Serpent : version QuickBASIC (adaptée au X-07) de exemples/serpent.bas
+' Flèches du X-07 : CHR$(28) droite, 29 gauche, 30 haut, 31 bas (INKEY$)
+' Le serpent grandit en mangeant les pommes ; il meurt sur les bords ou en se mordant
+' Traduction :          python3 x07asm.py qb exemples/qbasic/serpent.qbas
+' Dans la fenêtre :     python3 x07asm.py emu exemples/qbasic/serpent.qbas --fenetre
+' Compilation directe : python3 x07asm.py run exemples/qbasic/serpent.qbas --direct --fenetre
+DEFINT A-Z
+DECLARE SUB NouvellePomme ()
+CONST TAILLE = 128                      ' places du tampon circulaire
+DIM SHARED corpsX(127), corpsY(127)    ' TAILLE - 1
+DIM SHARED pommeX, pommeY
+
+DO
+    CLS
+    ' corps dans un tampon circulaire : queue en q, tête en t
+    longueur = 5: q = 0: t = longueur - 1: croissance = 0
+    dx = 1: dy = 0: score = 0
+    FOR i = 0 TO longueur - 1
+        corpsX(i) = 16 + i: corpsY(i) = 16
+        PSET (corpsX(i), corpsY(i))
+    NEXT i
+    NouvellePomme
+    DO
+        SELECT CASE INKEY$
+            CASE CHR$(28): IF dx = 0 THEN dx = 1: dy = 0        ' droite
+            CASE CHR$(29): IF dx = 0 THEN dx = -1: dy = 0       ' gauche
+            CASE CHR$(30): IF dy = 0 THEN dx = 0: dy = -1       ' haut
+            CASE CHR$(31): IF dy = 0 THEN dx = 0: dy = 1        ' bas
+        END SELECT
+        nx = corpsX(t) + dx: ny = corpsY(t) + dy
+        IF nx < 0 OR nx > 119 OR ny < 0 OR ny > 31 THEN EXIT DO
+        mange = (nx = pommeX AND ny = pommeY)
+        IF mange THEN score = score + 10: croissance = croissance + 2
+        ' la queue avance, sauf si le serpent grandit
+        IF croissance > 0 AND longueur < TAILLE - 1 THEN
+            croissance = croissance - 1: longueur = longueur + 1
+        ELSE
+            PRESET (corpsX(q), corpsY(q))
+            q = (q + 1) MOD TAILLE
+        END IF
+        IF NOT mange AND POINT(nx, ny) <> 0 THEN EXIT DO     ' il se mord
+        t = (t + 1) MOD TAILLE
+        corpsX(t) = nx: corpsY(t) = ny
+        PSET (nx, ny)
+        IF mange THEN NouvellePomme
+    LOOP
+    CLS
+    PRINT "GAME OVER !"
+    PRINT "SCORE :"; score
+    DO: LOOP UNTIL INKEY$ = ""          ' oublie les touches de la partie
+    PRINT "REJOUER (O/N) ?"
+    DO
+        k$ = INKEY$
+    LOOP UNTIL k$ = "O" OR k$ = "o" OR k$ = "N" OR k$ = "n"
+LOOP UNTIL k$ = "N" OR k$ = "n"
+END
+
+' Pomme au hasard, hors du serpent
+SUB NouvellePomme
+    DO
+        pommeX = INT(RND * 110) + 5: pommeY = INT(RND * 26) + 3
+    LOOP WHILE POINT(pommeX, pommeY) <> 0
+    PSET (pommeX, pommeY)
+END SUB
