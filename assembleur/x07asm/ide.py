@@ -48,6 +48,21 @@ KINDS = ((".bas", "BASIC du X-07"), (".qbas", "QuickBASIC"), (".asm", "Assembleu
 INTERNAL = re.compile(r"(V_|S_|A[IFDS]_)(Q[TAOR]_|FNP_|FN_)")   # variables du compilateur
 
 
+# polices à chasse fixe, par ordre de préférence (Linux, Windows, macOS) ; une
+# police absente serait remplacée par Tk par une police proportionnelle
+POLICES_FIXES = ("DejaVu Sans Mono", "Consolas", "Menlo", "Courier New", "Liberation Mono")
+
+
+def police_fixe(root):
+    """Première police à chasse fixe installée, sinon celle du système (TkFixedFont)."""
+    import tkinter.font as tkfont
+    installees = set(tkfont.families(root))
+    for nom in POLICES_FIXES:
+        if nom in installees:
+            return nom
+    return tkfont.nametofont("TkFixedFont").actual("family")
+
+
 class Session:
     """Un programme en cours de débogage, repéré par les lignes de son source."""
 
@@ -370,7 +385,7 @@ class Editeur:
         self.root = tk.Tk()
         self.root.title("Canon X-07 : éditeur-débogueur")
         self.root.geometry("1250x760")
-        mono = ("DejaVu Sans Mono", 10)
+        mono = (police_fixe(self.root), 10)
         self.mono = mono
 
         self.build_menus()
@@ -825,7 +840,7 @@ class Editeur:
             y, h = info[1], info[3]
             line = int(idx.split(".")[0])
             g.create_text(54, y + h // 2, anchor="e", text=str(line), fill="#888",
-                          font=("DejaVu Sans Mono", 9))
+                          font=(self.mono[0], 9))
             if s and line in s.break_lines:
                 g.create_oval(4, y + h // 2 - 5, 14, y + h // 2 + 5, fill="#d22", outline="#900")
             if line == current:
