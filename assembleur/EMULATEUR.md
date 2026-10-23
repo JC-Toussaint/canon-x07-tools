@@ -150,6 +150,7 @@ Le **sous-processeur T6834**, qui gère l'écran, le clavier et les graphismes, 
 - **Interruptions :** pas d'interruption clavier (INT A) ni d'horloge ; les touches arrivent par les routines imitées. Pas de NMI.
 - **Périphériques absents :** cassette, imprimante, table traçante X-710, interface vidéo X-720.
 - **Son :** joué seulement dans les fenêtres (`--fenetre`, éditeur), par `ffplay` ; ailleurs, les notes sont relevées sans être jouées. Le timbre est une onde carrée idéale, pas celle du buzzer. Le caractère 7 (sonnerie) est envoyé au T6834, dont le son n'est pas connu : il reste muet.
+- **Longueur des lignes :** sans fenêtre, les lignes du programme ne passent pas par l'éditeur de la ROM. Comme celui-ci perd sans message une ligne de plus de 79 caractères (vérifié dans la fenêtre), l'émulateur la refuse avec un message, au lieu de l'accepter.
 - **Temps :** il est compté en instructions, pas en cycles. Les rapports de vitesse donnés dans la documentation sont donc approximatifs.
 - **Codes du T6834** (touches de `STICK`, motifs des caractères…) : ils ne sont pas dans la ROM. Leurs valeurs viennent des livres et du guide technique XP-140.
 

@@ -1044,6 +1044,7 @@ class Parser:
 
 
 STRING_SPACE = 500     # octets réservés aux chaînes (le X-07 démarre avec 50)
+LINE_MAX = 79          # ligne la plus longue que garde l'éditeur de la ROM (emu.LINE_MAX)
 FILE_SPACE = 1024      # zone des fichiers en RAM (FSET), si le programme en emploie
 FILE_SIZE = 256        # taille d'un fichier créé sans « LEN = » (taille fixe sur le X-07)
 KBNTAB = 0x2C5         # canaux ouverts : 8 octets (pilote, écriture, lecture, fin)
@@ -1399,6 +1400,10 @@ class Translator:
             return ("raw", tmp, "i")
         if k == "bound":
             return self.bound_value(e)
+        if k == "call" and e[1] == "TIMER":         # calcul long : dans une variable
+            tmp = self.temp("s")
+            self.emit("%s=%s" % (tmp, self.x(e)))
+            return ("raw", tmp, "s")
         if k == "ufn":
             args = [self.hoist(a) for a in e[2]]
             proc = self.procs[e[1]]
@@ -1589,8 +1594,10 @@ class Translator:
             # petit qu'elle donnerait OM Error ; plus grand garde les fichiers)
             at = next(k for k, it in enumerate(self.items)
                       if it[0] == "stmt" and it[1] == "DEFSNG A-Z") + 1
-            self.items.insert(at, ("stmt", "IF PEEK(&H212)+256*PEEK(&H213)-PEEK(&H210)"
-                                   "-256*PEEK(&H211)<%d THEN FSET %d"
+            # place libre = ($212) - ($210), mots de 16 bits ; écrit court pour tenir
+            # sur une ligne de l'éditeur (LINE_MAX)
+            self.items.insert(at, ("stmt", "IF PEEK(530)-PEEK(528)+256*(PEEK(531)-PEEK(529))"
+                                   "<%d THEN FSET %d"
                                    % (self.file_space - 13, self.file_space), True))
         if self.hoisted_dims:                              # juste après DEFSNG A-Z
             self.items.insert(1, ("stmt", "DIM " + ",".join(self.hoisted_dims.values()), False))
@@ -2068,16 +2075,36 @@ class Translator:
                 else:
                     conds.append(("bin", "AND", ("bin", ">=", tv, test[1]),
                                   ("bin", "<=", tv, test[2])))
-            c = conds[0]
-            for d in conds[1:]:
-                c = ("bin", "OR", c, d)
-            self.cond_false_jump(c, nxt)
+            chunks = self.or_chunks(conds)
+            if len(chunks) == 1:
+                self.cond_false_jump(chunks[0], nxt)
+            else:                       # liste trop longue pour une ligne
+                here = self.new_label()
+                for c in chunks:
+                    self.cond_true_jump(c, here)
+                self.emit("GOTO @%s" % nxt)
+                self.place(here)
             self.gen_block(body, ctx)
             self.emit("GOTO @%s" % end)
             self.place(nxt)
         if other:
             self.gen_block(other, ctx)
         self.place(end)
+
+    def or_chunks(self, conds):
+        """Regroupe les conditions par OR en paquets dont le test « IF ... THEN
+        nnnnn » tient sur une ligne (numéro compris) : l'éditeur du X-07 perd
+        une ligne trop longue."""
+        room = self.line_len - len("65529 IF =0 THEN 65529")
+        chunks, cur = [], None
+        for d in conds:
+            c = d if cur is None else ("bin", "OR", cur, d)
+            if cur is not None and len(self.x(self.hoist(c), PREC["="] + 1)) > room:
+                chunks.append(cur)
+                c = d
+            cur = c
+        chunks.append(cur)
+        return chunks
 
     def g_dim(self, s, ctx):
         _, shared, decls = s
@@ -2366,6 +2393,10 @@ class Translator:
             text = '"'.join(re.sub(r"@(G\d+)(\+?)", repl, piece) if k % 2 == 0 else piece
                            for k, piece in enumerate(text.split('"')))
             out.append("%d %s" % (start + k * step, text))
+            if len(out[-1]) > LINE_MAX:
+                self.warn("ligne %d : %d caractères ; l'éditeur du X-07 n'en garde que %d "
+                          "(tapée ou chargée par la ROM, elle serait perdue)"
+                          % (start + k * step, len(out[-1]), LINE_MAX))
         for key in self.labels:
             if self.labels[key] not in numbers:
                 raise QBError("étiquette %s introuvable" % key[1:])

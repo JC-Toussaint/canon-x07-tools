@@ -15,6 +15,9 @@ from .sim import X07, SimError, EXIT, REAL, PowerOff
 
 ROM_PATHS = (os.path.join(os.path.dirname(__file__), "..", "..", "ROM_x07", "x07.bin"),)
 RAM_TOP = {8: 0x1FFF, 16: 0x3FFF, 24: 0x5FFF}
+# l'éditeur plein écran de la ROM ne garde pas une ligne plus longue (vérifié :
+# 79 caractères passent, 80 et plus sont perdus sans message)
+LINE_MAX = 79
 
 _rom = None
 _snapshots = {}
@@ -228,6 +231,9 @@ def run_basic(src, inputs=(), keys="", ram=16, max_steps=50_000_000, echo=None, 
         if not queue:
             raise Finished()
         line = queue.pop(0)
+        if len(line) > LINE_MAX:
+            raise SimError("ligne de %d caractères (« %s... ») : l'éditeur du X-07 n'en "
+                           "garde que %d, elle serait perdue" % (len(line), line[:12], LINE_MAX))
         _type_line(m, line, echo=False)
         if line == "RUN":                  # le programme démarre sur un écran vierge
             state["phase"] = "exécution"

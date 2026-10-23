@@ -153,6 +153,7 @@ Ces différences ont été mesurées dans l'émulateur, qui exécute la vraie RO
 | type par défaut : double précision | QuickBASIC : simple | `DEFSNG A-Z` en tête |
 | `DIM` refait donne `DD Error`, `ERASE` d'un tableau absent donne `FC Error` | tableaux locaux des procédures | `DIM` une seule fois en tête du programme, tableau remis à zéro à chaque appel |
 | **50 octets seulement pour les chaînes** au départ : construire une chaîne (`r$ = r$ + MID$(...)`) donne vite `OS Error` | QuickBASIC n'a pas cette limite | `CLEAR 500` en tête du programme traduit, s'il emploie des chaînes (le compilateur, lui, réserve la place de chaque chaîne) |
+| l'éditeur plein écran **perd sans message une ligne de plus de 79 caractères** (tapée, ou dans la fenêtre de l'émulateur) | une longue liste de `CASE` donnait une ligne perdue (`mots.qbas` comptait alors chaque lettre comme une voyelle) | lignes de 72 caractères ; liste de `CASE` découpée en plusieurs `IF` ; `TIMER` calculé à part ; avertissement si une ligne dépasse quand même 79 |
 | pas de pointeurs : un tableau ne peut pas être passé en paramètre | `SUB Trier (t())` | une copie de la procédure par tableau reçu |
 
 Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonnes), opérateurs et priorités, vrai = -1, `MOD`, `\`, `&H`, `&O`, fonctions de chaînes, `DATA`/`READ`/`RESTORE`, `ON ... GOTO/GOSUB`, `DEF FN`, et sortie d'une boucle `FOR` par `GOTO` (tolérée par la ROM).

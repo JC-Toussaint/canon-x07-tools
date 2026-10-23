@@ -247,6 +247,28 @@ CASE 1 TO 5: PRINT "petit"
 CASE IS >= 6: PRINT "grand"
 END SELECT''', " 2  1  12 \nbc\ngrand\n")
 
+    def test_lines_fit_the_rom_editor(self):
+        # l'éditeur de la ROM perd une ligne de plus de 79 caractères : une
+        # longue liste de CASE est découpée (mots.qbas comptait chaque lettre)
+        src = '''
+DEFINT A-Z
+s$ = "toto Canon X-07": n = 0
+FOR i = 1 TO LEN(s$)
+    SELECT CASE MID$(s$, i, 1)
+        CASE "A", "E", "I", "O", "U", "Y", "a", "e", "i", "o", "u", "y"
+            n = n + 1
+        CASE "0" TO "9": PRINT MID$(s$, i, 1);
+    END SELECT
+NEXT i
+PRINT n'''
+        self.qb(src, "07 4 \n")
+        for prog in (src, "RANDOMIZE TIMER\nPRINT INT(RND * 6) + 1 < 7\n"):
+            out, warns, _ = qbasic.translate(prog)
+            self.assertLessEqual(max(map(len, out.splitlines())), emu.LINE_MAX, out)
+            self.assertFalse(warns)
+        _, m = emu.run_basic('10 PRINT "%s"' % ("A" * 70))      # refusée, comme par la ROM
+        self.assertIn("l'éditeur du X-07 n'en garde que 79", m.error)
+
     def test_labels_gosub_data_restore(self):
         self.qb('''
 RESTORE Donnees2

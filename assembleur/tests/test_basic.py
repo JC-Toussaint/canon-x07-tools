@@ -59,8 +59,9 @@ class TestAgainstRom(OracleCase):
     def test_font_read(self):
         # « [xx,...,xx] » ; la ROM met CHR$(0) à la place d'un premier chiffre 0
         self.same('10 FOR K=0 TO 3:FONT$(128+K)=STR$(K*5)+",16,1,2,3,4,5,&HFF":NEXT\n'
-                  '20 FOR K=0 TO 3:A$=FONT$(128+K):PRINT LEN(A$);ASC(MID$(A$,2,1));'
-                  'MID$(A$,3,23):NEXT\n30 PRINT FONT$(65)\n40 PRINT FONT$(31)')
+                  '20 FOR K=0 TO 3:A$=FONT$(128+K)\n'
+                  '25 PRINT LEN(A$);ASC(MID$(A$,2,1));MID$(A$,3,23):NEXT\n'
+                  '30 PRINT FONT$(65)\n40 PRINT FONT$(31)')
 
     def test_numbers_and_types(self):
         self.same('''10 PRINT 1/3;2/3;10/4;1E10;123456789#
@@ -293,7 +294,11 @@ class TestRandom(OracleCase):
                 rnd.choice(["1/3", "2.5", "-7", "1E4"]), rnd.choice(["0.1", "-2.5", "1/7"]),
                 rnd.choice([0, 3, -12]), rnd.choice(["3.14159265358979", "-1D-5", "2"]))]
             for k in range(10):
-                lines.append("%d PRINT %s" % (20 + 10 * k, to_basic(rand_float(rnd, 3))))
+                while True:                 # une ligne que l'éditeur du X-07 garde
+                    line = "%d PRINT %s" % (20 + 10 * k, to_basic(rand_float(rnd, 3)))
+                    if len(line) <= emu.LINE_MAX:
+                        break
+                lines.append(line)
             with self.subTest(prog=prog):
                 self.same("\n".join(lines))
 
@@ -304,8 +309,10 @@ class TestRandom(OracleCase):
             for k in range(6):
                 s = "".join(rnd.choice("ABCXYZ ") for _ in range(rnd.randrange(0, 12)))
                 n, p = rnd.randrange(0, 15), rnd.randrange(1, 15)
+                # deux lignes : une seule dépasserait les 79 caractères de l'éditeur
                 lines.append('%d S$="%s":PRINT "[";LEFT$(S$,%d);"|";RIGHT$(S$,%d);"|";'
-                             'MID$(S$,%d,%d);"|";MID$(S$,%d);"]"' % (10 + 10 * k, s, n, n, p, n, p))
+                             % (10 + 20 * k, s, n, n))
+                lines.append('%d PRINT MID$(S$,%d,%d);"|";MID$(S$,%d);"]"' % (20 + 20 * k, p, n, p))
             self.same("\n".join(lines))
 
 
