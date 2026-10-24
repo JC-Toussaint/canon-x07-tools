@@ -122,6 +122,20 @@ class TestSession(unittest.TestCase):
         self.assertIn("PC=", s.registers())
         self.assertIn(">", s.disassembly())
 
+    def test_register_values_and_changes(self):
+        from x07asm.ide import REG_ROWS, SuiviRegistres
+        s = self.session("bonjour.asm")
+        v = s.register_values()
+        self.assertEqual(set(v) - {"steps"}, {n for row in REG_ROWS for n, _ in row})
+        self.assertEqual((v["PC"], v["SP"]), (s.m.pc, s.m.sp))
+        suivi = SuiviRegistres()
+        self.assertEqual(suivi.changed(v), set())                # premier arrêt : rien
+        s.step_line(True)                                        # LD HL,MSG
+        s.step_line(True)
+        w = s.register_values()
+        self.assertTrue({"PC", "HL"} <= suivi.changed(w))
+        self.assertEqual(suivi.changed(w), suivi.changed(w))     # même arrêt : gardés
+
     def test_breakpoints_survive_rebuild(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "t.qbas")
@@ -197,6 +211,7 @@ class TestWindow(unittest.TestCase):
                         break
                 pump(0.2)
                 self.assertIn("point d'arrêt, ligne 28", e.status.cget("text"))
+                self.assertEqual(e.regs.values["PC"].cget("text"), "%04X" % e.session.m.pc)
                 self.assertIn("TRI.D% = 9", e.panels["variables"].get("1.0", "end"))
                 e.do_run()
                 pump(0.1)

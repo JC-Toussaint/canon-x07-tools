@@ -78,6 +78,10 @@ class TestWindowQt(unittest.TestCase):
                 self.assertIn("point d'arrêt, ligne 28", e.status.text())
                 self.assertIn("TRI.D% = 9", e.panels["variables"].toPlainText())
                 self.assertEqual(len(e.text.extraSelections()), 2)   # arrêt + ligne en cours
+                regs = e.regs.values                           # registres en cases
+                self.assertEqual(regs["PC"].text(), "%04X" % e.session.m.pc)
+                z = e.session.m.r["F"] & 0x40
+                self.assertEqual("#2c9a3c" in e.regs.flags["Z"].styleSheet(), bool(z))
                 e.do_run()
                 pump(e, 0.1)
                 e.toggle(28)                                   # occupé : refusé sans erreur

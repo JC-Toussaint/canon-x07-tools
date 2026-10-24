@@ -19,13 +19,15 @@ from PyQt6.QtCore import QPointF, QRect, QSize, Qt, QTimer
 from PyQt6.QtGui import (QAction, QColor, QFont, QFontDatabase, QImage, QKeySequence,
                          QPainter, QPen, QPolygonF, QSyntaxHighlighter, QTextBlockUserData,
                          QTextCharFormat, QTextCursor, QTextFormat)
-from PyQt6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
+from PyQt6.QtWidgets import (QApplication, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
+                             QLabel, QLineEdit,
                              QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
                              QSplitter, QTabWidget, QTextEdit, QToolBar, QVBoxLayout, QWidget)
 
-from . import syntaxe
+from . import debug, syntaxe
 from .afficheur import ARROWS, BEZEL, OFF, ON, Touches, connect_speaker, release_key, send_key
-from .ide import AIDE, KINDS, TEMPLATES, TOOLBAR, Session
+from .ide import (AIDE, FLAG_NAMES, KINDS, REG_ROWS, TEMPLATES, TOOLBAR, Session,
+                  SuiviRegistres)
 from .lcd import HEIGHT, WIDTH
 
 COULEURS = {   # coloration syntaxique : thème clair, thème sombre
@@ -194,6 +196,77 @@ class PaveQt(QWidget):
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(QColor(self.MARK))
                 p.drawPolygon(mark)
+
+
+class RegistresQt(QFrame):
+    """Les registres du Z80 en cases (nom en petit, valeur en gros), en
+    couleur s'ils ont changé depuis l'arrêt précédent ; les indicateurs en
+    pastilles allumées ou éteintes, expliquées au survol."""
+
+    TEINTES = {"clair": ("#c45a00", "#fff1d6"), "sombre": ("#ffb86c", "#4a3a1e")}
+
+    def __init__(self, font, theme):
+        super().__init__()
+        self.setObjectName("registres")
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.change, self.fond_change = self.TEINTES[theme]
+        self.suivi = SuiviRegistres()
+        self.digits = {n: d for row in REG_ROWS for n, d in row}
+        grid = QGridLayout(self)
+        grid.setContentsMargins(10, 6, 10, 6)
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(2)
+        gros = QFont(font)
+        gros.setPointSize(font.pointSize() + 2)
+        gros.setBold(True)
+        self.values = {}
+        for r, row in enumerate(REG_ROWS):
+            for c, (name, _) in enumerate(row):
+                nom = QLabel(name)
+                nom.setStyleSheet("color: palette(mid); font-size: 8pt;")
+                val = QLabel()
+                val.setFont(gros)
+                val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                left = Qt.AlignmentFlag.AlignLeft       # surlignage à la taille de la valeur
+                grid.addWidget(nom, 2 * r, c, left)
+                grid.addWidget(val, 2 * r + 1, c, left)
+                self.values[name] = val
+        line = QHBoxLayout()
+        line.setSpacing(4)
+        self.flags = {}
+        for n, _ in debug.FLAGS:
+            lab = QLabel(n)
+            lab.setFont(font)
+            lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lab.setFixedSize(24, 20)
+            lab.setToolTip(FLAG_NAMES[n])
+            line.addWidget(lab)
+            self.flags[n] = lab
+        line.addSpacing(10)
+        self.steps = QLabel()
+        self.steps.setStyleSheet("color: palette(mid);")
+        line.addWidget(self.steps)
+        line.addStretch(1)
+        grid.addLayout(line, 2 * len(REG_ROWS), 0, 1, 5)
+        self.show_values(None)
+
+    def show_values(self, vals):
+        """vals : Session.register_values(), ou None (programme non compilé)."""
+        changed = self.suivi.changed(vals) if vals else set()
+        for name, lab in self.values.items():
+            d = self.digits[name]
+            lab.setText("-" * d if vals is None else "%0*X" % (d, vals[name]))
+            lab.setStyleSheet("color: %s; background: %s; border-radius: 3px; padding: 0 2px;"
+                              % (self.change, self.fond_change) if name in changed
+                              else "padding: 0 2px;")
+        f = vals["F"] if vals else 0
+        for n, bit in debug.FLAGS:
+            self.flags[n].setStyleSheet(
+                "border-radius: 4px; font-weight: bold; "
+                + ("background: #2c9a3c; color: white;" if f & bit else
+                   "border: 1px solid palette(mid); color: palette(mid);"))
+        self.steps.setText("(programme non compilé)" if vals is None
+                           else "%s instructions" % format(vals["steps"], ",").replace(",", " "))
 
 
 # -------------------------------------------------------------- éditeur de source
@@ -372,11 +445,7 @@ class Editeur(QMainWindow):
         titre = QLabel("Registres")
         titre.setStyleSheet("font-weight: bold;")
         col.addWidget(titre)
-        self.regs = QLabel()
-        self.regs.setFont(self.mono)
-        self.regs.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.regs.setFrameShape(QLabel.Shape.StyledPanel)
-        self.regs.setStyleSheet("padding: 4px;")
+        self.regs = RegistresQt(self.mono, self.theme)
         col.addWidget(self.regs)
         self.tabs = QTabWidget()
         self.panels = {}
@@ -619,6 +688,7 @@ class Editeur(QMainWindow):
             return False
         self.dirty = False
         self.previous = {}
+        self.regs.suivi.reset()
         self.sync_text_from_breaks()              # déplacés sur une ligne avec du code
         self.show_text("messages", "\n".join("attention : %s" % w for w in warns)
                        or "compilé sans avertissement")
@@ -784,12 +854,12 @@ class Editeur(QMainWindow):
             self.sync_breaks_from_text()
         self.refresh_marks()
         if s and s.m and not self.busy():
-            self.regs.setText(s.registers())
+            self.regs.show_values(s.register_values())
             self.show_variables(s.variables())
             self.show_text("code", s.disassembly())
             self.show_text("pile", s.stack())
         elif not (s and s.m):
-            self.regs.setText("(programme non compilé)")
+            self.regs.show_values(None)
         self.update_buttons()
 
     def state_of(self, key):

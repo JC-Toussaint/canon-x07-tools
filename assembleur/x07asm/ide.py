@@ -45,6 +45,13 @@ TEMPLATES = {   # point de départ d'un nouveau programme
 }
 KINDS = ((".bas", "BASIC du X-07"), (".qbas", "QuickBASIC"), (".asm", "Assembleur Z80"))
 
+# registres affichés en cases : (nom, chiffres hexadécimaux), par rangée
+REG_ROWS = ((("A", 2), ("F", 2), ("BC", 4), ("DE", 4), ("HL", 4)),
+            (("IX", 4), ("IY", 4), ("SP", 4), ("PC", 4)),
+            (("AF'", 4), ("BC'", 4), ("DE'", 4), ("HL'", 4)))
+FLAG_NAMES = {"S": "S : signe (résultat négatif)", "Z": "Z : zéro", "H": "H : demi-retenue",
+              "P": "P/V : parité ou dépassement", "N": "N : soustraction", "C": "C : retenue"}
+
 INTERNAL = re.compile(r"(V_|S_|A[IFDS]_)(Q[TAOR]_|FNP_|FN_)")   # variables du compilateur
 
 
@@ -238,6 +245,16 @@ class Session:
                    m.get16("HL"), m.ix, m.iy, al["A"], al["F"], al["B"], al["C"],
                    al["D"], al["E"], al["H"], al["L"], m.steps))
 
+    def register_values(self):
+        """Registres par nom (REG_ROWS), et « steps » : instructions exécutées."""
+        m, r, al = self.m, self.m.r, self.m.alt
+        v = {"A": r["A"], "F": r["F"], "BC": m.get16("BC"), "DE": m.get16("DE"),
+             "HL": m.get16("HL"), "IX": m.ix, "IY": m.iy, "SP": m.sp, "PC": m.pc,
+             "steps": m.steps}
+        for name in ("AF", "BC", "DE", "HL"):
+            v[name + "'"] = al[name[0]] << 8 | al[name[1]]
+        return v
+
     def disassembly(self, n=12):
         m, out, a = self.m, [], self.m.pc
         if a == EXIT:
@@ -335,6 +352,25 @@ La mémoire du X-07 (fichiers en RAM) est gardée d'un lancement à
 l'autre ; --memoire FICHIER la garde d'une session à l'autre."""
 
 
+class SuiviRegistres:
+    """Registres changés depuis l'arrêt précédent.  La référence ne change
+    qu'à un nouvel arrêt (autre nombre d'instructions), pas à un simple
+    rafraîchissement de la fenêtre pendant le même arrêt."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.last = self.base = None
+
+    def changed(self, vals):
+        if self.last is not None and self.last["steps"] != vals["steps"]:
+            self.base = self.last
+        self.last = vals
+        b = self.base
+        return set() if b is None else {k for k in vals if k != "steps" and vals[k] != b[k]}
+
+
 class Bulle:
     """Bulle d'aide qui apparaît au survol d'un widget."""
 
@@ -360,6 +396,58 @@ class Bulle:
         if self.win is not None:
             self.win.destroy()
             self.win = None
+
+
+class Registres:
+    """Les registres du Z80 en cases (nom en petit, valeur en gros), en
+    couleur s'ils ont changé depuis l'arrêt précédent ; les indicateurs en
+    pastilles allumées ou éteintes, expliquées au survol."""
+
+    FOND, NOM, VALEUR = "white", "#888888", "#1a1a1a"
+    CHANGE, FOND_CHANGE = "#c45a00", "#fff1d6"
+    ALLUME, ETEINT = ("#2c9a3c", "white"), ("#eeeeee", "#aaaaaa")
+
+    def __init__(self, parent, mono):
+        import tkinter as tk
+        self.frame = tk.Frame(parent, bg=self.FOND, relief="sunken", bd=1, padx=6, pady=4)
+        self.suivi = SuiviRegistres()
+        self.values, self.flags = {}, {}
+        petit = ("Helvetica", 8)
+        for r, row in enumerate(REG_ROWS):
+            for c, (name, _) in enumerate(row):
+                cell = tk.Frame(self.frame, bg=self.FOND, padx=9, pady=1)
+                cell.grid(row=r, column=c, sticky="w")
+                tk.Label(cell, text=name, font=petit, fg=self.NOM, bg=self.FOND).pack(anchor="w")
+                v = tk.Label(cell, font=(mono[0], 12, "bold"), bg=self.FOND, padx=2)
+                v.pack(anchor="w")
+                self.values[name] = v
+        flags = tk.Frame(self.frame, bg=self.FOND)
+        flags.grid(row=len(REG_ROWS), column=0, columnspan=5, sticky="w", padx=5, pady=(4, 0))
+        for n, _ in debug.FLAGS:
+            lab = tk.Label(flags, text=n, width=2, font=(mono[0], 10, "bold"), bd=1,
+                           relief="groove")
+            lab.pack(side="left", padx=2)
+            Bulle(lab, FLAG_NAMES[n])
+            self.flags[n] = lab
+        self.steps = tk.Label(flags, font=petit, fg=self.NOM, bg=self.FOND)
+        self.steps.pack(side="left", padx=10)
+        self.show(None)
+
+    def show(self, vals):
+        """vals : Session.register_values(), ou None (programme non compilé)."""
+        changed = self.suivi.changed(vals) if vals else set()
+        digits = {n: d for row in REG_ROWS for n, d in row}
+        for name, lab in self.values.items():
+            text = "-" * digits[name] if vals is None else "%0*X" % (digits[name], vals[name])
+            hot = name in changed
+            lab.configure(text=text, fg=self.CHANGE if hot else self.VALEUR,
+                          bg=self.FOND_CHANGE if hot else self.FOND)
+        f = vals["F"] if vals else 0
+        for n, bit in debug.FLAGS:
+            bg, fg = self.ALLUME if f & bit else self.ETEINT
+            self.flags[n].configure(bg=bg, fg=fg)
+        self.steps.configure(text="(programme non compilé)" if vals is None
+                             else "%s instructions" % format(vals["steps"], ",").replace(",", " "))
 
 
 class Editeur:
@@ -459,9 +547,8 @@ class Editeur:
         tk.Button(line, text="Envoyer ⏎", command=self.send_line).pack(side="left")
         self.show_focus(False)
         tk.Label(right, text="Registres", anchor="w", font=("Helvetica", 9, "bold")).pack(fill="x")
-        self.regs = tk.Label(right, font=mono, justify="left", anchor="w", bg="white",
-                             relief="sunken")
-        self.regs.pack(fill="x", pady=2)
+        self.regs = Registres(right, mono)
+        self.regs.frame.pack(fill="x", pady=2)
         tabs = ttk.Notebook(right)
         tabs.pack(fill="both", expand=True)
         self.panels = {}
@@ -705,6 +792,7 @@ class Editeur:
             return False
         self.dirty = False
         self.previous = {}
+        self.regs.suivi.reset()
         self.sync_text_from_breaks()              # déplacés sur une ligne avec du code
         self.show_text("messages", "\n".join("attention : %s" % w for w in warns)
                        or "compilé sans avertissement")
@@ -866,12 +954,12 @@ class Editeur:
             if cur:
                 t.tag_add("courante", "%d.0" % cur, "%d.0+1line" % cur)
                 t.see("%d.0" % cur)
-            self.regs.configure(text=s.registers())
+            self.regs.show(s.register_values())
             self.show_variables(s.variables())
             self.show_text("code", s.disassembly())
             self.show_text("pile", s.stack())
         elif not (s and s.m):
-            self.regs.configure(text="(programme non compilé)")
+            self.regs.show(None)
         self.draw_gutter()
         self.update_buttons()
 

@@ -51,7 +51,7 @@ La même mécanique que la commande `debug`, dans une fenêtre :
   Sur un clavier AZERTY, les chiffres du haut demandent Maj (ou le pavé numérique) : sans Maj, l'écran reçoit « è » au lieu de « 7 ». Le champ de saisie évite ce piège.
 
   Les touches tapées pendant que le programme est **arrêté** (au départ, ou sur un point d'arrêt) sont **gardées** : le programme les lira en repartant, et la barre d'état le signale.
-- **Les registres**, avec les indicateurs en clair et le nombre d'instructions exécutées.
+- **Les registres**, en cases : `A F BC DE HL`, `IX IY SP PC`, puis les registres secondaires `AF' BC' DE' HL'`. Un registre qui a changé depuis l'arrêt précédent est **surligné en orange**. Les indicateurs S, Z, H, P/V, N, C sont des **pastilles**, vertes quand ils sont à 1 ; leur sens s'affiche au survol. À côté, le nombre d'instructions exécutées.
 - **Des onglets :**
   - *Variables* : les variables par leur nom, et les tableaux avec leurs premières valeurs. Une valeur qui vient de changer apparaît **en rouge**. Pour un tableau reçu en paramètre, on voit lequel (`TRI.T() -> A%()`). Pour un programme assembleur, ce sont les étiquettes de données (octets et texte).
   - *Code machine* : le désassemblage autour du PC.
