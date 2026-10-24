@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (QApplication, QFileDialog, QFrame, QGridLayout, QHB
 from . import debug, syntaxe
 from .afficheur import ARROWS, OFF, ON, Touches, connect_speaker, release_key, send_key
 from .ide import (AIDE, FLAG_NAMES, KINDS, REG_ROWS, TEMPLATES, TOOLBAR, Session,
-                  SuiviRegistres)
+                  SuiviRegistres, detail_valeur)
 from .lcd import HEIGHT, WIDTH
 
 COULEURS = {   # coloration syntaxique : thème clair, thème sombre
@@ -260,6 +260,8 @@ class RegistresQt(QFrame):
         for name, lab in self.values.items():
             d = self.digits[name]
             lab.setText("-" * d if vals is None else "%0*X" % (d, vals[name]))
+            lab.setToolTip("(programme non compilé)" if vals is None
+                           else detail_valeur(name, vals[name]))          # au survol
             lab.setStyleSheet("color: %s; background: %s; border-radius: 3px; padding: 0 2px;"
                               % (self.change, self.fond_change) if name in changed
                               else "padding: 0 2px;")
@@ -453,8 +455,8 @@ class Editeur(QMainWindow):
         col.addWidget(self.regs)
         self.tabs = QTabWidget()
         self.panels = {}
-        for key, title in (("variables", "Variables"), ("code", "Code machine"),
-                           ("pile", "Pile"), ("messages", "Messages")):
+        for key, title in (("variables", "Variables"), ("registres", "Registres"),
+                           ("code", "Code machine"), ("pile", "Pile"), ("messages", "Messages")):
             t = QPlainTextEdit()
             t.setReadOnly(True)
             t.setFont(self.mono)
@@ -728,18 +730,24 @@ class Editeur(QMainWindow):
         self.set_status(label)
         self.ecran.setFocus()                     # le clavier va au X-07
 
+        # le fil ne tient que la session, jamais la fenêtre : s'il en gardait la
+        # dernière référence, Tcl (ou Qt) serait détruit hors du fil principal
+        # (« Tcl_AsyncDelete: async handler deleted by the wrong thread »)
+        session = self.session
+
         def work():
             try:
                 action()
-            except Exception as e:                # erreur inattendue : affichée
-                self.session.reason = "erreur : %s" % e
+            except Exception as e:                  # erreur inattendue : affichée
+                session.reason = "erreur : %s" % e
         self.worker = threading.Thread(target=work, daemon=True)
         self.worker.start()
         self.refresh_marks()
         self.update_buttons()
 
     def do_run(self):
-        self.start(lambda: self.session.run(), "en cours… (‖ ou F9 pour arrêter)")
+        self.start(self.session.run if self.session else None,
+                   "en cours… (‖ ou F9 pour arrêter)")
 
     def do_step(self, how):
         s = self.session
@@ -802,6 +810,31 @@ class Editeur(QMainWindow):
     def show_text(self, key, text):
         self.panels[key].setPlainText(text)
 
+    def show_segments(self, key, lines):
+        """Lignes de (texte, style) : Session.registres_detail()."""
+        t = self.panels[key]
+        t.clear()
+        change, fond = RegistresQt.TEINTES[self.theme]
+        gris = self.palette().placeholderText().color()
+        formats = {None: QTextCharFormat()}
+        for style in ("titre", "note", "nom", "change"):
+            f = QTextCharFormat()
+            if style in ("titre", "note"):
+                f.setForeground(gris)
+            elif style == "nom":
+                f.setFontWeight(QFont.Weight.Bold)
+            else:
+                f.setForeground(QColor(change))
+                f.setBackground(QColor(fond))
+            formats[style] = f
+        c = t.textCursor()
+        for k, segs in enumerate(lines):
+            for text, style in segs:
+                c.insertText(text, formats[style])
+            if k < len(lines) - 1:
+                c.insertText("\n", formats[None])
+        t.moveCursor(QTextCursor.MoveOperation.Start)
+
     def show_variables(self, lines):
         """Variables ; en rouge, celles qui ont changé depuis l'arrêt précédent."""
         t = self.panels["variables"]
@@ -859,11 +892,13 @@ class Editeur(QMainWindow):
         self.refresh_marks()
         if s and s.m and not self.busy():
             self.regs.show_values(s.register_values())
+            self.show_segments("registres", s.registres_detail(self.regs.suivi.base))
             self.show_variables(s.variables())
             self.show_text("code", s.disassembly())
             self.show_text("pile", s.stack())
         elif not (s and s.m):
             self.regs.show_values(None)
+            self.show_text("registres", "(programme non compilé)")
         self.update_buttons()
 
     def state_of(self, key):

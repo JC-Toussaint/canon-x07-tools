@@ -2,6 +2,7 @@
 
 Les mêmes scénarios que la fenêtre tkinter (tests/test_ide.py), sans
 affichage (plateforme Qt « offscreen ») ; sautés si PyQt6 est absent."""
+import gc
 import os
 import shutil
 import sys
@@ -59,6 +60,13 @@ class TestKeys(unittest.TestCase):
 @needs_rom
 @needs_qt
 class TestWindowQt(unittest.TestCase):
+    def tearDown(self):
+        # la fenêtre fermée reste prise dans des cycles de références : on la
+        # libère ici, dans le fil principal ; sinon le ramasse-miettes pourrait
+        # le faire dans le fil d'émulation du test suivant, et Tcl abandonne
+        # (« Tcl_AsyncDelete: async handler deleted by the wrong thread »)
+        gc.collect()
+
     def test_click_run_and_edit(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "t.qbas")
@@ -82,6 +90,8 @@ class TestWindowQt(unittest.TestCase):
                 self.assertEqual(regs["PC"].text(), "%04X" % e.session.m.pc)
                 z = e.session.m.r["F"] & 0x40
                 self.assertEqual("#2c9a3c" in e.regs.flags["Z"].styleSheet(), bool(z))
+                self.assertIn("binaire", e.panels["registres"].toPlainText())
+                self.assertIn("PC = %04X" % e.session.m.pc, regs["PC"].toolTip())
                 e.do_run()
                 pump(e, 0.1)
                 e.toggle(28)                                   # occupé : refusé sans erreur

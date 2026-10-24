@@ -2,6 +2,7 @@
 
 La session (compilation, lignes, points d'arrêt, pas à pas, variables) est
 testée sans affichage ; la fenêtre, seulement si un affichage existe."""
+import gc
 import os
 import shutil
 import sys
@@ -136,6 +137,25 @@ class TestSession(unittest.TestCase):
         self.assertTrue({"PC", "HL"} <= suivi.changed(w))
         self.assertEqual(suivi.changed(w), suivi.changed(w))     # même arrêt : gardés
 
+    def test_register_detail_tab(self):
+        from x07asm.ide import binaire, detail_valeur
+        s = self.session("bonjour.asm")
+        base = s.register_values()
+        s.step_line(True)
+        s.step_line(True)                                        # HL -> MSG
+        lines = s.registres_detail(base)
+        text = ["".join(t for t, _ in segs) for segs in lines]
+        a = next(t for t in text if t.startswith("A "))
+        self.assertIn("%02X" % s.m.r["A"], a)
+        self.assertIn(binaire(s.m.r["A"], 8), a)                 # « 0000 1100 »
+        self.assertTrue(any(t.startswith("(HL)") and "BONJOUR" in t for t in text))
+        changed = [t for segs in lines for t, st in segs if st == "change"]
+        self.assertIn("%04X" % s.m.get16("HL"), changed)         # valeur changée
+        self.assertIn("1", changed)                              # et ses bits
+        self.assertEqual(detail_valeur("A", 0xFF), "A = FF : 255 (signé -1)\n1111 1111   « · »")
+        self.assertEqual(detail_valeur("HL", 0x41), "HL = 0041 : 65 (signé 65)\n"
+                                                    "0000 0000 0100 0001")
+
     def test_breakpoints_survive_rebuild(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "t.qbas")
@@ -184,6 +204,13 @@ class TestSession(unittest.TestCase):
 @needs_rom
 @unittest.skipUnless(has_display(), "pas d'affichage graphique")
 class TestWindow(unittest.TestCase):
+    def tearDown(self):
+        # la fenêtre fermée reste prise dans des cycles de références : on la
+        # libère ici, dans le fil principal ; sinon le ramasse-miettes pourrait
+        # le faire dans le fil d'émulation du test suivant, et Tcl abandonne
+        # (« Tcl_AsyncDelete: async handler deleted by the wrong thread »)
+        gc.collect()
+
     def test_click_run_and_edit(self):
         from x07asm.ide import Editeur
         with tempfile.TemporaryDirectory() as d:
@@ -212,6 +239,8 @@ class TestWindow(unittest.TestCase):
                 pump(0.2)
                 self.assertIn("point d'arrêt, ligne 28", e.status.cget("text"))
                 self.assertEqual(e.regs.values["PC"].cget("text"), "%04X" % e.session.m.pc)
+                self.assertIn("binaire", e.panels["registres"].get("1.0", "end"))
+                self.assertIn("PC = %04X" % e.session.m.pc, e.regs.bulle("PC"))
                 self.assertIn("TRI.D% = 9", e.panels["variables"].get("1.0", "end"))
                 e.do_run()
                 pump(0.1)

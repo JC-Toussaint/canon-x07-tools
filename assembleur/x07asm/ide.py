@@ -52,6 +52,49 @@ REG_ROWS = ((("A", 2), ("F", 2), ("BC", 4), ("DE", 4), ("HL", 4)),
 FLAG_NAMES = {"S": "S : signe (résultat négatif)", "Z": "Z : zéro", "H": "H : demi-retenue",
               "P": "P/V : parité ou dépassement", "N": "N : soustraction", "C": "C : retenue"}
 
+# onglet « Registres » : registres 8 bits, 16 bits, secondaires, mémoire pointée
+DETAIL_GROUPES = (("A", "F", "B", "C", "D", "E", "H", "L"),
+                  ("BC", "DE", "HL", "IX", "IY", "SP", "PC"),
+                  ("AF'", "BC'", "DE'", "HL'"))
+POINTEURS = ("HL", "DE", "BC", "IX", "IY")
+
+
+def octets(vals):
+    """Valeurs des registres, avec les registres 8 bits tirés des paires."""
+    v = dict(vals)
+    for p in ("BC", "DE", "HL"):
+        v[p[0]], v[p[1]] = vals[p] >> 8, vals[p] & 0xFF
+    return v
+
+
+def taille(name):
+    return 8 if len(name) == 1 else 16
+
+
+def binaire(v, bits):
+    """Binaire groupé par 4 bits : 0000 1001."""
+    s = format(v, "0%db" % bits)
+    return " ".join(s[k:k + 4] for k in range(0, bits, 4))
+
+
+def signe(v, bits):
+    return v - (1 << bits) if v >> (bits - 1) & 1 else v
+
+
+def caractere(v):
+    return chr(v) if 32 <= v < 127 else "·"
+
+
+def detail_valeur(name, v):
+    """Bulle d'un registre : hexadécimal, décimal, signé, binaire (caractère)."""
+    bits = taille(name)
+    text = "%s = %0*X : %d (signé %d)\n%s" % (name, bits // 4, v, v, signe(v, bits),
+                                              binaire(v, bits))
+    if bits == 8:
+        text += "   « %s »" % caractere(v)
+    return text
+
+
 INTERNAL = re.compile(r"(V_|S_|A[IFDS]_)(Q[TAOR]_|FNP_|FN_)")   # variables du compilateur
 
 
@@ -255,6 +298,45 @@ class Session:
             v[name + "'"] = al[name[0]] << 8 | al[name[1]]
         return v
 
+    def registres_detail(self, base=None):
+        """Lignes de l'onglet « Registres » : listes de (texte, style), style
+        None, "titre", "nom", "change" ou "note".  base : valeurs de l'arrêt
+        précédent (register_values) ; valeurs et bits changés en "change"."""
+        vals = octets(self.register_values())
+        old = octets(base) if base else None
+        out = [[("%-5s%6s%7s%7s   %-22s%s" % ("", "hexa", "déc.", "signé", "binaire", "car."),
+                 "titre")]]
+        for groupe in DETAIL_GROUPES:
+            for name in groupe:
+                bits, v = taille(name), vals[name]
+                o = v if old is None else old[name]
+                hexa = "%0*X" % (bits // 4, v)
+                segs = [("%-5s" % name, "nom"), (" " * (6 - len(hexa)), None),
+                        (hexa, "change" if o != v else None),
+                        ("%7d%7d   " % (v, signe(v, bits)), None)]
+                for k in range(bits - 1, -1, -1):
+                    segs.append(("1" if v >> k & 1 else "0", "change" if (o ^ v) >> k & 1 else None))
+                    if k % 4 == 0 and k:
+                        segs.append((" ", None))
+                if bits == 8:
+                    segs.append(("%14s" % caractere(v), None))
+                out.append(segs)
+                if name == "F":                     # le nom de chaque indicateur sous son bit
+                    out.append([("%28s%s" % ("", "SZ·H ·PNC"), "note")])
+            out.append([])
+        out.append([("Mémoire pointée", "titre")])
+        m = self.m
+        for name in POINTEURS:
+            a = vals[name]
+            data = [m.rd((a + k) & 0xFFFF) for k in range(8)]
+            out.append([("%-6s" % ("(%s)" % name), "nom"),
+                        ("%04X : %s   " % (a, " ".join("%02X" % b for b in data)), None),
+                        ("".join(caractere(b) for b in data), "note")])
+        words = " ".join("%04X" % m.rd16((vals["SP"] + 2 * k) & 0xFFFF) for k in range(6))
+        out.append([("%-6s" % "(SP)", "nom"), ("%04X : %s   " % (vals["SP"], words), None),
+                    ("sommet de pile", "note")])
+        return out
+
     def disassembly(self, n=12):
         m, out, a = self.m, [], self.m.pc
         if a == EXIT:
@@ -375,7 +457,7 @@ class Bulle:
     """Bulle d'aide qui apparaît au survol d'un widget."""
 
     def __init__(self, widget, text):
-        self.widget, self.text, self.win = widget, text, None
+        self.widget, self.text, self.win = widget, text, None     # text : ou une fonction
         widget.bind("<Enter>", self.show)
         widget.bind("<Leave>", self.hide)
         widget.bind("<ButtonPress>", self.hide)
@@ -389,7 +471,8 @@ class Bulle:
         self.win = tk.Toplevel(self.widget)
         self.win.wm_overrideredirect(True)
         self.win.wm_geometry("+%d+%d" % (x, y))
-        tk.Label(self.win, text=self.text, bg="#ffffe0", relief="solid", bd=1,
+        text = self.text() if callable(self.text) else self.text
+        tk.Label(self.win, text=text, bg="#ffffe0", relief="solid", bd=1, justify="left",
                  padx=5, pady=2, font=("Helvetica", 9)).pack()
 
     def hide(self, event=None):
@@ -421,6 +504,7 @@ class Registres:
                          bg=self.FOND).pack(anchor="w")
                 v = tk.Label(cell, font=(mono[0], 12, "bold"), bg=self.FOND, padx=2)
                 v.pack(anchor="w")
+                Bulle(v, lambda n=name: self.bulle(n))
                 self.values[name] = v
         flags = tk.Frame(self.frame, bg=self.FOND)
         flags.grid(row=len(REG_ROWS), column=0, columnspan=5, sticky="w", padx=5, pady=(4, 0))
@@ -434,8 +518,15 @@ class Registres:
         self.steps.pack(side="left", padx=10)
         self.show(None)
 
+    def bulle(self, name):
+        """Décimal, signé, binaire : au survol d'une case."""
+        if self.vals is None:
+            return "(programme non compilé)"
+        return detail_valeur(name, self.vals[name])
+
     def show(self, vals):
         """vals : Session.register_values(), ou None (programme non compilé)."""
+        self.vals = vals
         changed = self.suivi.changed(vals) if vals else set()
         digits = {n: d for row in REG_ROWS for n, d in row}
         for name, lab in self.values.items():
@@ -455,6 +546,8 @@ class Editeur:
     """La fenêtre de l'éditeur-débogueur."""
 
     BG_LINE, BG_BREAK = "#fff3a8", "#ffd6d6"
+    STYLES = {"titre": {"foreground": "#888888"}, "note": {"foreground": "#888888"},   # onglet
+              "change": {"foreground": "#c45a00", "background": "#fff1d6"}}       # Registres
     COLORS = {"motcle": "#0033b3", "fonction": "#871094", "chaine": "#a31515",
               "commentaire": "#4f7f4f", "numero": "#8a8a8a", "directive": "#00777a",
               "registre": "#a35a00", "etiquette": "#6b3f00"}
@@ -553,10 +646,13 @@ class Editeur:
         tabs = ttk.Notebook(right)
         tabs.pack(fill="both", expand=True)
         self.panels = {}
-        for key, title in (("variables", "Variables"), ("code", "Code machine"),
-                           ("pile", "Pile"), ("messages", "Messages")):
+        for key, title in (("variables", "Variables"), ("registres", "Registres"),
+                           ("code", "Code machine"), ("pile", "Pile"), ("messages", "Messages")):
             t = tk.Text(tabs, font=mono, height=12, wrap="none")
             t.tag_configure("change", foreground="#c00000")
+            for style, opts in self.STYLES.items():      # onglet « Registres »
+                t.tag_configure("s_" + style, **opts)
+            t.tag_configure("s_nom", font=mono + ("bold",))
             tabs.add(t, text=title)
             self.panels[key] = t
         self.previous = {}                       # variable -> valeur à l'arrêt précédent
@@ -830,17 +926,23 @@ class Editeur:
         self.text.tag_remove("courante", "1.0", "end")
         self.ecran.canvas.focus_set()               # le clavier va au X-07
 
+        # le fil ne tient que la session, jamais la fenêtre : s'il en gardait la
+        # dernière référence, Tcl (ou Qt) serait détruit hors du fil principal
+        # (« Tcl_AsyncDelete: async handler deleted by the wrong thread »)
+        session = self.session
+
         def work():
             try:
                 action()
             except Exception as e:                  # erreur inattendue : affichée
-                self.session.reason = "erreur : %s" % e
+                session.reason = "erreur : %s" % e
         self.worker = threading.Thread(target=work, daemon=True)
         self.worker.start()
         self.update_buttons()
 
     def do_run(self):
-        self.start(lambda: self.session.run(), "en cours… (⏸ ou F9 pour arrêter)")
+        self.start(self.session.run if self.session else None,
+                   "en cours… (⏸ ou F9 pour arrêter)")
 
     def do_step(self, how):
         s = self.session
@@ -904,6 +1006,18 @@ class Editeur:
         t.insert("1.0", text)
         t.configure(state="disabled")
 
+    def show_segments(self, key, lines):
+        """Lignes de (texte, style) : Session.registres_detail()."""
+        t = self.panels[key]
+        t.configure(state="normal")
+        t.delete("1.0", "end")
+        for k, segs in enumerate(lines):
+            for text, style in segs:
+                t.insert("end", text, ("s_" + style,) if style else ())
+            if k < len(lines) - 1:
+                t.insert("end", "\n")
+        t.configure(state="disabled")
+
     def show_variables(self, lines):
         """Variables ; en rouge, celles qui ont changé depuis l'arrêt précédent."""
         self.show_text("variables", "\n".join(lines) or "(aucune)")
@@ -956,11 +1070,13 @@ class Editeur:
                 t.tag_add("courante", "%d.0" % cur, "%d.0+1line" % cur)
                 t.see("%d.0" % cur)
             self.regs.show(s.register_values())
+            self.show_segments("registres", s.registres_detail(self.regs.suivi.base))
             self.show_variables(s.variables())
             self.show_text("code", s.disassembly())
             self.show_text("pile", s.stack())
         elif not (s and s.m):
             self.regs.show(None)
+            self.show_text("registres", "(programme non compilé)")
         self.draw_gutter()
         self.update_buttons()
 
