@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (QApplication, QFileDialog, QFrame, QGridLayout, QHB
                              QSplitter, QTabWidget, QTextEdit, QToolBar, QVBoxLayout, QWidget)
 
 from . import debug, syntaxe
-from .afficheur import ARROWS, BEZEL, OFF, ON, Touches, connect_speaker, release_key, send_key
+from .afficheur import ARROWS, OFF, ON, Touches, connect_speaker, release_key, send_key
 from .ide import (AIDE, FLAG_NAMES, KINDS, REG_ROWS, TEMPLATES, TOOLBAR, Session,
                   SuiviRegistres)
 from .lcd import HEIGHT, WIDTH
@@ -77,10 +77,13 @@ class EcranQt(QWidget):
     """L'écran du X-07 (120 x 32 points), curseur clignotant ; il reçoit le
     clavier quand on clique dessus (cadre vert)."""
 
+    BORD = 3                               # liseré, comme highlightthickness en tkinter
+
     def __init__(self, editeur, zoom=3):
         super().__init__()
         self.editeur, self.zoom, self.pad = editeur, zoom, 4 * zoom
-        self.setFixedSize(WIDTH * zoom + 2 * self.pad, HEIGHT * zoom + 2 * self.pad)
+        b = 2 * (self.pad + self.BORD)
+        self.setFixedSize(WIDTH * zoom + b, HEIGHT * zoom + b)
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.image = QImage(WIDTH, HEIGHT, QImage.Format.Format_RGB32)
         self.image.fill(QColor(OFF))
@@ -103,10 +106,11 @@ class EcranQt(QWidget):
 
     def paintEvent(self, event):
         p = QPainter(self)
-        p.fillRect(self.rect(), QColor(BEZEL))
-        p.drawImage(QRect(self.pad, self.pad, WIDTH * self.zoom, HEIGHT * self.zoom), self.image)
-        p.setPen(QPen(QColor("#2c9a3c" if self.hasFocus() else "#111"), 3))
-        p.drawRect(self.rect().adjusted(1, 1, -2, -2))
+        # comme la version tkinter : marge couleur LCD, fin liseré (vert : le clavier)
+        b, m = self.BORD, self.BORD + self.pad
+        p.fillRect(self.rect(), QColor("#2c9a3c" if self.hasFocus() else "#111"))
+        p.fillRect(self.rect().adjusted(b, b, -b, -b), QColor(OFF))
+        p.drawImage(QRect(m, m, WIDTH * self.zoom, HEIGHT * self.zoom), self.image)
 
     def keyPressEvent(self, ev):
         self.editeur.screen_key(touche_qt(ev))
