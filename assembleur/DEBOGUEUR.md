@@ -89,6 +89,23 @@ Avec **`--memoire FICHIER`**, cette mémoire est en plus enregistrée dans le fi
 
 Le pas à pas avance **par ligne du source**, et non par instruction machine comme `n` et `s` dans le terminal. Une ligne BASIC qui fait une dizaine d'instructions s'exécute donc d'un coup ; « Instruction » reste disponible pour descendre au niveau du Z80.
 
+### Version Qt (`--qt`)
+
+```sh
+pip install PyQt6                                      # une fois (Windows, macOS, venv)
+sudo apt install python3-pyqt6                         # Ubuntu, Debian : Python du système
+python3 x07asm.py ide --qt exemples/qbasic/rapide.qbas
+```
+
+La même fenêtre, avec les mêmes menus, boutons, touches et options (`--ram`, `--zoom`, `--muet`, `--memoire`), faite avec Qt (PyQt6) au lieu de tkinter (`x07asm/ide_qt.py`). La logique de débogage est commune aux deux versions. Ce que Qt apporte :
+
+- l'**aspect natif** du système : Windows 11, macOS ou Linux ;
+- le **thème clair ou sombre** du système, suivi par la coloration du source ;
+- une **police à chasse fixe** fournie par le système, partout ;
+- des minuteries sur l'**horloge monotone** : l'écran ne se fige pas quand l'horloge murale saute (WSL), sans le mécanisme particulier de la version tkinter.
+
+Sans PyQt6, `--qt` le signale, et la version tkinter reste disponible. Les tests (`tests/test_ide_qt.py`) tournent sans affichage, avec la plateforme Qt `offscreen` ; ils sont sautés si PyQt6 est absent.
+
 ## Commandes
 
 | Commande | Rôle |

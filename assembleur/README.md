@@ -32,6 +32,7 @@ python3 x07asm.py qb exemples/qbasic/tri.qbas            # QuickBASIC -> BASIC d
 python3 x07asm.py run exemples/qbasic/rapide.qbas --direct   # QuickBASIC compilé directement
 python3 x07asm.py debug exemples/bonjour.asm              # débogueur pas à pas
 python3 x07asm.py ide exemples/qbasic/rapide.qbas         # éditeur-débogueur visuel
+python3 x07asm.py ide --qt exemples/qbasic/rapide.qbas    # le même, en Qt (pip install PyQt6)
 python3 x07asm.py send exemples/devine.bas -p /dev/ttyUSB0   # envoi par le câble FT232RL
 python3 -m unittest discover -s tests                    # tests
 ```
