@@ -692,7 +692,14 @@ def cmd_debug(args):
 
 def cmd_ide(args):
     """Éditeur-débogueur visuel (fenêtre)."""
-    from . import ide
+    if args.qt:
+        try:
+            from . import ide_qt as ide
+        except ImportError as ex:
+            print("erreur : PyQt6 absent (%s) : pip install PyQt6" % ex, file=sys.stderr)
+            return 1
+    else:
+        from . import ide
     try:
         e = ide.Editeur(args.source, ram=args.ram, zoom=args.zoom, memoire=args.memoire,
                         muet=args.muet)
@@ -847,6 +854,8 @@ def main(argv=None):
                     help="fenêtre sans son (les BEEP gardent leur durée)")
     ed.add_argument("--memoire", metavar="FICHIER",
                     help="mémoire du X-07 gardée d'une exécution à l'autre (fichiers en RAM)")
+    ed.add_argument("--qt", action="store_true",
+                    help="fenêtre Qt (PyQt6) au lieu de tkinter")
     ed.set_defaults(func=cmd_ide)
 
     q = sub.add_parser("qb", help="traduire un programme QuickBASIC en BASIC du X-07")
