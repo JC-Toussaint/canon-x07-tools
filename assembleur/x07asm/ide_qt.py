@@ -223,7 +223,7 @@ class RegistresQt(QFrame):
         for r, row in enumerate(REG_ROWS):
             for c, (name, _) in enumerate(row):
                 nom = QLabel(name)
-                nom.setStyleSheet("color: palette(mid); font-size: 8pt;")
+                nom.setStyleSheet("color: palette(window-text); font-size: 9pt;")  # noir
                 val = QLabel()
                 val.setFont(gros)
                 val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)

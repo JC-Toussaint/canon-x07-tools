@@ -403,7 +403,7 @@ class Registres:
     couleur s'ils ont changé depuis l'arrêt précédent ; les indicateurs en
     pastilles allumées ou éteintes, expliquées au survol."""
 
-    FOND, NOM, VALEUR = "white", "#888888", "#1a1a1a"
+    FOND, NOM, VALEUR, GRIS = "white", "black", "#1a1a1a", "#888888"
     CHANGE, FOND_CHANGE = "#c45a00", "#fff1d6"
     ALLUME, ETEINT = ("#2c9a3c", "white"), ("#eeeeee", "#aaaaaa")
 
@@ -417,7 +417,8 @@ class Registres:
             for c, (name, _) in enumerate(row):
                 cell = tk.Frame(self.frame, bg=self.FOND, padx=9, pady=1)
                 cell.grid(row=r, column=c, sticky="w")
-                tk.Label(cell, text=name, font=petit, fg=self.NOM, bg=self.FOND).pack(anchor="w")
+                tk.Label(cell, text=name, font=("Helvetica", 9), fg=self.NOM,
+                         bg=self.FOND).pack(anchor="w")
                 v = tk.Label(cell, font=(mono[0], 12, "bold"), bg=self.FOND, padx=2)
                 v.pack(anchor="w")
                 self.values[name] = v
@@ -429,7 +430,7 @@ class Registres:
             lab.pack(side="left", padx=2)
             Bulle(lab, FLAG_NAMES[n])
             self.flags[n] = lab
-        self.steps = tk.Label(flags, font=petit, fg=self.NOM, bg=self.FOND)
+        self.steps = tk.Label(flags, font=petit, fg=self.GRIS, bg=self.FOND)
         self.steps.pack(side="left", padx=10)
         self.show(None)
 
