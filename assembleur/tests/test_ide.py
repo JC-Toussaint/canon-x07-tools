@@ -156,6 +156,37 @@ class TestSession(unittest.TestCase):
         self.assertEqual(detail_valeur("HL", 0x41), "HL = 0041 : 65 (signé 65)\n"
                                                     "0000 0000 0100 0001")
 
+    def test_assembly_data_by_directive(self):
+        # chaque étiquette selon sa directive, valeurs remises dans l'ordre
+        src = """        ORG  $1C00
+        LD   HL,$E9BC
+        LD   (PROD),HL
+        LD   HL,$006A
+        LD   (PROD+2),HL
+        RET
+MOT:    DW   1234
+PROD:   DS   4
+TABLE:
+        DB   1,2,3
+        DB   4
+MOTS:   DW   10,20,30
+TXT:    DZ   "ABC"
+"""
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "donnees.asm")
+            with open(p, "w") as f:
+                f.write(src)
+            s = Session(p)
+            s.build()
+            s.run()
+            v = {line.split(" = ")[0]: line.split(" = ")[1].rsplit("   ($", 1)[0]
+                 for line in s.variables()}
+        self.assertEqual(v["MOT"], "$04D2 (1234)")
+        self.assertEqual(v["PROD"], "$006AE9BC (7006652)")      # 32 bits, poids faible d'abord
+        self.assertEqual(v["TABLE"], "01 02 03 04  ····  (4 octets)")
+        self.assertEqual(v["MOTS"], "$000A $0014 $001E  (3 mots)")
+        self.assertEqual(v["TXT"], '"ABC"')
+
     def test_breakpoints_survive_rebuild(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "t.qbas")

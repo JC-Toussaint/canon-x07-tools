@@ -95,6 +95,11 @@ def detail_valeur(name, v):
     return text
 
 
+# directives de données (assembleur) -> sorte : octets, mots, réservé, texte
+DATA_KINDS = {"DB": "b", "DEFB": "b", "DW": "w", "DEFW": "w", "DS": "s", "DEFS": "s",
+              "DM": "t", "DEFM": "t", "DZ": "t"}
+DATA_RE = re.compile(r"\b(%s)\b" % "|".join(DATA_KINDS), re.I)
+
 INTERNAL = re.compile(r"(V_|S_|A[IFDS]_)(Q[TAOR]_|FNP_|FN_)")   # variables du compilateur
 
 
@@ -166,12 +171,19 @@ class Session:
 
     def _map_lines(self, listing, symbols):
         pairs = []
+        self.data_lines = []                        # (adresse, taille, sorte) des données
         if self.kind == "asm":
             name = os.path.basename(self.path)
+            addrs = [a for a, *_ in listing if a is not None]
             for addr, data, src, text in listing:
                 code = text.split(";")[0]
-                if re.search(r"\b(DB|DW|DZ|DS|DEFB|DEFW|DEFS|DEFM|DM)\b", code, re.I):
-                    continue                        # données : pas de point d'arrêt
+                d = DATA_RE.search(code)
+                if d:                               # données : pas de point d'arrêt
+                    if addr is not None:            # DEFS sans valeur : jusqu'à la ligne suivante
+                        nxt = next((a for a in addrs if a > addr), addr + len(data))
+                        self.data_lines.append((addr, len(data) or nxt - addr,
+                                                DATA_KINDS[d.group(1).upper()]))
+                    continue
                 if addr is not None and data and os.path.basename(str(src[0])) == name:
                     pairs.append((addr & 0xFFFF, src[1]))
         else:
@@ -364,14 +376,41 @@ class Session:
             return self._basic_variables()
         code = set(self.addrs)
         lo, hi = self.prog_range
+        labels = sorted((a, n) for n, a in self.symbols.items()
+                        if lo <= a <= hi and a not in code and not n.startswith(("LN_", ".")))
         out = []
-        for n, a in sorted(self.symbols.items(), key=lambda kv: kv[1]):
-            if lo <= a <= hi and a not in code and not n.startswith(("LN_", ".")):
-                data = [self.m.rd(a + k) for k in range(8)]
-                text = "".join(chr(c) if 32 <= c < 127 else "." for c in data)
-                out.append("%s = %s  %s   ($%04X)" % (n, " ".join("%02X" % c for c in data),
-                                                     text, a))
+        for a, n in labels:
+            end = next((b for b, _ in labels if b > a), hi + 1)   # jusqu'à l'étiquette suivante
+            items = [(sz, k) for da, sz, k in getattr(self, "data_lines", []) if a <= da < end]
+            size = min(sum(sz for sz, _ in items), end - a)
+            out.append("%s = %s   ($%04X)" % (n, self._data_text(a, size, {k for _, k in items}),
+                                               a))
         return out
+
+    def _data_text(self, a, size, kinds):
+        """Valeur d'une donnée selon sa directive : mots et nombres remis dans
+        l'ordre (poids faible en premier en mémoire), texte, ou octets."""
+        rd = self.m.rd
+        if size <= 0:                               # étiquette sans donnée connue
+            kinds, size = {"b"}, 8
+        if kinds == {"t"}:
+            data = [rd((a + k) & 0xFFFF) for k in range(min(size, 40))]
+            if 0 in data:
+                data = data[:data.index(0)]
+            return '"%s"%s' % ("".join(caractere(c) for c in data), "…" if size > 40 else "")
+        if kinds == {"w"} and size > 2:
+            words = [rd((a + 2 * k) & 0xFFFF) | rd((a + 2 * k + 1) & 0xFFFF) << 8
+                     for k in range(min(size // 2, 8))]
+            return "%s%s  (%d mots)" % (" ".join("$%04X" % w for w in words),
+                                        " …" if size // 2 > 8 else "", size // 2)
+        if (kinds == {"b"} and size == 1) or (kinds == {"w"} and size == 2) or \
+                (kinds == {"s"} and size in (1, 2, 4)):   # nombre de 8, 16 ou 32 bits
+            v = sum(rd((a + k) & 0xFFFF) << 8 * k for k in range(size))
+            return "$%0*X (%d)" % (2 * size, v, v)
+        data = [rd((a + k) & 0xFFFF) for k in range(min(size, 16))]
+        return "%s%s  %s  (%d octets)" % (" ".join("%02X" % c for c in data),
+                                          " …" if size > 16 else "",
+                                          "".join(caractere(c) for c in data), size)
 
     def _basic_variables(self):
         out = []
