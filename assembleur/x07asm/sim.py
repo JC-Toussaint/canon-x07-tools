@@ -17,11 +17,19 @@ REAL = "rom"                  # valeur rendue par une imitation : « exécute la
 
 T6CMDV = 0xC951     # commande T6834 à réponse de longueur variable (vérifié ROM)
 # Commandes écrites directement sur le port $F1 (comme les routines de la ROM,
-# $C98F) : nombre de paramètres de chacune, relevé sur les appels de la ROM
-# (t6log) ; les autres n'en ont pas.  UDK WRITE / UDK CONT : touche, texte, 00.
-T6_PARAMS = {0x05: 2, 0x06: 3, 0x07: 2, 0x09: 1, 0x10: 2, 0x11: 2, 0x12: 2, 0x13: 2,
-             0x14: 4, 0x15: 3, 0x17: 1, 0x1A: 9, 0x1B: 1, 0x24: 3, 0x41: 8}
-T6_TEXT = (0x16, 0x35)
+# $C98F) : nombre de paramètres de chacune, d'après le tableau des commandes
+# des Mystères du X-07 (fig. 24), confirmé par les appels de la ROM ; les
+# autres n'en ont pas.
+T6_PARAMS = {0x05: 2, 0x06: 3, 0x07: 2, 0x09: 1, 0x0A: 8, 0x0C: 8, 0x0F: 1, 0x10: 2,
+             0x11: 2, 0x12: 2, 0x13: 2, 0x14: 4, 0x15: 3, 0x17: 1, 0x1A: 9, 0x1B: 1,
+             0x24: 3, 0x27: 2, 0x28: 1, 0x2A: 1, 0x41: 8, 0x43: 2, 0x44: 2}
+# texte terminé par 00, après n octets fixes : UDK WRITE / UDK CONT (la touche),
+# SP WRITE / SP WRITE CONT (aucun)
+T6_TEXT = {0x16: 1, 0x35: 1, 0x1D: 0, 0x1E: 0}
+# RAM du T6834 (Mystères du X-07, § 7.6.2) : zones reliées à l'imitation
+T6_SCROLL_FIRST, T6_SCROLL_LAST = 0xC09E, 0xC096    # zone de défilement (lignes 0 à 3)
+T6_LCD = 0xE000          # écran : 16 octets par ligne de points, 15 visibles (bit 7 à gauche)
+T6_UDC = 0xCA00          # caractères définis : $80-$9F en $CA00, $E0-$FF en $CB00
 
 class SimError(Exception):
     pass
@@ -692,8 +700,7 @@ class X07(CPU):
         T[sym["BATTMSG"]] = self._battmsg
         T[sym["T6FLUSH"]] = lambda c: None
         T[sym["T6CMD"]] = lambda c: self._t6_exec(c.r["A"] & 0x7F, [], None)
-        T[sym["T6POKE"]] = lambda c: None
-        T[sym["T6PEEK"]] = lambda c: c.r.__setitem__("A", 0)
+        # T6POKE / T6PEEK ($E334, $E348) : vraie ROM, qui envoie RAM WRITE / RAM READ
         self.brk = sym["BRKFLG"]
         self.powered_off = 0
         self.real_off = False         # OFF exécuté par la ROM (rangement de l'état, coupure)
@@ -713,6 +720,8 @@ class X07(CPU):
         self.overruns = 0
         self.int_mask = 0
         self.byte_steps = 1500        # ~ un octet à 4800 bauds
+        self.t6ram = bytearray(0x10000)   # RAM du T6834 (RAM READ / RAM WRITE), par adresse
+        self.t6ram[T6_SCROLL_FIRST], self.t6ram[T6_SCROLL_LAST] = 0, 3
         self.t6_port = []             # commande T6834 en cours de réception sur le port $F1
         self.t6_resp = deque()        # sa réponse, relue sur le port $F1
         self._setcur(0, 0)
@@ -756,12 +765,45 @@ class X07(CPU):
         buf.append(b)
         cmd = buf[0] & 0x7F                   # bit 7 : « sans paramètre » pour la ROM
         if cmd in T6_TEXT:
-            if len(buf) < 3 or buf[-1] != 0:
+            if len(buf) - 1 <= T6_TEXT[cmd] or buf[-1] != 0:
                 return
         elif len(buf) - 1 < T6_PARAMS.get(cmd, 0):
             return
         self.t6_port = []
         self.t6_resp.extend(self._t6_exec(cmd, buf[1:], None))
+
+    def t6_ram_write(self, a, v):
+        """Écriture dans la RAM du T6834, avec ses effets : zone de défilement,
+        points de l'écran, caractères définis."""
+        a, v = a & 0xFFFF, v & 0xFF
+        self.t6ram[a] = v
+        if a in (T6_SCROLL_FIRST, T6_SCROLL_LAST):
+            self.scroll_range = (self.t6ram[T6_SCROLL_FIRST], self.t6ram[T6_SCROLL_LAST])
+        elif T6_LCD <= a < T6_LCD + 0x200:
+            y, col = divmod(a - T6_LCD, 16)
+            if col < 15 and y < 32:
+                for k in range(8):
+                    self.lcd.set(col * 8 + k, y, v & (0x80 >> k))
+                self.lcd._touch()
+        elif T6_UDC <= a < T6_UDC + 0x200:
+            self.lcd.font[self._udc_offset(a)] = v
+
+    def t6_ram_read(self, a):
+        a &= 0xFFFF
+        if T6_LCD <= a < T6_LCD + 0x200:
+            y, col = divmod(a - T6_LCD, 16)
+            if col < 15 and y < 32:
+                return sum(0x80 >> k for k in range(8) if self.lcd.get(col * 8 + k, y))
+        elif T6_UDC <= a < T6_UDC + 0x200:
+            return self.lcd.font[self._udc_offset(a)]
+        return self.t6ram[a]
+
+    @staticmethod
+    def _udc_offset(a):
+        """Adresse de la RAM du T6834 -> octet de la police (codes $80-$9F, $E0-$FF)."""
+        k = a - T6_UDC
+        code = 0x80 + k // 8 if k < 0x100 else 0xE0 + (k - 0x100) // 8
+        return code * 8 + k % 8
 
     def _uart_tick(self):
         """Fait arriver l'octet suivant de la ligne série au rythme du débit."""
@@ -1049,7 +1091,12 @@ class X07(CPU):
         elif cmd == 0x09:                        # LINE CLEAR
             lcd.clear_row(p[0])
         elif cmd == 0x07:                        # SCROLL SET : première et dernière ligne
-            self.scroll_range = (p[0], p[1])
+            self.t6_ram_write(T6_SCROLL_FIRST, p[0])
+            self.t6_ram_write(T6_SCROLL_LAST, p[1])
+        elif cmd == 0x05:                        # RAM READ : adresse (octet bas d'abord)
+            resp = [self.t6_ram_read(p[0] | p[1] << 8)]
+        elif cmd == 0x06:                        # RAM WRITE : donnée, adresse (octet bas d'abord)
+            self.t6_ram_write(p[1] | p[2] << 8, p[0])
         elif cmd == 0x08:                        # SCROLL EXEC
             first, last = getattr(self, "scroll_range", (0, 3))
             lcd.scroll(max(0, first), min(3, last))

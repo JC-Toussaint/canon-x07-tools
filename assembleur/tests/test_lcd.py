@@ -204,6 +204,8 @@ class TestT6834Port(unittest.TestCase):
         LD   (REP),A
         RET
 CMDS:   DB   $15,60,15,10    ; CIRCLE 60,15,10
+        DB   $0A,0,0,12,1,2,3,$EA,7   ; TIME SET : 8 paramètres (fig. 24), à sauter
+        DB   $1D,1,2,3,0     ; SP WRITE : texte terminé par 00
         DB   $11,5,6         ; PSET 5,6
         DB   $2B,$2C,$2B     ; DISP OFF, DISP ON, DISP OFF
         DB   $10,5,6         ; POINT 5,6
@@ -220,6 +222,34 @@ REP:    DB   $55
         self.assertFalse(any(map(any, m.lcd.rows_bits())))
         m.lcd.display(True)                                      # ... sans perdre le dessin
         self.assertTrue(m.lcd.rows_bits()[6][5])
+
+    def test_t6834_ram_like_the_book(self):
+        # T6POKE / T6PEEK ($E334 / $E348) : RAM WRITE / RAM READ du T6834
+        src = """        ORG  $1C00
+        LD   A,1             ; « Affichage d'un titre » : défilement des lignes 1 à 3
+        LD   HL,$C09E
+        CALL $E334
+        LD   A,3
+        LD   HL,$C096
+        CALL $E334
+        LD   A,$A5           ; écran : 8 points de la ligne 2, colonnes 16 à 23
+        LD   HL,$E022
+        CALL $E334
+        CALL $E348           ; relecture
+        LD   (LU),A
+        LD   A,$FF           ; caractère $80 : première ligne pleine
+        LD   HL,$CA00
+        CALL $E334
+        RET
+LU:     DB   0
+"""
+        a = Assembler()
+        mem = a.assemble_text(src)
+        m = emu.run_binary(mem, a.entry or 0x1C00)
+        self.assertEqual(m.scroll_range, (1, 3))
+        self.assertEqual([int(m.lcd.get(x, 2)) for x in range(16, 24)], [1, 0, 1, 0, 0, 1, 0, 1])
+        self.assertEqual(m.mem[a.symbols["LU"]], 0xA5)
+        self.assertEqual(m.lcd.font[0x80 * 8], 0xFF)
 
 
 class TestBeep(unittest.TestCase):
