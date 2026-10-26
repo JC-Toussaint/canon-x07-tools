@@ -38,10 +38,16 @@ class LCD:
         self.px = bytearray(WIDTH * HEIGHT)     # 1 = point allumé
         self.version = 0                        # change à chaque modification
         self.cursor = None                      # (col, ligne) du curseur affiché, ou None
+        self.on = True                          # DISP OFF ($2B) / DISP ON ($2C)
 
     # -------------------------------------------------- points
     def _touch(self):
         self.version += 1
+
+    def display(self, on):
+        """DISP ON / DISP OFF : l'écran s'éteint sans perdre son contenu."""
+        self.on = bool(on)
+        self._touch()
 
     def get(self, x, y):
         return 0 <= x < WIDTH and 0 <= y < HEIGHT and self.px[y * WIDTH + x]
@@ -154,6 +160,8 @@ class LCD:
     # -------------------------------------------------- sorties
     def rows_bits(self, cursor=True):
         """Lignes de points (listes de 0/1), curseur souligné compris."""
+        if not self.on:                         # DISP OFF : rien d'allumé
+            return [[0] * WIDTH for _ in range(HEIGHT)]
         rows = [list(self.px[y * WIDTH:(y + 1) * WIDTH]) for y in range(HEIGHT)]
         if cursor and self.cursor is not None:
             c, r = self.cursor

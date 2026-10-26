@@ -183,6 +183,45 @@ class TestScreenEditor(unittest.TestCase):
 
 
 @needs_rom
+@needs_rom
+class TestT6834Port(unittest.TestCase):
+    """Commandes envoyées au T6834 directement par le port $F1, sans la ROM
+    (comme le programme de démonstration des Mystères du X-07, § 7.6.3)."""
+
+    def test_commands_on_port_f1(self):
+        src = """        ORG  $1C00
+        LD   HL,CMDS
+.BCL:   LD   A,(HL)
+        CP   $FF
+        JR   Z,.REP
+        LD   E,A
+        CALL $C9C0           ; attente du T6834, comme le livre (A écrasé)
+        LD   A,E
+        OUT  ($F1),A
+        INC  HL
+        JR   .BCL
+.REP:   IN   A,($F1)         ; réponse de POINT
+        LD   (REP),A
+        RET
+CMDS:   DB   $15,60,15,10    ; CIRCLE 60,15,10
+        DB   $11,5,6         ; PSET 5,6
+        DB   $2B,$2C,$2B     ; DISP OFF, DISP ON, DISP OFF
+        DB   $10,5,6         ; POINT 5,6
+        DB   $FF
+REP:    DB   $55
+"""
+        a = Assembler()
+        mem = a.assemble_text(src)
+        m = emu.run_binary(mem, a.entry or 0x1C00)
+        self.assertTrue(m.lcd.get(5, 6))                         # PSET
+        self.assertTrue(m.lcd.get(70, 15))                       # le cercle : (60+10, 15)
+        self.assertEqual(m.mem[a.symbols["REP"]], 0)             # POINT : 0 = allumé
+        self.assertFalse(m.lcd.on)                               # DISP OFF : éteint...
+        self.assertFalse(any(map(any, m.lcd.rows_bits())))
+        m.lcd.display(True)                                      # ... sans perdre le dessin
+        self.assertTrue(m.lcd.rows_bits()[6][5])
+
+
 class TestBeep(unittest.TestCase):
     # BEEP <note>,<durée> : 1 à 48 par demi-tons depuis le do (262 Hz), 49 à 4095 :
     # 192000/<note> Hz ; durée x 50 ms (manuel).  Relevé en $C331 (BEEP6).

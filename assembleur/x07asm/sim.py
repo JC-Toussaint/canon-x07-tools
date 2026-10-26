@@ -16,6 +16,12 @@ REAL = "rom"                  # valeur rendue par une imitation : « exécute la
 
 
 T6CMDV = 0xC951     # commande T6834 à réponse de longueur variable (vérifié ROM)
+# Commandes écrites directement sur le port $F1 (comme les routines de la ROM,
+# $C98F) : nombre de paramètres de chacune, relevé sur les appels de la ROM
+# (t6log) ; les autres n'en ont pas.  UDK WRITE / UDK CONT : touche, texte, 00.
+T6_PARAMS = {0x05: 2, 0x06: 3, 0x07: 2, 0x09: 1, 0x10: 2, 0x11: 2, 0x12: 2, 0x13: 2,
+             0x14: 4, 0x15: 3, 0x17: 1, 0x1A: 9, 0x1B: 1, 0x24: 3, 0x41: 8}
+T6_TEXT = (0x16, 0x35)
 
 class SimError(Exception):
     pass
@@ -707,6 +713,8 @@ class X07(CPU):
         self.overruns = 0
         self.int_mask = 0
         self.byte_steps = 1500        # ~ un octet à 4800 bauds
+        self.t6_port = []             # commande T6834 en cours de réception sur le port $F1
+        self.t6_resp = deque()        # sa réponse, relue sur le port $F1
         self._setcur(0, 0)
 
     # écran
@@ -724,7 +732,9 @@ class X07(CPU):
             self.rx_latch = None
             self.rx_next = self.steps + self.byte_steps
             return v
-        return {0xF0: 0x00, 0xF1: 0x00, 0xF2: 0x02, 0xF4: 0x00}.get(port, 0xFF)
+        if port == 0xF1:                      # réponse du T6834 (port direct)
+            return self.t6_resp.popleft() if self.t6_resp else 0x00
+        return {0xF0: 0x00, 0xF2: 0x02, 0xF4: 0x00}.get(port, 0xFF)
 
     def x_OUT(self, t, o, v):
         port = v[z80.PORT] if o[0] == z80.PORT else self.r["C"]
@@ -732,10 +742,26 @@ class X07(CPU):
         self.ports_out.append((port, val))
         if port == 0xF0:
             self.int_mask = val
+        elif port == 0xF1:                    # octet pour le T6834, envoyé sans la ROM
+            self._t6_port_byte(val)
         elif port == 0xF7:                    # octet émis vers le PC
             self.serial_out.append(val)
             if self.on_serial:
                 self.on_serial(val)
+
+    def _t6_port_byte(self, b):
+        """Octet écrit sur $F1 : la commande, puis ses paramètres ; exécutée dès
+        qu'elle est complète, comme si elle venait de la routine de la ROM."""
+        buf = self.t6_port
+        buf.append(b)
+        cmd = buf[0] & 0x7F                   # bit 7 : « sans paramètre » pour la ROM
+        if cmd in T6_TEXT:
+            if len(buf) < 3 or buf[-1] != 0:
+                return
+        elif len(buf) - 1 < T6_PARAMS.get(cmd, 0):
+            return
+        self.t6_port = []
+        self.t6_resp.extend(self._t6_exec(cmd, buf[1:], None))
 
     def _uart_tick(self):
         """Fait arriver l'octet suivant de la ligne série au rythme du débit."""
@@ -1018,6 +1044,8 @@ class X07(CPU):
             resp = list(lcd.font[p[0] * 8:p[0] * 8 + 8])
         elif cmd == 0x2E:                        # CLS
             lcd.clear()
+        elif cmd in (0x2B, 0x2C):                # DISP OFF / DISP ON : l'écran garde son contenu
+            lcd.display(cmd == 0x2C)
         elif cmd == 0x09:                        # LINE CLEAR
             lcd.clear_row(p[0])
         elif cmd == 0x07:                        # SCROLL SET : première et dernière ligne
