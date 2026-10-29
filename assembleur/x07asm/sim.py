@@ -85,7 +85,12 @@ class CPU:
                 raise SimError("écriture hors de la RAM à $%04X (PC=$%04X)" % (a, self.pc))
             return                              # ignorée, comme sur la machine
         self.mem[a] = v & 0xFF
-        self.cache.pop(a, None)
+        # instructions décodées qui contiennent cet octet : elles commencent
+        # jusqu'à 3 octets avant (4 octets au plus), comme JP nn modifié par
+        # un POKE de son adresse (crochet $009F des Mystères du X-07)
+        cache = self.cache
+        for k in range(4):
+            cache.pop((a - k) & 0xFFFF, None)
 
     def rd16(self, a):
         return self.rd(a) | (self.rd(a + 1) << 8)

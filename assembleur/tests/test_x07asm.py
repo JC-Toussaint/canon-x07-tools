@@ -296,6 +296,39 @@ class TestFormats(unittest.TestCase):
 
 
 
+class TestSimulator(unittest.TestCase):
+    def test_self_modified_jump_target(self):
+        # le cache des instructions décodées : un JP nn exécuté une fois, puis
+        # dont l'adresse est changée par une écriture au milieu de l'instruction
+        # (comme le crochet $009F des Mystères du X-07, « Redéfinition d'une touche »)
+        from x07asm.sim import CPU, EXIT
+        a = Assembler(x07=False)
+        mem = a.assemble_text("""        ORG  $1000
+        LD   B,2
+BCL:    CALL CROCHET         ; 1er tour : vers UN ; 2e tour : vers DEUX
+        LD   HL,DEUX
+        LD   (CROCHET+1),HL  ; écrit l'adresse, au milieu du JP
+        DJNZ BCL
+        RET
+CROCHET: JP  UN
+UN:     LD   A,1
+        LD   (VALEUR),A
+        RET
+DEUX:   LD   A,2
+        LD   (VALEUR),A
+        RET
+VALEUR: DB   0
+""")
+        self.assertEqual(a.errors, [])
+        c = CPU()
+        c.load(mem)
+        c.sp = 0x8000
+        c.push(EXIT)
+        c.pc = 0x1000
+        c.run(10000)
+        self.assertEqual(c.mem[a.symbols["VALEUR"]], 2)
+
+
 class TestCliEmu(unittest.TestCase):
     def test_emu_refuses_machine_programs(self):
         # emu tape un texte BASIC au X-07 : un .asm doit passer par run, --charger ou ide
