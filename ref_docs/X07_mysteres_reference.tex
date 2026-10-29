@@ -420,7 +420,7 @@ Adresse & Contenu \\
 \hex{CA00}--\hex{CBFF} & caractères définis : codes \hex{80}--\hex{9F} en $\hex{CA00}+(c-\hex{80})\times 8$ ; codes \hex{E0}--\hex{FF} en $\hex{CB00}+(c-\hex{E0})\times 8$ \\
 \hex{CC00}--\hex{CCFF} & tampon du clavier (256 octets, 127 touches) \\
 \hex{CE00}--\hex{CFFF} & programme de lancement (512 octets, \texttt{START\$}) \\
-\hex{E000}--\hex{E1FE} & mémoire de l'écran LCD (511 octets) \\
+\hex{E000}--\hex{E1FE} & mémoire de l'écran LCD (511 octets) : 16 octets par ligne de points, dont 15 visibles ; bit 7 = point de gauche (vérifié sur la machine) \\
 \bottomrule
 \end{tabular}
 \end{center}

@@ -28,7 +28,8 @@ T6_PARAMS = {0x05: 2, 0x06: 3, 0x07: 2, 0x09: 1, 0x0A: 8, 0x0C: 8, 0x0F: 1, 0x10
 T6_TEXT = {0x16: 1, 0x35: 1, 0x1D: 0, 0x1E: 0}
 # RAM du T6834 (Mystères du X-07, § 7.6.2) : zones reliées à l'imitation
 T6_SCROLL_FIRST, T6_SCROLL_LAST = 0xC09E, 0xC096    # zone de défilement (lignes 0 à 3)
-T6_LCD = 0xE000          # écran : 16 octets par ligne de points, 15 visibles (bit 7 à gauche)
+T6_LCD = 0xE000          # écran : 16 octets par ligne de points, 15 visibles ; bit 7 à
+                         # gauche (vérifié sur la machine : $80 en $E000 -> point 0,0)
 T6_UDC = 0xCA00          # caractères définis : $80-$9F en $CA00, $E0-$FF en $CB00
 
 class SimError(Exception):
