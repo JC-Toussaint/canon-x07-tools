@@ -23,6 +23,8 @@ Le programme Pascal est **traduit en QuickBASIC**, puis compilé directement par
 
 La commande `pas` écrit le QuickBASIC produit (`NOM_pas.qbas`), pour voir ce que devient chaque instruction. Les messages d'erreur, le débogueur et l'éditeur parlent en **lignes du programme Pascal**.
 
+Dans l'éditeur-débogueur (`ide`), l'onglet *Variables* montre les **noms Pascal** : `Trier.i` pour une variable locale, `l.age(1..4)` pour un champ de tableau de records, avec les indices du programme, et `Trier.l.age() -> l.age()` pour un tableau reçu en paramètre. Les variables de la bibliothèque d'appui y sont cachées.
+
 ## Le langage
 
 | Élément | Remarques |
@@ -100,8 +102,7 @@ Le compilateur le signale par un message clair, avec la ligne du programme.
 - **Écran de 20 colonnes :** un `write` trop long passe à la ligne suivante.
 - **`Val`** rend toujours 0 dans son code d'erreur.
 - **`Delay` sans son** est une boucle d'attente : environ 500 instructions par milliseconde, soit environ 1 ms sur la machine.
-- **Débogueur :** il montre les variables avec leur nom QuickBASIC (`P.X#`, `FACT.N%`). Un tableau y a ses indices internes, à partir de 0 (`array[1..5]` y est montré `0..4`).
-- **Identifiants :** un nom qui est un mot réservé du QuickBASIC (`len`, `line`, `data`…) est renommé en interne (`LENV`). Le préfixe `TP` est réservé à la bibliothèque d'appui. Cela ne se voit que dans le QuickBASIC produit et dans le débogueur.
+- **Identifiants :** un nom qui est un mot réservé du QuickBASIC (`len`, `line`, `data`…) est renommé en interne (`LENV`). Le préfixe `TP` est réservé à la bibliothèque d'appui. Cela ne se voit que dans le QuickBASIC produit.
 
 ## Exemples
 

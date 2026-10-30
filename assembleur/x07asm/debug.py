@@ -450,7 +450,9 @@ class Debugger:
         name = lab.split("_", 1)[1]
         if t != "$":
             name = name.rsplit("_", 1)[0] if not lab.startswith("A") else name
-        name = re.sub(r"__A$", "", name).replace("__", ".")     # QuickBASIC compilé
+        if lab.startswith("A"):                 # tableau (AI_...__A) ; pas une variable « A »
+            name = re.sub(r"__A$", "", name)
+        name = name.replace("__", ".")                             # QuickBASIC compilé
         suffix = {"I": "%", "F": "!", "D": "#", "$": "$"}[t]
         idx = "(%d)" % index if index is not None else ""
         return "%s%s%s = %s   ($%04X)" % (name, suffix, idx, val, a)

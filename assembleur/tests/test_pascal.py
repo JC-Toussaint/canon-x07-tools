@@ -256,6 +256,24 @@ end.''', "touche A FALSE\nici", keys="A", setup=lambda m: setattr(m, "on_note",
             self.assertIn(what, str(cm.exception))
 
 
+@needs_rom
+class TestDebugger(unittest.TestCase):
+    def test_variables_with_pascal_names_and_bounds(self):
+        # onglet Variables de l'IDE : noms Pascal, champs, bornes des tableaux,
+        # variable locale homonyme d'une globale, paramètre « a » (nom court)
+        from x07asm.ide import Session
+        s = Session(os.path.join(ROOT, "exemples", "pascal", "fiches.pas"))
+        s.build()
+        self.assertEqual(s.toggle_break(26), (26, True))
+        s.run()
+        self.assertEqual(s.current_line(), 26)
+        v = s.variables()
+        for want in ("Trier.i = 1", "Trier.j = 2", "Remplir.a = 19",
+                     "Trier.l.age() -> l.age()", "l.age(1..4) = 34 27 45 19"):
+            self.assertIn(want, v)
+        self.assertFalse([x for x in v if "TP" in x.split(" = ")[0]])   # bibliothèque cachée
+
+
 class TestTranslation(unittest.TestCase):
     def test_names_and_line_map(self):
         qb, warns, lines = pascal.translate(

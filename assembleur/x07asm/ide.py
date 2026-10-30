@@ -168,6 +168,10 @@ class Session:
         self.m = m
         self.symbols = {n.upper(): a for n, a in symbols.items()}
         self.prog_range = prog_range
+        if self.kind == "pas":                     # noms Pascal pour l'onglet Variables
+            from . import pascal
+            with open(self.path, encoding="utf-8", errors="replace") as f:
+                self.pas_info = pascal.display_info(f.read())
         self._map_lines(listing, symbols)
         kept = set()
         for line in self.break_lines:     # les points d'arrêt suivent la recompilation
@@ -431,11 +435,34 @@ class Session:
         out = []
         for line in self._basic_variables():
             name, sep, val = line.partition(" = ")
-            parts = name.split(".")
-            if any(p.startswith("TP") for p in parts):
+            name = name.replace("_", ".")
+            if any(p.startswith("TP") for p in re.split(r"[.() >-]+", name) if p):
                 continue
-            out.append(name.replace("_", ".") + sep + val)
+            name = re.sub(r"([A-Z][A-Z0-9.]*)([%#$!])?(\([^)]*\))?", self._pas_name, name)
+            out.append(name + sep + val)
         return out
+
+    def _pas_name(self, m):
+        """Nom QuickBASIC (« TRIER.LV.AGE% (0..3) ») -> nom Pascal (« Trier.l.age
+        (1..4) »), sans suffixe de type, indices comptés comme en Pascal."""
+        info = self.pas_info
+        base, paren = m.group(1), m.group(3) or ""
+        segs = base.split(".")
+        sp = info["spelling"]
+        if len(segs) > 1 and (segs[0], segs[1]) in info["locals"]:
+            head, rest = [info["routines"].get(segs[0], segs[0]),
+                          info["locals"][(segs[0], segs[1])]], segs[2:]
+        elif segs[0] in info["globals"]:
+            head, rest = [info["globals"][segs[0]]], segs[1:]
+        elif segs[0] in info["routines"]:
+            head, rest = [info["routines"][segs[0]]], segs[1:]
+        else:
+            return m.group(0)
+        lows = info["lows"].get(base)
+        r = re.fullmatch(r"\((\d+)\.\.(\d+)\)", paren)
+        if r and lows and len(lows) == 1:
+            paren = "(%d..%d)" % (int(r.group(1)) + lows[0], int(r.group(2)) + lows[0])
+        return ".".join(head + [sp.get(x.lower(), x.lower()) for x in rest]) + paren
 
     def _basic_variables(self):
         out = []
@@ -446,7 +473,7 @@ class Session:
         for n in simple:
             text = self.dbg.var_text(n).split("   ($")[0]
             name, _, val = text.partition(" = ")
-            if re.search(r"\.[A-Z0-9]+\.P%$", name):      # paramètre tableau : pointeur
+            if re.search(r"\.[A-Z0-9_]+\.P%$", name):    # paramètre tableau : pointeur
                 target = descs.get(self.m.rd16(self.symbols[n]))
                 arr = self.dbg.var_text(target, 0).split("(", 1)[0] if target else "?"
                 text = "%s() -> %s()" % (name[:-3], arr)

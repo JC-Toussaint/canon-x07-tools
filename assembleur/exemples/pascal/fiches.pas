@@ -36,5 +36,8 @@ begin
   Trier(l);
   ClrScr;
   for i := 1 to N do
-    with l[i] do writeln(nom:6, age:3, taille:6:2)
+    with l[i] do begin
+      write(nom:6, age:3, taille:6:2);
+      if i < N then writeln     { écran de 4 lignes : pas de défilement }
+    end
 end.

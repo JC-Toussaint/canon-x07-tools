@@ -69,7 +69,9 @@ _TOKEN = re.compile(r"""
 """, re.S | re.X)
 
 
-def tokenize(text):
+def tokenize(text, spelling=None):
+    """Lexèmes du programme ; spelling reçoit l'orthographe d'origine de chaque
+    identifiant (Pascal ne distingue pas majuscules et minuscules)."""
     toks, i, line = [], 0, 1
     while i < len(text):
         m = _TOKEN.match(text, i)
@@ -96,6 +98,8 @@ def tokenize(text):
             toks.append(Tok("str", s, line))
         elif k == "id":
             low = v.lower()
+            if spelling is not None:
+                spelling.setdefault(low, v)
             toks.append(Tok("kw" if low in KEYWORDS else "id", low, line))
         elif k == "op":
             toks.append(Tok("op", v, line))
@@ -251,7 +255,8 @@ PRELUDE_SHARED = {"TPKP%": "TP.K$", "TPRK$": "TP.K$", "TPDELAY": "TP.F%"}
 # ===================================================================== analyse
 class Parser:
     def __init__(self, text):
-        self.toks = tokenize(text)
+        self.spelling = {}
+        self.toks = tokenize(text, self.spelling)
         self.i = 0
 
     # -------------------------------------------------------------- outils
@@ -666,7 +671,11 @@ class Parser:
 # ================================================================= traduction
 class Translator:
     def __init__(self, text):
-        self.prog = Parser(text).program()
+        parser = Parser(text)
+        self.prog = parser.program()
+        self.spelling = parser.spelling
+        # pour le débogueur : noms QuickBASIC -> noms Pascal, bornes des tableaux
+        self.display = {"globals": {}, "locals": {}, "routines": {}, "lows": {}}
         self.lines = []            # (texte QuickBASIC, ligne Pascal)
         self.warnings = []
         self.used = set()          # fonctions de la bibliothèque d'appui
@@ -919,9 +928,10 @@ class Translator:
                 self.line = line
                 typ = self.resolve(t, line)
                 for n in names:
+                    qb = self.qbname(n, scope is not self.globals)
                     self.declare(scope, n, {"cls": "var", "type": typ, "byref": False,
-                                            "qb": self.qbname(n, scope is not self.globals),
-                                            "line": line, "init": init}, line)
+                                            "qb": qb, "line": line, "init": init}, line)
+                    self.show_var(n, qb, typ, scope is self.globals)
             elif k == "routine":
                 self.declare_routine(d, scope, routines)
 
@@ -940,6 +950,7 @@ class Translator:
             self.err("une fonction rend un type simple (pas de tableau ni de record)", line)
         ptypes = [(n, self.resolve(t, line), byref) for n, t, byref in params]
         qb = self.qbname(name)
+        self.display["routines"][qb] = self.spelling.get(name, name)
         sym = {"cls": "func" if kind == "function" else "proc", "name": name, "qb": qb,
                "params": ptypes, "ret": rt, "decls": decls, "body": body,
                "forward": decls is None, "line": line}
@@ -953,6 +964,20 @@ class Translator:
                 plist.append(None)                    # nom fixé au corps de la routine
         sym["decl"] = None
         sym["pcount"] = len(plist)
+
+    def show_var(self, name, qb, typ, is_global):
+        """Nom Pascal d'une variable et bornes basses de ses tableaux, pour le
+        débogueur (une variable locale est préfixée par sa routine)."""
+        d = self.display
+        if is_global:
+            d["globals"][qb] = self.spelling.get(name, name)
+            prefix = ""
+        else:
+            d["locals"][(self.routine["qb"], qb)] = self.spelling.get(name, name)
+            prefix = self.routine["qb"] + "."
+        for path, lt, dims in leaves(typ):
+            if dims:
+                d["lows"][prefix + self.leaf_name(qb, path, lt)[:-1]] = [lo for lo, hi in dims]
 
     def dim_list(self, sym):
         out = []
@@ -980,6 +1005,7 @@ class Translator:
             sym = {"cls": "var", "type": pt, "byref": byref, "qb": self.qbname(pn, True),
                    "line": r["line"], "param": True, "init": None}
             self.declare(self.local, pn, sym, r["line"])
+            self.show_var(pn, sym["qb"], pt, False)
             for path, lt, dims in leaves(pt):
                 n = self.leaf_name(sym["qb"], path, lt)
                 params.append(n + ("()" if dims else ""))
@@ -1758,6 +1784,14 @@ def translate(text):
     qb = "\n".join(t for t, _ in lines) + "\n"
     linemap = {k: l for k, (_, l) in enumerate(lines, 1)}
     return qb, tr.warnings, linemap
+
+
+def display_info(text):
+    """Pour le débogueur : noms Pascal des variables et des routines, bornes
+    basses des tableaux, orthographe d'origine des identifiants."""
+    tr = Translator(text)
+    tr.translate()
+    return dict(tr.display, spelling=tr.spelling)
 
 
 def pascal_line(msg, linemap):
