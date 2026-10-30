@@ -1,6 +1,7 @@
 """Interface en ligne de commande : x07asm asm|dis|sym ..."""
 import argparse
 import os
+import re
 import sys
 
 from . import asm as asmmod
@@ -192,12 +193,21 @@ def build_basic(path, org="auto", ram=8, direct=False, **opts):
     par adresse), sans passer par le BASIC du X-07.
     Renvoie (texte assembleur, assembleur, mémoire, compilateur)."""
     from . import basic
+    pas = path.lower().endswith(".pas")
     direct = direct and path.lower().endswith(".qbas")
-    text = read_text(path) if direct else read_basic(path)
+    text = read_text(path) if (direct or pas) else read_basic(path)
     name = os.path.splitext(os.path.basename(path))[0].upper()
 
     def once(o):
-        if direct:
+        if pas:                                  # Pascal : traduit, puis qbcomp
+            from . import pascal
+            try:
+                src, comp, warns, lines = pascal.compile_pascal(text, name, o, **opts)
+            except pascal.PasError as e:
+                raise basic.CompileError("Pascal : %s" % e)
+            comp.warnings = list(dict.fromkeys(warns))
+            comp.pascal_lines = lines            # ligne QuickBASIC -> ligne Pascal
+        elif direct:
             from . import qbasic, qbcomp
             try:
                 src, comp, warns = qbcomp.compile_qbasic(text, name, o, **opts)
@@ -415,7 +425,7 @@ def cmd_emu(args):
         print("erreur : --charger s'utilise avec --fenetre", file=sys.stderr)
         return 1
     src = ""
-    if args.source and args.source.lower().endswith((".asm", ".bin", ".rom")):
+    if args.source and args.source.lower().endswith((".asm", ".bin", ".rom", ".pas")):
         # un programme machine, pas un texte BASIC à taper au X-07
         print("erreur : %s n'est pas un programme BASIC ; pour le lancer :\n"
               "  python3 x07asm.py run %s --fenetre\n"
@@ -521,7 +531,7 @@ def _load_program(args):
     Renvoie (mémoire, entrée, dernière adresse occupée, variables comprises)."""
     src = args.source
     low = src.lower()
-    if low.endswith((".bas", ".qbas")):
+    if low.endswith((".bas", ".qbas", ".pas")):
         _, a, mem, comp = build_basic(src, args.org or "auto", args.ram,
                                       direct=getattr(args, "direct", False))
         for w in comp.warnings:
@@ -599,10 +609,12 @@ def load_for_debug(src, ram=16, org=None, entry=None, direct=False):
     .qbas est compilé avec les numéros de ligne (option --debug)."""
     low = src.lower()
     listing, symbols, warns = [], {}, []
-    if low.endswith((".bas", ".qbas")):
+    if low.endswith((".bas", ".qbas", ".pas")):
         _, a, mem, comp = build_basic(src, org or "auto", ram, debug=True, direct=direct)
         warns = comp.warnings
         start, listing, symbols = a.entry, a.listing, a.symbols
+        if hasattr(comp, "pascal_lines"):        # LN_n : ligne n du programme Pascal
+            symbols = pascal_symbols(symbols, comp.pascal_lines)
     elif low.endswith(".asm"):
         a = asmmod.Assembler()
         mem = a.assemble_file(src)
@@ -618,6 +630,19 @@ def load_for_debug(src, ram=16, org=None, entry=None, direct=False):
         start = _num(entry)
     prog_range = (min(mem), max(max(mem), symbols.get("VARS_END", 0) - 1))   # avec les variables
     return mem, start, symbols, listing, prog_range, warns
+
+
+def pascal_symbols(symbols, lines):
+    """Symboles d'un programme Pascal : les étiquettes LN_n (ligne n du texte
+    QuickBASIC produit) deviennent LN_p, p étant la ligne Pascal ; une ligne
+    Pascal traduite en plusieurs lignes garde la première adresse."""
+    out = {n: a for n, a in symbols.items() if not re.fullmatch(r"LN_\d+", n)}
+    for n, a in sorted(symbols.items(), key=lambda kv: kv[1]):
+        if re.fullmatch(r"LN_\d+", n):
+            p = lines.get(int(n[3:]))
+            if p is not None:
+                out.setdefault("LN_%d" % p, a)
+    return out
 
 
 def cmd_debug(args):
@@ -707,6 +732,32 @@ def cmd_ide(args):
         print("erreur : fenêtre impossible (%s)" % ex, file=sys.stderr)
         return 1
     e.mainloop()
+    return 0
+
+
+def cmd_pas(args):
+    """Pascal : écrit le QuickBASIC produit (pour l'examiner), et compile."""
+    from . import basic, pascal
+    try:
+        qb, warns, lines = pascal.translate(read_text(args.source))
+    except pascal.PasError as e:
+        print("erreur : Pascal : %s" % e, file=sys.stderr)
+        return 1
+    for w in warns:
+        print("attention : %s" % w, file=sys.stderr)
+    root = os.path.splitext(args.source)[0]
+    dest = args.output or root + "_pas.qbas"
+    with open(dest, "w", encoding="utf-8") as f:
+        f.write(qb)
+    print("%d lignes de QuickBASIC -> %s" % (qb.count("\n"), dest))
+    try:
+        src, a, mem, comp = build_basic(args.source, args.org, args.ram)
+    except basic.CompileError as e:
+        print("erreur : %s" % e, file=sys.stderr)
+        return 1
+    print("%d octets avec les variables : $%04X-$%04X ; sur le X-07 : CLEAR 50,&H%X  puis  "
+          "EXEC &H%X" % (a.symbols["VARS_END"] - min(mem), min(mem), a.symbols["VARS_END"] - 1,
+                         min(mem) - 1, a.entry))
     return 0
 
 
@@ -857,6 +908,15 @@ def main(argv=None):
     ed.add_argument("--qt", action="store_true",
                     help="fenêtre Qt (PyQt6) au lieu de tkinter")
     ed.set_defaults(func=cmd_ide)
+
+    pa = sub.add_parser("pas", help="Turbo Pascal simplifié : traduction en QuickBASIC "
+                                    "(examinable) et compilation")
+    pa.add_argument("source", help="programme Pascal (extension .pas)")
+    pa.add_argument("-o", "--output", help="QuickBASIC produit (défaut : NOM_pas.qbas)")
+    pa.add_argument("--ram", type=int, choices=(8, 16, 24), default=16,
+                    help="mémoire du X-07 en Ko (défaut : 16)")
+    pa.add_argument("--org", default="auto", help="adresse d'implantation")
+    pa.set_defaults(func=cmd_pas)
 
     q = sub.add_parser("qb", help="traduire un programme QuickBASIC en BASIC du X-07")
     q.add_argument("source", help="programme QuickBASIC (extension .qbas)")
