@@ -28,6 +28,14 @@ TEMPLATES = {   # point de départ d'un nouveau programme
               "INPUT \"Nom\"; nom$\n"
               "PRINT \"Bonjour \"; nom$\n"
               "END\n"),
+    ".pas": ("program Nouveau;  { Turbo Pascal simplifié pour le Canon X-07 }\n"
+             "var\n"
+             "  nom: string[12];\n"
+             "begin\n"
+             "  write('Nom ? ');\n"
+             "  readln(nom);\n"
+             "  writeln('Bonjour ', nom)\n"
+             "end.\n"),
     ".asm": ("; Nouveau programme en assembleur pour le Canon X-07\n"
              "; Chargement : CLEAR 50,&H1BFF  puis  EXEC &H1C00\n"
              "\n"
@@ -43,7 +51,8 @@ TEMPLATES = {   # point de départ d'un nouveau programme
              "\n"
              "MSG:    DZ   \"BONJOUR X-07 !\"\n"),
 }
-KINDS = ((".bas", "BASIC du X-07"), (".qbas", "QuickBASIC"), (".asm", "Assembleur Z80"))
+KINDS = ((".bas", "BASIC du X-07"), (".qbas", "QuickBASIC"), (".pas", "Turbo Pascal"),
+         (".asm", "Assembleur Z80"))
 
 # registres affichés en cases : (nom, chiffres hexadécimaux), par rangée
 REG_ROWS = ((("A", 2), ("F", 2), ("BC", 4), ("DE", 4), ("HL", 4)),
@@ -188,7 +197,7 @@ class Session:
                     pairs.append((addr & 0xFFFF, src[1]))
         else:
             lab = {int(n[3:]): a for n, a in symbols.items() if re.fullmatch(r"LN_\d+", n)}
-            if self.kind == "qbas":                 # LN_n : ligne n du fichier
+            if self.kind in ("qbas", "pas"):        # LN_n : ligne n du fichier
                 pairs = [(a, n) for n, a in lab.items()]
             else:                                   # BASIC du X-07 : numéro en tête de ligne
                 with open(self.path, encoding="utf-8", errors="replace") as f:
@@ -372,6 +381,8 @@ class Session:
     def variables(self):
         """Lignes « NOM = valeur » : variables du programme compilé, ou
         étiquettes de données d'un programme assembleur."""
+        if self.kind == "pas":
+            return self._pascal_variables()
         if self.kind in ("bas", "qbas"):
             return self._basic_variables()
         code = set(self.addrs)
@@ -411,6 +422,20 @@ class Session:
         return "%s%s  %s  (%d octets)" % (" ".join("%02X" % c for c in data),
                                           " …" if size > 16 else "",
                                           "".join(caractere(c) for c in data), size)
+
+    def _pascal_variables(self):
+        """Variables d'un programme Pascal : sans celles de la bibliothèque
+        d'appui (TP...) ni les temporaires ; « p.x » pour un champ de record
+        (l'étiquette assembleur avait changé le point en « _ » : un identifiant
+        Pascal n'en contient plus, le traducteur les retire)."""
+        out = []
+        for line in self._basic_variables():
+            name, sep, val = line.partition(" = ")
+            parts = name.split(".")
+            if any(p.startswith("TP") for p in parts):
+                continue
+            out.append(name.replace("_", ".") + sep + val)
+        return out
 
     def _basic_variables(self):
         out = []
@@ -773,8 +798,9 @@ class Editeur:
         self.refresh()
 
     # -------------------------------------------------- fichier
-    FILETYPES = [("Programmes X-07", "*.bas *.qbas *.asm"), ("BASIC du X-07", "*.bas"),
-                 ("QuickBASIC", "*.qbas"), ("Assembleur", "*.asm"), ("Tous", "*")]
+    FILETYPES = [("Programmes X-07", "*.bas *.qbas *.pas *.asm"), ("BASIC du X-07", "*.bas"),
+                 ("QuickBASIC", "*.qbas"), ("Turbo Pascal", "*.pas"), ("Assembleur", "*.asm"),
+                 ("Tous", "*")]
 
     def open_dialog(self):
         from tkinter import filedialog
@@ -814,7 +840,7 @@ class Editeur:
         """Crée le programme (modèle selon l'extension) et l'ouvre."""
         ext = os.path.splitext(path)[1].lower()
         if ext not in TEMPLATES:
-            self.set_status("extension inconnue : .bas, .qbas ou .asm")
+            self.set_status("extension inconnue : .bas, .qbas, .pas ou .asm")
             return False
         with open(path, "w", encoding="utf-8") as f:
             f.write(TEMPLATES[ext])
@@ -839,7 +865,7 @@ class Editeur:
         """Enregistre le texte sous un autre nom, qui devient le fichier ouvert
         (les points d'arrêt sont gardés ; à recompiler)."""
         if os.path.splitext(path)[1].lower() not in TEMPLATES:
-            self.set_status("extension inconnue : .bas, .qbas ou .asm")
+            self.set_status("extension inconnue : .bas, .qbas, .pas ou .asm")
             return False
         if self.session is not None:
             self.sync_breaks_from_text()

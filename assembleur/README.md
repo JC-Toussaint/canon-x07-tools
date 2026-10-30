@@ -14,6 +14,7 @@ L'outil comprend aussi :
 - un **débogueur** : points d'arrêt, pas à pas, registres, dans l'émulateur, et un **éditeur-débogueur visuel** (fenêtre) : [DEBOGUEUR.md](DEBOGUEUR.md) ;
 - une étude des **fichiers en RAM** du X-07 et de leur persistance : [FICHIERS.md](FICHIERS.md) ;
 - un **traducteur QuickBASIC** vers le BASIC du X-07 (étude, prototype) : [QBASIC.md](QBASIC.md) ;
+- un **Turbo Pascal 3.0 simplifié** (records, réels en double précision), compilé en code machine : [PASCAL.md](PASCAL.md) ;
 - le **transfert par le câble série** : [TRANSFERT.md](TRANSFERT.md).
 
 La carte des routines de la ROM est dans [ROM.md](ROM.md). Pour un premier parcours complet, voir le [guide de démarrage](../DEMARRAGE.md).
@@ -30,6 +31,7 @@ python3 x07asm.py emu exemples/devine.bas                # le BASIC du X-07 (vra
 python3 x07asm.py emu exemples/graphisme.bas --fenetre   # l'écran de 120 x 32 points
 python3 x07asm.py qb exemples/qbasic/tri.qbas            # QuickBASIC -> BASIC du X-07
 python3 x07asm.py run exemples/qbasic/rapide.qbas --direct   # QuickBASIC compilé directement
+python3 x07asm.py run exemples/pascal/fiches.pas --fenetre   # Turbo Pascal simplifié
 python3 x07asm.py debug exemples/bonjour.asm              # débogueur pas à pas
 python3 x07asm.py ide exemples/qbasic/rapide.qbas         # éditeur-débogueur visuel
 python3 x07asm.py ide --qt exemples/qbasic/rapide.qbas    # le même, en Qt (pip install PyQt6)

@@ -7,7 +7,7 @@ fin) ; les lignes comptent depuis 1, les colonnes depuis 0, comme tkinter."""
 import functools
 import re
 
-from . import asm, basic, qbasic, z80
+from . import asm, basic, pascal, qbasic, z80
 
 CATEGORIES = ("motcle", "fonction", "chaine", "commentaire", "numero", "directive",
               "registre", "etiquette")
@@ -24,7 +24,8 @@ _QB_TOKEN = re.compile(r'"[^"]*"?|\'.*|[A-Za-z_][A-Za-z0-9_.]*[$%!#&]?|&[HhOo][0
 
 
 def zones(text, kind):
-    line_zones = {"bas": _bas_line, "qbas": _qb_line, "asm": _asm_line}.get(kind)
+    line_zones = {"bas": _bas_line, "qbas": _qb_line, "asm": _asm_line,
+                  "pas": _pas_line}.get(kind)
     if line_zones is None:
         return []
     return [(c, n, a, b) for n, line in enumerate(text.split("\n"), 1)
@@ -95,6 +96,39 @@ def _qb_line(text):
             out.append(("numero", a, b))
         if not tok.isspace():
             start = tok == ":"
+    return tuple(out)
+
+
+# Pascal : mots-clés, fonctions et procédures standard, chaînes '...',
+# commentaires { } et (* *) (sur une ligne ; ouvert, jusqu'au bout de la ligne)
+PAS_KEYWORDS = set(pascal.KEYWORDS) | {"true", "false"}
+PAS_FUNCS = {"write", "writeln", "read", "readln", "abs", "sqr", "sqrt", "sin", "cos", "arctan",
+             "exp", "ln", "trunc", "round", "frac", "int", "odd", "ord", "chr", "succ", "pred",
+             "length", "copy", "concat", "pos", "upcase", "insert", "delete", "str", "val",
+             "inc", "dec", "random", "randomize", "pi", "keypressed", "readkey", "clrscr",
+             "gotoxy", "wherex", "wherey", "delay", "sound", "nosound", "halt", "exit", "mem",
+             "port", "plot", "draw", "circle", "beep", "integer", "real", "boolean", "char",
+             "byte"}
+_PAS_TOKEN = re.compile(r"\{[^}]*\}?|\(\*.*?(?:\*\)|$)|'(?:[^']|'')*'?|#\d+|\$[0-9A-Fa-f]+"
+                        r"|[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|.")
+
+
+@functools.lru_cache(maxsize=4096)
+def _pas_line(text):
+    out = []
+    for m in _PAS_TOKEN.finditer(text):
+        tok, a, b = m.group(), m.start(), m.end()
+        low = tok.lower()
+        if tok[0] == "{" or tok.startswith("(*"):
+            out.append(("commentaire", a, b))
+        elif tok[0] in "'#":
+            out.append(("chaine", a, b))
+        elif low in PAS_KEYWORDS:
+            out.append(("motcle", a, b))
+        elif low in PAS_FUNCS:
+            out.append(("fonction", a, b))
+        elif tok[0].isdigit() or tok[0] == "$":
+            out.append(("numero", a, b))
     return tuple(out)
 
 
