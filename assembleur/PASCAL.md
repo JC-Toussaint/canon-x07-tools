@@ -112,6 +112,7 @@ exemples/pascal/fiches.pas    tableau de records trié, with, write avec largeur
 exemples/pascal/hanoi.pas     récursivité : les tours de Hanoï
 exemples/pascal/dessin.pas    graphismes (Plot, Draw, Circle), Sound, KeyPressed
 exemples/pascal/valeur.pas    paramètres par valeur ou var (entier, record, chaîne)
+exemples/pascal/gauss_rand.pas  système aléatoire résolu par Gauss-Jordan (tableau à deux dimensions ; 16 Ko)
 ```
 
 ## Fichiers

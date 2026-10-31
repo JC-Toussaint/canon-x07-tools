@@ -216,6 +216,22 @@ end.''', "1 3 5 7 9 \n42 21")
             src = f.read()
         self.out(src, "valeur : 21\nvar    : 42\nrecord : 1 11\nchaine : AB *AB*")
 
+    def test_example_gauss_jordan(self):
+        # exemples/pascal/gauss_rand.pas : système tiré au hasard ; la solution
+        # affichée, reportée dans la matrice affichée, vérifie les équations
+        import re
+        with open(os.path.join(ROOT, "exemples", "pascal", "gauss_rand.pas"),
+                  encoding="utf-8") as f:
+            src = f.read()
+        m, _ = run(src, inputs=["4"])
+        out = m.output()
+        rows = [[float(x) for x in re.findall(r"-?\d+", line.replace("|", " "))]
+                for line in out.splitlines() if "|" in line and "A | B" not in line]
+        xs = [float(v) for v in re.findall(r"X\d+ = +(-?[\d.]+)", out)]
+        self.assertEqual((len(rows), len(xs)), (4, 4), out)
+        for row in rows:
+            self.assertAlmostEqual(sum(c * x for c, x in zip(row[:4], xs)), row[4], delta=1e-3)
+
     def test_real_formats(self):
         # notation scientifique de Turbo Pascal 3.0 et virgule fixe
         # (1/3*3 = 1 serait faux : le X-07 calcule en décimal, sur 14 chiffres)
