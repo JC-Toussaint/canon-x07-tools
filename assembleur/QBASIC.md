@@ -319,5 +319,7 @@ exemples/qbasic/          tri.qbas, tri2.qbas (même SUB pour deux tableaux), my
                           mots.qbas (chaînes : envers, César, voyelles, palindrome),
                           rapide.qbas (tri rapide récursif : compilation directe seulement),
                           serpent.qbas (jeu : INKEY$, POINT, SELECT CASE ; les deux voies),
-                          valeur.qbas (passage par référence ou par valeur)
+                          valeur.qbas (passage par référence ou par valeur),
+                          gauss_rand.qbas (Gauss-Jordan sur un système aléatoire ;
+                          PRINT USING : compilation directe)
 ```

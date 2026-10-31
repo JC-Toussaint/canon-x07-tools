@@ -1,0 +1,110 @@
+' Types par defaut
+DEFINT I-N
+DEFSNG A-H, O-Z
+
+DECLARE SUB GaussJordan (A(), N)
+
+CLS
+RANDOMIZE TIMER ' Initialise le générateur aléatoire
+
+INPUT "Nombre d'equations (maximum 10) : ", N
+
+IF N < 1 OR N > 10 THEN
+    PRINT "Nombre d'equations invalide."
+    END
+END IF
+
+DIM A(10, 11)
+
+' --- Generation aleatoire de la matrice diagonale dominante et du second membre ---
+FOR I = 1 TO N
+    somme = 0
+    ' 1. Remplissage des coefficients non diagonaux et calcul de la somme des valeurs absolues
+    FOR J = 1 TO N
+        IF I <> J THEN
+            ' Valeurs aleatoires entre -5 et 5
+            A(I, J) = INT(RND * 11) - 5
+            somme = somme + ABS(A(I, J))
+        END IF
+    NEXT J
+    
+    ' 2. Assurer la dominance diagonale stricte pour le coefficient diagonal
+    A(I, I) = somme + INT(RND * 5) + 1
+    
+    ' 3. Generation aleatoire du second membre (colonne N + 1) entre -20 et 20
+    A(I, N + 1) = INT(RND * 41) - 20
+NEXT I
+
+' Affichage de la matrice generee pour verification
+PRINT
+PRINT "--- Matrice augmentee generee (A | B) ---"
+FOR I = 1 TO N
+    FOR J = 1 TO N + 1
+        IF J = N + 1 THEN PRINT " | ";
+        PRINT USING "####"; A(I, J);
+    NEXT J
+    PRINT
+    NEXT I
+PRINT
+
+CALL GaussJordan(A(), N)
+
+END
+
+SUB GaussJordan (A(), N)
+
+EPS = .00001
+
+FOR K = 1 TO N
+
+    ' Recherche du pivot maximal
+    P = K
+    FOR I = K + 1 TO N
+        IF ABS(A(I, K)) > ABS(A(P, K)) THEN
+            P = I
+        END IF
+    NEXT I
+
+    ' Verification du pivot
+    IF ABS(A(P, K)) < EPS THEN
+        PRINT
+        PRINT "Solution unique impossible."
+        PRINT "Systeme incompatible ou indefini."
+        EXIT SUB
+    END IF
+
+    ' Permutation des lignes
+    IF P <> K THEN
+        FOR J = 1 TO N + 1
+            TEMP = A(K, J)
+            A(K, J) = A(P, J)
+            A(P, J) = TEMP
+        NEXT J
+    END IF
+
+    ' Normalisation de la ligne pivot
+    PIVOT = A(K, K)
+    FOR J = 1 TO N + 1
+        A(K, J) = A(K, J) / PIVOT
+    NEXT J
+
+    ' Elimination des autres coefficients
+    FOR I = 1 TO N
+        IF I <> K THEN
+            FACT = A(I, K)
+            FOR J = 1 TO N + 1
+                A(I, J) = A(I, J) - FACT * A(K, J)
+            NEXT J
+        END IF
+    NEXT I
+
+NEXT K
+
+' Affichage de la solution
+PRINT
+PRINT "Solution du systeme :"
+FOR I = 1 TO N
+    PRINT "X"; I; " = "; A(I, N + 1)
+NEXT I
+
+END SUB
