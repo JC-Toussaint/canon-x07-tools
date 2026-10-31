@@ -39,7 +39,7 @@ Dans l'éditeur-débogueur (`ide`), l'onglet *Variables* montre les **noms Pasca
 | `array[a..b, c..d] of ...` | bornes quelconques, y compris négatives ou des caractères (`array['a'..'z']`) |
 | `record ... end` | imbriqués, tableaux de records, records contenant des tableaux ; `with` |
 | `if`, `while`, `repeat`, `for ... to / downto`, `case ... of ... else` | |
-| `procedure`, `function`, `forward` | paramètres par valeur et `var`, récursivité, `exit` |
+| `procedure`, `function`, `forward` | paramètres par valeur et `var` (traduits par un argument QuickBASIC entre parenthèses, ou par la variable seule), récursivité, `exit` |
 | `x in [constantes]` | pour tester une valeur : `c in ['a'..'z', '_']` |
 
 ### Entrées, sorties, chaînes, calculs
@@ -111,6 +111,7 @@ exemples/pascal/bonjour.pas   lecture au clavier, affichage
 exemples/pascal/fiches.pas    tableau de records trié, with, write avec largeurs
 exemples/pascal/hanoi.pas     récursivité : les tours de Hanoï
 exemples/pascal/dessin.pas    graphismes (Plot, Draw, Circle), Sound, KeyPressed
+exemples/pascal/valeur.pas    paramètres par valeur ou var (entier, record, chaîne)
 ```
 
 ## Fichiers

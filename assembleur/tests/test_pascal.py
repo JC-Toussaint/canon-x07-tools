@@ -210,6 +210,12 @@ begin
   n := 21; Double(n); writeln(n)
 end.''', "1 3 5 7 9 \n42 21")
 
+    def test_example_by_value(self):
+        # exemples/pascal/valeur.pas : entier, record, chaîne ; par valeur, puis var
+        with open(os.path.join(ROOT, "exemples", "pascal", "valeur.pas"), encoding="utf-8") as f:
+            src = f.read()
+        self.out(src, "valeur : 21\nvar    : 42\nrecord : 1 11\nchaine : AB *AB*")
+
     def test_real_formats(self):
         # notation scientifique de Turbo Pascal 3.0 et virgule fixe
         # (1/3*3 = 1 serait faux : le X-07 calcule en décimal, sur 14 chiffres)
