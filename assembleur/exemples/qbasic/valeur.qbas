@@ -1,0 +1,32 @@
+' Passage des paramètres : par référence (le défaut) ou par valeur
+' - une variable seule passe par référence : la procédure la modifie ;
+' - entre parenthèses, elle passe par valeur : la procédure travaille sur
+'   une copie, la variable de l'appelant ne change pas ;
+' - une expression passe toujours par valeur.
+' C'est l'appel qui décide, pas la déclaration de la SUB.
+' Traduction :          python3 x07asm.py emu exemples/qbasic/valeur.qbas
+' Compilation directe : python3 x07asm.py run exemples/qbasic/valeur.qbas --direct
+DEFINT A-Z
+DECLARE SUB Doubler (k)
+DECLARE SUB Etoiles (s$)
+
+CLS
+n = 21: Doubler n               ' par référence : n devient 42
+PRINT "reference :"; n
+n = 21: Doubler (n)             ' par valeur : n reste à 21
+PRINT "valeur    :"; n
+n = 21: Doubler n + 1           ' expression : par valeur, n reste à 21
+PRINT "expression:"; n
+s$ = "AB": Etoiles (s$)         ' chaîne par valeur : inchangée
+PRINT "chaine:"; s$; " ";
+Etoiles s$                      ' chaîne par référence : modifiée
+PRINT s$;
+END
+
+SUB Doubler (k)
+    k = k * 2
+END SUB
+
+SUB Etoiles (s$)
+    s$ = "*" + s$ + "*"
+END SUB

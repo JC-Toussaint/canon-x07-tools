@@ -175,6 +175,12 @@ END SUB
         # chaînes : place réservée (le X-07 n'en a que 50 octets au départ)
         self.assertTrue(out.startswith("10 CLEAR 500\n20 DEFSNG A-Z\n"))
 
+    def test_example_by_value(self):
+        # exemples/qbasic/valeur.qbas : par référence, par valeur, expression, chaîne
+        with open(os.path.join(ROOT, "exemples", "qbasic", "valeur.qbas"), encoding="utf-8") as f:
+            src = f.read()
+        self.qb(src, "reference : 42 \nvaleur    : 21 \nexpression: 21 \nchaine:AB *AB*")
+
     def test_by_value_in_parentheses(self):
         self.qb('''
 DECLARE SUB Inc (x)

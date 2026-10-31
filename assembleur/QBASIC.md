@@ -318,5 +318,6 @@ tests/test_qbcomp.py      tests de la compilation directe
 exemples/qbasic/          tri.qbas, tri2.qbas (même SUB pour deux tableaux), mystere.qbas,
                           mots.qbas (chaînes : envers, César, voyelles, palindrome),
                           rapide.qbas (tri rapide récursif : compilation directe seulement),
-                          serpent.qbas (jeu : INKEY$, POINT, SELECT CASE ; les deux voies)
+                          serpent.qbas (jeu : INKEY$, POINT, SELECT CASE ; les deux voies),
+                          valeur.qbas (passage par référence ou par valeur)
 ```
