@@ -1845,8 +1845,9 @@ class Translator:
     def g_using(self, s, ctx):
         fmt = self.hoist(s[1])
         items = [i if isinstance(i, str) else self.x(self.hoist(i)) for i in s[2]]
-        self.warn("PRINT USING : accepté par la ROM ; compilé seulement en compilation "
-                  "directe (--direct)")
+        if fmt[0] != "str":
+            self.warn("PRINT USING : accepté par la ROM ; les compilateurs veulent un "
+                      "format constant")
         if fmt[0] == "str" and re.search(r"&|\\ *\\", fmt[1]):
             self.warn("PRINT USING : la ROM du X-07 ne connaît pas les champs « & » et "
                       "« \\ \\ » (seulement « ! ») ; la compilation directe les gère")

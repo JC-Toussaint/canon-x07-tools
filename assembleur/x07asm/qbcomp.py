@@ -24,7 +24,7 @@ reste exacte.
 import re
 
 from . import basic
-from .basic import CompileError
+from .basic import CompileError, parse_using
 from .qbasic import (FILE_SIZE, FILE_SPACE, FUNCTIONS, NOT_ON_X07, REL, Parser, QBError, base,
                      check_argument, num_literal, ram_file_name, tokenize)
 
@@ -77,58 +77,6 @@ class Scope:
 
 
 
-def parse_using(fmt, err):
-    """Format de PRINT USING -> [("lit", texte) | ("num", B, C, A) | ("str", "!"|"&"|"\\", n)].
-    Pour un nombre, les registres de la routine de la ROM ($BBAC), relevés sur son
-    PRINT USING : B = longueur de la partie entière du champ (« + », « , », « ** »,
-    « $$ » compris), C = chiffres après le point, point compris (0 sans point),
-    A = $80 + $40 (« , ») + $20 (« ** ») + $10 (« $$ ») + $08 (signe « + »)
-    + $04 (signe derrière)."""
-    out, lit, i = [], "", 0
-
-    def flush():
-        nonlocal lit
-        if lit:
-            out.append(("lit", lit))
-            lit = ""
-    while i < len(fmt):
-        c = fmt[i]
-        rest = fmt[i:]
-        if c == "_" and i + 1 < len(fmt):             # caractère pris tel quel
-            lit += fmt[i + 1]
-            i += 2
-            continue
-        if c in "!&":
-            flush()
-            out.append(("str", c, 1))
-            i += 1
-            continue
-        if c == "\\":
-            j = fmt.find("\\", i + 1)
-            if j > 0 and not fmt[i + 1:j].strip():
-                flush()
-                out.append(("str", "\\", j - i + 1))
-                i = j + 1
-                continue
-        m = re.match(r"(\+?)(\*\*\$?|\$\$)?(#[#,]*)?(\.#*)?(\^\^\^\^)?([-+]?)", rest)
-        if m and (m.group(2) or m.group(3) or "#" in (m.group(4) or "")):
-            if m.group(5):
-                err("PRINT USING : notation ^^^^ non gérée par le compilateur")
-            plus, fill, ints = m.group(1), m.group(2) or "", m.group(3) or ""
-            point, trail = m.group(4) or "", m.group(6)
-            if plus and trail:                        # « +##+ » : le second + reste du texte
-                trail = ""
-            flush()
-            flags = (0x80 | (0x40 if "," in ints else 0) | (0x20 if "*" in fill else 0)
-                     | (0x10 if "$" in fill else 0) | (0x08 if plus or trail == "+" else 0)
-                     | (0x04 if trail else 0))
-            out.append(("num", len(plus) + len(fill) + len(ints), len(point), flags))
-            i += len(plus) + len(fill) + len(ints) + len(point) + len(trail)
-            continue
-        lit += c
-        i += 1
-    flush()
-    return out
 
 class Lowering:
     """Programme QuickBASIC -> éléments pour QBCompiler :

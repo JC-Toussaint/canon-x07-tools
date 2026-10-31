@@ -73,6 +73,19 @@ class TestAgainstRom(OracleCase):
 70 A%=32767:B!=1E10:C#=1D10:PRINT A%;B!;C#;B!*B!;C#/3
 80 PRINT 999999.5!;1234567.5!;.1234565!;&H7FFF;&HFFFF''')
 
+    def test_print_using(self):
+        # même affichage que l'interpréteur : la routine de la ROM ($BBAC)
+        vals = ["0", "-3", "1234", "0.5", "-2.345", "99.996", "1E6"]
+        fmts = ["####", "##.##", "+##.#", "##.#-", ".##", "X=#### Y=##.#", "#,###",
+                "##,##.##", "**##", "$$##.##", "**$##.#", "###+"]
+        lines, n = [], 10
+        for f in fmts:
+            lines.append('%d PRINT USING "%s";%s' % (n, f, ";".join(vals)))
+            n += 10
+        lines.append('%d PRINT USING "##";1;2;3:PRINT USING "A=## ";7;:PRINT "/"' % n)
+        lines.append('%d A$="BONJOUR":PRINT USING "[!]";A$' % (n + 10))
+        self.same("\n".join(lines))
+
     def test_functions(self):
         self.same('''10 PRINT SIN(1);COS(1);TAN(1);ATN(1)
 20 PRINT SQR(2);LOG(10);EXP(1);SQR(16)

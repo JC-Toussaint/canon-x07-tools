@@ -227,6 +227,60 @@ INT_OPS = ("\\", "MOD", "AND", "OR", "XOR", "EQV", "IMP")
 ROM_OPS = {"+": 0, "-": 1, "*": 2, "/": 3, "^": 4}            # index du répartiteur
 
 
+def parse_using(fmt, err):
+    """Format de PRINT USING -> [("lit", texte) | ("num", B, C, A) | ("str", "!"|"&"|"\\", n)].
+    Pour un nombre, les registres de la routine de la ROM ($BBAC), relevés sur son
+    PRINT USING : B = longueur de la partie entière du champ (« + », « , », « ** »,
+    « $$ » compris), C = chiffres après le point, point compris (0 sans point),
+    A = $80 + $40 (« , ») + $20 (« ** ») + $10 (« $$ ») + $08 (signe « + »)
+    + $04 (signe derrière)."""
+    out, lit, i = [], "", 0
+
+    def flush():
+        nonlocal lit
+        if lit:
+            out.append(("lit", lit))
+            lit = ""
+    while i < len(fmt):
+        c = fmt[i]
+        rest = fmt[i:]
+        if c == "_" and i + 1 < len(fmt):             # caractère pris tel quel
+            lit += fmt[i + 1]
+            i += 2
+            continue
+        if c in "!&":
+            flush()
+            out.append(("str", c, 1))
+            i += 1
+            continue
+        if c == "\\":
+            j = fmt.find("\\", i + 1)
+            if j > 0 and not fmt[i + 1:j].strip():
+                flush()
+                out.append(("str", "\\", j - i + 1))
+                i = j + 1
+                continue
+        m = re.match(r"(\+?)(\*\*\$?|\$\$)?(#[#,]*)?(\.#*)?(\^\^\^\^)?([-+]?)", rest)
+        if m and (m.group(2) or m.group(3) or "#" in (m.group(4) or "")):
+            if m.group(5):
+                err("PRINT USING : notation ^^^^ non gérée par le compilateur")
+            plus, fill, ints = m.group(1), m.group(2) or "", m.group(3) or ""
+            point, trail = m.group(4) or "", m.group(6)
+            if plus and trail:                        # « +##+ » : le second + reste du texte
+                trail = ""
+            flush()
+            flags = (0x80 | (0x40 if "," in ints else 0) | (0x20 if "*" in fill else 0)
+                     | (0x10 if "$" in fill else 0) | (0x08 if plus or trail == "+" else 0)
+                     | (0x04 if trail else 0))
+            out.append(("num", len(plus) + len(fill) + len(ints), len(point), flags))
+            i += len(plus) + len(fill) + len(ints) + len(point) + len(trail)
+            continue
+        lit += c
+        i += 1
+    flush()
+    return out
+
+
 def etype(e, ty):
     k = e[0]
     if k == "int":
@@ -579,6 +633,8 @@ class Parser:
                 self.expect_op(",")
             _, items, nl = self.st_PRINT()
             return ("fprint", ch, items, nl)
+        if self.accept_kw("USING"):             # PRINT USING "format"; valeurs
+            return self.print_using()
         items = []
         while not self.at_end():
             if self.accept_op(";"):
@@ -595,6 +651,56 @@ class Parser:
                 items.append(("expr", self.expr()))
         nl = not items or items[-1][0] != "sep"
         return ("print", items, nl)
+
+    def print_using(self):
+        """PRINT USING : un champ numérique est mis en forme par la routine de la
+        ROM, comme son propre PRINT USING ($BBAC) ; « ! » et « \\  \\ » par LEFT$,
+        « & » tel quel.  Le format est réutilisé s'il y a plus de valeurs."""
+        fmt = self.expr()
+        if fmt[0] != "str":
+            self.err("PRINT USING : format constant attendu (compilateur)")
+        self.expect_op(";")
+        parts = parse_using(fmt[1], self.err)
+        if not any(p[0] != "lit" for p in parts):
+            self.err("PRINT USING : le format n'a aucun champ")
+        values, last_sep = [], True
+        while not self.at_end():
+            if self.accept_op(";") or self.accept_op(","):
+                last_sep = True
+            else:
+                values.append(self.expr())
+                last_sep = False
+        items, k = [], 0
+
+        def lits(stop_at_end=False):
+            nonlocal k
+            while parts[k % len(parts)][0] == "lit":
+                items.extend([("expr", ("str", parts[k % len(parts)][1])), ("sep", ";")])
+                k += 1
+                if stop_at_end and k % len(parts) == 0:
+                    return
+        for v in values:
+            lits()
+            part = parts[k % len(parts)]
+            if part[0] == "str":
+                if self.et(v) != "s":
+                    self.err("PRINT USING : chaîne attendue pour le champ %s" % part[1])
+                if part[1] == "&":
+                    items.append(("expr", v))
+                else:
+                    n = ("int", 1 if part[1] == "!" else part[2])
+                    pad = ("call", "STRING$", [n, ("str", " ")])
+                    items.append(("expr", ("call", "LEFT$", [("bin", "+", v, pad), n])))
+            else:
+                if self.et(v) == "s":
+                    self.err("PRINT USING : nombre attendu pour le champ numérique")
+                _, before, after, flags = part
+                items.append(("using", (v, flags, before, after)))
+            items.append(("sep", ";"))
+            k += 1
+        if k % len(parts) or not values:              # texte jusqu'au champ suivant
+            lits(stop_at_end=True)
+        return ("print", items, not values or not last_sep)
 
     def st_IF(self):
         cond = self.nexpr()

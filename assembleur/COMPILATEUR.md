@@ -116,7 +116,9 @@ Ces comportements, parfois surprenants, ont été observés sur l'interpréteur 
 - **Noms de variables** distingués sur toute leur longueur. Comme sur le X-07, un nom **ne doit pas contenir de mot-clé** (`TOTAL` se lit `TO TAL`).
 - **Tableau non déclaré :** il est créé avec 11 éléments par dimension ; le compilateur vous prévient.
 
-**Non géré :** `ON ERROR`, `RESUME`, `PRINT USING`, `INSTR`, `DEFFN` sur des chaînes, `MID$` à gauche du signe `=`.
+**Non géré :** `ON ERROR`, `RESUME`, `INSTR`, `DEFFN` sur des chaînes, `MID$` à gauche du signe `=`.
+
+**`PRINT USING`** est compilé, avec un format constant : les champs numériques sont mis en forme par la routine de la ROM (`$BBAC`), comme dans l'interpréteur, d'où un affichage identique (`#`, `.`, `,`, `**`, `$$`, `+`, `-`). Les champs de chaîne `!` et `\  \` passent par `LEFT$`, et `&` affiche la chaîne entière. La notation `^^^^` est refusée.
 
 ## Vérification
 

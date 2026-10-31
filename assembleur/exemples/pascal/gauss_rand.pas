@@ -1,7 +1,7 @@
 program GaussRand;  { système d'équations aléatoire, résolu par Gauss-Jordan }
 { traduction de exemples/qbasic/gauss_rand.qbas ;
-  python3 x07asm.py run exemples/pascal/gauss_rand.pas --ram 16 --fenetre
-  Il faut un X-07 de 16 Ko : réels en double précision (7,5 Ko en tout). }
+  python3 x07asm.py run exemples/pascal/gauss_rand.pas --fenetre
+  5 Ko en tout : tient dans un X-07 de 8 Ko, même avec 10 équations. }
 const
   NMax = 10;
 type

@@ -100,6 +100,7 @@ Le compilateur le signale par un message clair, avec la ligne du programme.
 - **Dépassement d'entier :** il donne `OV Error`, au lieu de repartir en arrière (32 767 + 1 = -32 768 en Turbo Pascal).
 - **Réels :** le X-07 calcule **en décimal**, sur 14 chiffres. `0.1` y est exact, mais `1/3*3` vaut 0,99999999999999 : la comparaison `= 1` est fausse.
 - **Écran de 20 colonnes :** un `write` trop long passe à la ligne suivante.
+- **Largeur constante dépassée :** `write(x:4)` ou `write(x:9:5)` passent par le `PRINT USING` de la ROM, plus compact. Si la valeur ne tient pas dans la largeur, la ROM l'écrit précédée de `%` (`%12345`), alors que Turbo Pascal élargit le champ. `x:0:d`, la façon habituelle de demander la largeur minimale, n'est pas concerné.
 - **`Val`** rend toujours 0 dans son code d'erreur.
 - **`Delay` sans son** est une boucle d'attente : environ 500 instructions par milliseconde, soit environ 1 ms sur la machine.
 - **Identifiants :** un nom qui est un mot réservé du QuickBASIC (`len`, `line`, `data`…) est renommé en interne (`LENV`). Le préfixe `TP` est réservé à la bibliothèque d'appui. Cela ne se voit que dans le QuickBASIC produit.
@@ -112,7 +113,7 @@ exemples/pascal/fiches.pas    tableau de records trié, with, write avec largeur
 exemples/pascal/hanoi.pas     récursivité : les tours de Hanoï
 exemples/pascal/dessin.pas    graphismes (Plot, Draw, Circle), Sound, KeyPressed
 exemples/pascal/valeur.pas    paramètres par valeur ou var (entier, record, chaîne)
-exemples/pascal/gauss_rand.pas  système aléatoire résolu par Gauss-Jordan (tableau à deux dimensions ; 16 Ko)
+exemples/pascal/gauss_rand.pas  système aléatoire résolu par Gauss-Jordan (tableau à deux dimensions)
 ```
 
 ## Fichiers

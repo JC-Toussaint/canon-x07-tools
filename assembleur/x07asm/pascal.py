@@ -684,6 +684,7 @@ class Translator:
         self.routine = None        # routine en cours (symbole)
         self.qbnames = set()       # noms QuickBASIC déjà pris (variables, routines)
         self.with_stack = []       # (record désigné, type)
+        self.shared_extra = set()  # variables partagées de la traduction (TP.N%)
         self.ntemp = 0
         self.indent = 0
         self.line = self.prog["line"]
@@ -896,7 +897,8 @@ class Translator:
         for name, sym in self.globals.items():
             if sym["cls"] == "var":
                 shared += self.dim_list(sym)
-        shared += sorted({PRELUDE_SHARED[n] for n in prelude if n in PRELUDE_SHARED})
+        shared += sorted({PRELUDE_SHARED[n] for n in prelude if n in PRELUDE_SHARED}
+                         | self.shared_extra)
         for k in range(0, len(shared), 6):
             out.append(("DIM SHARED " + ", ".join(shared[k:k + 6]), p["line"]))
         out += main
@@ -1318,13 +1320,63 @@ class Translator:
         self.used.add(name)
 
     def write(self, args, newline, line):
-        parts = []
-        for a in args:
-            parts.append(self.format_item(a, line))
-        text = "; ".join(parts)
-        if not newline:
-            text += ";"
-        self.emit(("PRINT " + text).rstrip(), line)
+        """write / writeln : les éléments simples dans un même PRINT ; un champ de
+        largeur constante dans son propre PRINT USING (routine de la ROM, sans
+        chaîne ni fonction d'appui), les PRINT s'enchaînant par « ; »."""
+        cur = []
+
+        def flush(end):
+            if cur:
+                self.emit("PRINT " + "; ".join(cur) + end, line)
+                del cur[:]
+        for k, a in enumerate(args):
+            last = k == len(args) - 1
+            item = self.write_item(a, line)
+            if item[0] == "using":
+                flush(";")
+                self.emit('PRINT USING "%s"; %s%s' % (item[1], item[2],
+                                                       "" if last and newline else ";"), line)
+            elif item[0] == "pre":                # valeur calculée d'abord (une seule fois)
+                flush(";")
+                self.emit(item[1], line)
+                cur.append(item[2])
+            else:
+                cur.append(item[1])
+        if cur:
+            flush("" if newline else ";")
+        elif newline and not args:
+            self.emit("PRINT", line)
+
+    def const_or_none(self, e):
+        if e is None:
+            return None
+        try:
+            return self.const_int(e)
+        except PasError:
+            return None
+
+    def write_item(self, a, line):
+        """Élément de write : ("using", format, valeur), ("pre", instruction,
+        texte) ou ("expr", texte)."""
+        orig, w, d = a, None, None
+        if a[0] == "fmt":
+            a, w, d = a[1], a[2], a[3]
+        wc, dc = self.const_or_none(w), self.const_or_none(d)
+        text, t = self.ex(a)
+        if t[0] in ("int", "enum"):
+            if w is None or wc == 0:               # sans largeur : STR$ sans l'espace
+                if re.fullmatch(r"[A-Z0-9.]+%?(\([^()]*\))?|\(?-?\d+\)?", text):
+                    return ("expr", "MID$(STR$(%s), 2 + (%s < 0))" % (text, text))
+                self.shared_extra.add("TP.N%")
+                return ("pre", "TP.N% = " + text, "MID$(STR$(TP.N%), 2 + (TP.N% < 0))")
+            if wc is not None and wc > 0:
+                return ("using", "#" * wc, text)
+        elif t[0] == "real" and wc is not None and dc is not None:
+            if dc == 0 and wc > 0:
+                return ("using", "#" * wc, text)
+            if dc > 0 and wc > dc + 1:
+                return ("using", "#" * (wc - dc - 1) + "." + "#" * dc, text)
+        return ("expr", self.format_item(orig, line))
 
     def format_item(self, a, line):
         """Texte QuickBASIC d'un élément de write, mis en forme comme Turbo

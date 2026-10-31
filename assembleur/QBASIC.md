@@ -158,7 +158,7 @@ Ces différences ont été mesurées dans l'émulateur, qui exécute la vraie RO
 
 Ce qui est **identique** et passe tel quel : `PRINT` (`;` `,` zones de 14 colonnes), opérateurs et priorités, vrai = -1, `MOD`, `\`, `&H`, `&O`, fonctions de chaînes, `DATA`/`READ`/`RESTORE`, `ON ... GOTO/GOSUB`, `DEF FN`, et sortie d'une boucle `FOR` par `GOTO` (tolérée par la ROM).
 
-`INSTR`, `LINE INPUT`, `PRINT USING`, `ON ERROR`/`RESUME` existent dans la ROM. Ils sont donc traduits, mais le compilateur BASIC ne les accepte pas encore : avec eux, la traduction ne fonctionne qu'avec la ROM. Un avertissement le signale. `PRINT USING` passe aussi par la compilation directe (voir plus bas).
+`INSTR`, `LINE INPUT`, `ON ERROR`/`RESUME` existent dans la ROM. Ils sont donc traduits, mais le compilateur BASIC ne les accepte pas encore : avec eux, la traduction ne fonctionne qu'avec la ROM. Un avertissement le signale. `PRINT USING` est accepté partout : par la ROM, par le compilateur BASIC et par la compilation directe, avec un format constant pour les deux compilateurs.
 
 `PRINT USING` de la ROM ne connaît pas les champs de chaîne `&` et `\  \` (seulement `!`) : un avertissement le signale ; la compilation directe les gère comme QuickBASIC.
 
@@ -301,7 +301,7 @@ L'accès indirect aux tableaux et les recopies de paramètres coûtent environ 2
 
 ## Pistes pour aller plus loin
 
-1. Ajouter au compilateur ce que la ROM sait déjà faire et que la traduction produit : `INSTR`, `LINE INPUT`, `TIME$`, `ON ERROR` (et `PRINT USING` dans le compilateur BASIC). Les deux voies en profiteraient.
+1. Ajouter au compilateur ce que la ROM sait déjà faire et que la traduction produit : `INSTR`, `LINE INPUT`, `TIME$`, `ON ERROR`. Les deux voies en profiteraient.
 2. Compilation directe : entiers 32 bits (`LONG`), dimensions variables (`DIM t(n)`), tableaux par adresse à plus de 2 dimensions.
 3. Arrondi exact de QuickBASIC (demi au pair) dans une petite routine.
 4. `TYPE` traduit en tableaux parallèles.
@@ -321,5 +321,5 @@ exemples/qbasic/          tri.qbas, tri2.qbas (même SUB pour deux tableaux), my
                           serpent.qbas (jeu : INKEY$, POINT, SELECT CASE ; les deux voies),
                           valeur.qbas (passage par référence ou par valeur),
                           gauss_rand.qbas (Gauss-Jordan sur un système aléatoire ;
-                          PRINT USING : compilation directe)
+                          PRINT USING)
 ```
