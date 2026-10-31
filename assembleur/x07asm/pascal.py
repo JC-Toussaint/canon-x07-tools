@@ -343,7 +343,7 @@ class Parser:
                     if self.accept_op(":"):             # constante typée (Turbo)
                         typ = self.type_spec()
                         self.expect_op("=")
-                        e = self.expr()
+                        e = self.aggregate() if self.is_op("(") else self.expr()
                         self.expect_op(";")
                         out.append(("var", [name], typ, line, e))
                         continue
@@ -375,6 +375,29 @@ class Parser:
                 self.err("label / goto : non pris en charge")
             else:
                 return out
+
+    def aggregate(self):
+        """Valeur d'une constante typée tableau : (a, b, ...), imbriquée pour
+        plusieurs dimensions ; une seule valeur entre parenthèses reste une
+        expression."""
+        line = self.cur.line
+        self.expect_op("(")
+        items = []
+        while True:
+            items.append(self.aggregate() if self.is_op("(") else self.expr())
+            if not self.accept_op(","):
+                break
+        if self.is_op(":"):
+            self.err("constante record (champ: valeur) : non prise en charge")
+        self.expect_op(")")
+        if len(items) == 1 and items[0][0] != "agg":
+            e = ("paren", items[0])                # (expr) : une simple expression
+            while (self.cur.kind == "op" and self.cur.val in "+-*/") or \
+                    self.is_kw("div", "mod", "and", "or"):
+                op = self.next().val
+                e = ("bin", op, e, self.term())
+            return e
+        return ("agg", items, line)
 
     def routine(self):
         kind = self.next().val
@@ -1149,6 +1172,17 @@ class Translator:
 
     def assign_value(self, acc, e, line):
         t = acc["type"]
+        if e[0] == "agg":                         # constante typée tableau
+            if t[0] != "array":
+                self.err("liste de valeurs ( ... ) : tableau attendu", line)
+            lo, hi = t[1], t[2]
+            if len(e[1]) != hi - lo + 1:
+                self.err("constante tableau : %d valeurs attendues, %d données"
+                         % (hi - lo + 1, len(e[1])), line)
+            for k, item in enumerate(e[1]):
+                sub = dict(acc, idx=acc["idx"] + (str(k),), type=t[3])
+                self.assign_value(sub, item, line)
+            return
         if acc.get("strindex"):                   # s[i] := c
             s, i = acc["strindex"]
             self.emit("%s = LEFT$(%s, %s - 1) + %s + MID$(%s, %s + 1)"

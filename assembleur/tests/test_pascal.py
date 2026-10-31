@@ -232,6 +232,22 @@ end.''', "1 3 5 7 9 \n42 21")
         for row in rows:
             self.assertAlmostEqual(sum(c * x for c, x in zip(row[:4], xs)), row[4], delta=1e-3)
 
+    def test_typed_array_constants(self):
+        self.out('''program C;
+const
+  Notes: array[1..4] of integer = (262, 294, 330, 349);
+  Grille: array[0..1, 0..2] of char = (('a', 'b', 'c'), ('d', 'e', 'f'));
+var i: integer;
+begin
+  for i := 1 to 4 do write(Notes[i], ' ');
+  writeln;
+  writeln(Grille[1, 2], Grille[0, 0], (2 + 3) * 2)
+end.''', "262 294 330 349 \nfa10")
+        with self.assertRaises(pascal.PasError) as cm:
+            pascal.compile_pascal("program C;\nconst T: array[1..3] of integer = (1, 2);\n"
+                                  "begin end.")
+        self.assertIn("3 valeurs attendues", str(cm.exception))
+
     def test_real_formats(self):
         # notation scientifique de Turbo Pascal 3.0 et virgule fixe
         # (1/3*3 = 1 serait faux : le X-07 calcule en décimal, sur 14 chiffres)
@@ -297,6 +313,13 @@ class TestDebugger(unittest.TestCase):
 
 
 class TestTranslation(unittest.TestCase):
+    def test_all_examples_compile(self):
+        import glob
+        for f in sorted(glob.glob(os.path.join(ROOT, "exemples", "pascal", "*.pas"))):
+            with open(f, encoding="utf-8") as h:
+                asm, comp, warns, lines = pascal.compile_pascal(h.read(), "T", 0x1000)
+            self.assertIn("VARS_END", asm, f)
+
     def test_names_and_line_map(self):
         qb, warns, lines = pascal.translate(
             "program N;\nvar len, tpx, my_var: integer;\nbegin\n  len := 1;\n"

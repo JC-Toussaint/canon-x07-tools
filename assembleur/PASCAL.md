@@ -30,7 +30,7 @@ Dans l'éditeur-débogueur (`ide`), l'onglet *Variables* montre les **noms Pasca
 | Élément | Remarques |
 |---|---|
 | `program`, `uses` | `uses` est ignoré |
-| `const` | constantes, et constantes typées (`Bonus: integer = 7`), qui sont des variables initialisées |
+| `const` | constantes, et constantes typées (`Bonus: integer = 7`), qui sont des variables initialisées ; aussi pour un tableau : `Notes: array[1..4] of integer = (262, 294, 330, 349)`, imbriqué pour plusieurs dimensions |
 | `type`, `var` | |
 | `integer`, `byte` | entier de 16 bits (-32 768 à 32 767). `longint` et `word` aussi, avec un avertissement |
 | `real` | **double précision du X-07** (14 chiffres, calcul décimal). `single` et `double` aussi |
@@ -114,6 +114,8 @@ exemples/pascal/hanoi.pas     récursivité : les tours de Hanoï
 exemples/pascal/dessin.pas    graphismes (Plot, Draw, Circle), Sound, KeyPressed
 exemples/pascal/valeur.pas    paramètres par valeur ou var (entier, record, chaîne)
 exemples/pascal/gauss_rand.pas  système aléatoire résolu par Gauss-Jordan (tableau à deux dimensions)
+exemples/pascal/limites.pas   le X-07 dans ses retranchements : 14 chiffres en décimal, écran de
+                              120 x 32 points, Mandelbrot en entiers, buzzer de 47 à 3918 Hz (16 Ko)
 ```
 
 ## Fichiers
