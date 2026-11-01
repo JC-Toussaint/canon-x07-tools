@@ -326,6 +326,26 @@ end.''', "somme 130\nbonjour")
                 pascal.compile_pascal(src)
             self.assertIn(what, str(cm.exception))
 
+    def test_single_precision(self):
+        # extension : single = simple précision du X-07 (6 chiffres) ; une
+        # constante courte suit l'autre opérande ; real reste en double
+        src = '''program S;
+var x, y: single; d: real;
+procedure P(var r: real); begin r := 1 end;
+begin
+  x := 1 / 3; d := 1 / 3;
+  writeln(x:0:8, ' ', d:0:8);
+  y := x * 2.5 + 0.1; writeln(y:0:6);
+  x := 2; d := x * d; writeln(sqrt(x):0:6, ' ', d:0:10)
+end.'''
+        qb, _, _ = pascal.translate(src)
+        self.assertIn("Y! = ((X! * 2.5!) + 0.1!)", qb)       # tout en simple précision
+        self.out(src, "0.33333300 0.33333333\n0.933333\n1.414214 0.6666666667")
+        with self.assertRaises(pascal.PasError) as cm:
+            pascal.compile_pascal("program A; var x: single;\n"
+                                  "procedure P(var r: real); begin end;\nbegin P(x) end.")
+        self.assertIn("real attendu", str(cm.exception))
+
     def test_real_formats(self):
         # notation scientifique de Turbo Pascal 3.0 et virgule fixe
         # (1/3*3 = 1 serait faux : le X-07 calcule en décimal, sur 14 chiffres)

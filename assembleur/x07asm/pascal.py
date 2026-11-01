@@ -110,6 +110,7 @@ def tokenize(text, spelling=None):
 
 # ========================================================================= types
 INT, REAL, BOOL, CHAR = ("int",), ("real",), ("bool",), ("char",)
+SINGLE = ("real", "single")    # extension (comme Turbo Pascal 4) : simple précision du X-07
 
 
 def string_t(n=255):
@@ -129,10 +130,14 @@ def is_text(t):
 
 
 def suffix(t):
+    if t == SINGLE:
+        return "!"
     return {"real": "#", "char": "$", "str": "$"}.get(t[0], "%")
 
 
 def tname(t):
+    if t == SINGLE:
+        return "single"
     return {"int": "integer", "real": "real", "bool": "boolean", "char": "char",
             "str": "string", "enum": "énuméré", "array": "tableau",
             "record": "record", "set": "ensemble", "file": "fichier"}[t[0]]
@@ -817,7 +822,7 @@ class Translator:
         if k == "named":
             n = t[1]
             base = {"integer": INT, "byte": INT, "word": INT, "shortint": INT,
-                    "longint": INT, "real": REAL, "single": REAL, "double": REAL,
+                    "longint": INT, "real": REAL, "single": SINGLE, "double": REAL,
                     "boolean": BOOL, "char": CHAR, "string": string_t()}
             if n in ("longint", "word"):
                 self.warn("%s : entier de 16 bits sur le X-07 (-32768 à 32767)" % n)
@@ -1584,7 +1589,7 @@ class Translator:
         elif t[0] == "real":
             if d is not None:
                 self.use("TPFIX$")
-                s = "TPFIX$(%s, %s)" % (text, self.value(d, INT))
+                s = "TPFIX$((%s), %s)" % (text, self.value(d, INT))
             else:
                 self.use("TPSCI$")
                 digits = "10" if w is None else "%s - 7" % self.value(w, INT)
@@ -1593,7 +1598,7 @@ class Translator:
                         digits = str(max(1, self.const_int(w) - 7))
                     except PasError:
                         pass
-                s = "TPSCI$(%s, %s)" % (text, digits)
+                s = "TPSCI$((%s), %s)" % (text, digits)
         elif t[0] == "bool":
             self.use("TPBOOL$")
             s = "TPBOOL$(%s)" % text
@@ -1804,11 +1809,25 @@ class Translator:
             self.err("%s : booléens ou entiers attendus" % op)
         if t1[0] not in ("int", "real") or t2[0] not in ("int", "real"):
             self.err("%s : nombres attendus (%s, %s)" % (op, tname(t1), tname(t2)))
-        real = REAL if REAL in (t1, t2) else INT
+        # double si un real (ou double) intervient, simple si un single, sinon
+        # entier ; une constante réelle courte ne décide pas : elle suit l'autre
+        # opérande (x * 2.5 reste en simple précision si x est un single)
+        short = [self.single_literal(n, "#") != "#" for n in (a, b)]
+        kinds = [t for t, sh in ((t1, short[0]), (t2, short[1])) if not sh]
+        if REAL in kinds:
+            real = REAL
+        elif SINGLE in kinds:
+            real = SINGLE
+        else:
+            real = REAL if REAL in (t1, t2) else INT
+        if real == SINGLE:                        # constante à côté d'un single : simple
+            x, y = self.single_literal(a, x), self.single_literal(b, y)
         if op == "/":
+            if real == SINGLE:
+                return "(CSNG(%s) / %s)" % (x, y), SINGLE
             return "(CDBL(%s) / %s)" % (x, y), REAL
         if op in ("div", "mod", "shl", "shr"):
-            if real == REAL:
+            if real != INT:
                 self.err("%s : entiers attendus" % op)
             if op in ("shl", "shr"):
                 try:
@@ -1820,6 +1839,21 @@ class Translator:
                 return "(%s \\ %d)" % (x, 2 ** n), INT
             return "(%s %s %s)" % (x, "\\" if op == "div" else "MOD", y), INT
         return "(%s %s %s)" % (x, op, y), real
+
+    @staticmethod
+    def single_literal(node, text):
+        """Constante réelle de 6 chiffres au plus, écrite en simple précision
+        (exacte : le X-07 calcule en décimal) ; sinon telle quelle."""
+        if node[0] != "num" or node[2] != "real":
+            return text
+        v = repr(float(node[1]))
+        mant = v.split("e")[0].replace(".", "").lstrip("0").rstrip("0")
+        if len(mant) > 6:
+            return text
+        if "e" in v:
+            m, x = v.split("e")
+            return "%sE%s" % (m, x)
+        return v + "!"
 
     def membership(self, e):
         _, a, sv = e
@@ -2108,6 +2142,8 @@ class Translator:
             if t[0] not in ("int", "real"):
                 self.err("%s : nombre attendu" % name, line)
             f = {"sqrt": "SQR", "arctan": "ATN", "ln": "LOG"}.get(name, name.upper())
+            if t == SINGLE:                       # simple précision : plus rapide
+                return "%s(%s)" % (f, x), SINGLE
             return "%s(CDBL(%s))" % (f, x), REAL
         if name in ("trunc", "round", "frac", "int"):
             x, t = one()
@@ -2115,10 +2151,13 @@ class Translator:
                 self.err("%s : nombre attendu" % name, line)
             if name == "trunc":
                 return "FIX(%s)" % x, INT
+            half = ".5" if t == SINGLE else ".5#"
             if name == "round":
-                return "(SGN(%s) * INT(ABS(%s) + .5#))" % (x, x), INT
+                return "(SGN(%s) * INT(ABS(%s) + %s))" % (x, x, half), INT
             if name == "frac":
-                return "(%s - FIX(%s))" % (x, x), REAL
+                return "(%s - FIX(%s))" % (x, x), (SINGLE if t == SINGLE else REAL)
+            if t == SINGLE:
+                return "CSNG(FIX(%s))" % x, SINGLE
             return "CDBL(FIX(%s))" % x, REAL
         if name == "odd":
             x, t = one()

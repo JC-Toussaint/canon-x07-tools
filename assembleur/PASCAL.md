@@ -33,7 +33,8 @@ Dans l'éditeur-débogueur (`ide`), l'onglet *Variables* montre les **noms Pasca
 | `const` | constantes, et constantes typées (`Bonus: integer = 7`), qui sont des variables initialisées ; aussi pour un tableau : `Notes: array[1..4] of integer = (262, 294, 330, 349)`, imbriqué pour plusieurs dimensions |
 | `type`, `var` | |
 | `integer`, `byte` | entier de 16 bits (-32 768 à 32 767). `longint` et `word` aussi, avec un avertissement |
-| `real` | **double précision du X-07** (14 chiffres, calcul décimal). `single` et `double` aussi |
+| `real`, `double` | **double précision du X-07** (14 chiffres, calcul décimal) |
+| `single` | **extension**, comme Turbo Pascal 4 (Turbo Pascal 3.0 n'a que `real`) : la **simple précision du X-07** (6 chiffres, 4 octets). Voir plus bas |
 | `boolean`, `char`, `string[n]` | `true` vaut -1 en interne, et `ord(true)` vaut bien 1 |
 | types énumérés `(rouge, vert, bleu)`, intervalles `1..10` | |
 | `array[a..b, c..d] of ...` | bornes quelconques, y compris négatives ou des caractères (`array['a'..'z']`) |
@@ -68,6 +69,16 @@ Dans l'éditeur-débogueur (`ide`), l'onglet *Variables* montre les **noms Pasca
 | `Draw(x1, y1, x2, y2)`, `Draw(..., 0)` | trace ou efface une ligne |
 | `Circle(x, y, r)` | trace un cercle |
 | `Beep(note, durée)` | le `BEEP` du X-07 |
+
+## Simple précision : `single`
+
+Turbo Pascal 3.0 n'a qu'un type réel, `real`. Le type `single` est apparu avec Turbo Pascal 4. Ici, il donne accès à la **simple précision du X-07** : 6 chiffres au lieu de 14, 4 octets au lieu de 8.
+
+- **Un calcul entre `single`**, ou entre un `single` et un entier, reste en simple précision. **Dès qu'un `real` intervient**, il passe en double.
+- **Une constante réelle de 6 chiffres au plus** suit l'autre opérande : dans `x * 2.5 + 0.1`, avec `x` en `single`, tout est en simple précision. Le X-07 calcule en décimal : `2.5` et `0.1` y sont exacts dans les deux précisions.
+- **`single` et `real` sont des types distincts** pour un paramètre `var`, comme en Turbo Pascal.
+
+**Ce que l'on gagne**, mesuré en instructions Z80 : les quatre opérations sont environ **1,7 fois plus rapides** (une itération de Mandelbrot : 12 100 instructions au lieu de 20 400), et un tableau prend deux fois moins de place. En revanche, **`sin`, `cos`, `exp`, `ln` et `sqrt` coûtent le même prix** : la ROM les calcule toujours en double précision (`sin` : 37 000 instructions, `sqrt` : 75 000, soit environ 150 ms). Pour aller plus vite encore, le calcul en entiers à virgule fixe reste imbattable (1 100 instructions par itération : voir `exemples/pascal/limites.pas`).
 
 ## Les ensembles
 
