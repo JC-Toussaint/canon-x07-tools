@@ -142,6 +142,7 @@ Le compilateur le signale par un message clair, avec la ligne du programme.
 - **Réels :** le X-07 calcule **en décimal**, sur 14 chiffres. `0.1` y est exact, mais `1/3*3` vaut 0,99999999999999 : la comparaison `= 1` est fausse.
 - **Écran de 20 colonnes :** un `write` trop long passe à la ligne suivante.
 - **Largeur constante dépassée :** `write(x:4)` ou `write(x:9:5)` passent par le `PRINT USING` de la ROM, plus compact. Si la valeur ne tient pas dans la largeur, la ROM l'écrit précédée de `%` (`%12345`), alors que Turbo Pascal élargit le champ. `x:0:d`, la façon habituelle de demander la largeur minimale, n'est pas concerné.
+- **Longueur des chaînes :** le QuickBASIC réserve la même place à toutes les chaînes. Le compilateur la calcule : la plus longue chaîne que le programme peut former (variable déclarée, constante, concaténation, `copy`, largeur de `write`), entre 24 et 80 caractères. Déclarer `string[20]` plutôt que `string` raccourcit donc tout le programme (`meteo.pas` : 8,7 Ko au lieu de 11,8). Une chaîne plus longue que cette place serait tronquée ; `--strlen n` l'impose à la main.
 - **`Val`** rend toujours 0 dans son code d'erreur.
 - **`Delay` sans son** est une boucle d'attente : environ 500 instructions par milliseconde, soit environ 1 ms sur la machine.
 - **Identifiants :** un nom qui est un mot réservé du QuickBASIC (`len`, `line`, `data`…) est renommé en interne (`LENV`). Le préfixe `TP` est réservé à la bibliothèque d'appui. Cela ne se voit que dans le QuickBASIC produit.
@@ -157,6 +158,8 @@ exemples/pascal/valeur.pas    paramètres par valeur ou var (entier, record, cha
 exemples/pascal/gauss_rand.pas  système aléatoire résolu par Gauss-Jordan (tableau à deux dimensions)
 exemples/pascal/limites.pas   le X-07 dans ses retranchements : 14 chiffres en décimal, écran de
                               120 x 32 points, Mandelbrot en entiers, buzzer de 47 à 3918 Hz (16 Ko)
+exemples/pascal/meteo.pas     carnet de températures : un fichier en RAM par mois (nom calculé),
+                              ensembles, readln(j, t), single, constante tableau, s[0], courbe
 ```
 
 ## Fichiers

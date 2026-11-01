@@ -346,6 +346,13 @@ end.'''
                                   "procedure P(var r: real); begin end;\nbegin P(x) end.")
         self.assertIn("real attendu", str(cm.exception))
 
+    def test_long_concatenation_not_truncated(self):
+        self.out("""program A;
+procedure P(s: string); begin writeln(s + ' !') end;
+var n: string[12];
+begin n := 'Alexandrine'; P('Bonjour ' + n + ', bienvenue') end.""",
+                 "Bonjour Alexandrine, bienvenue !")
+
     def test_real_formats(self):
         # notation scientifique de Turbo Pascal 3.0 et virgule fixe
         # (1/3*3 = 1 serait faux : le X-07 calcule en décimal, sur 14 chiffres)
@@ -426,6 +433,19 @@ class TestTranslation(unittest.TestCase):
             with open(f, encoding="utf-8") as h:
                 asm, comp, warns, lines = pascal.compile_pascal(h.read(), "T", 0x1000)
             self.assertIn("VARS_END", asm, f)
+
+    def test_automatic_string_length(self):
+        # place des chaînes : la plus longue chaîne formée, entre 24 et 80
+        def cap(src):
+            return pascal.compile_pascal(src, "T", 0x1000)[1].strcap
+        self.assertEqual(cap("program A; var s: string[10]; begin s := 'abc'; writeln(s) end."), 24)
+        self.assertEqual(cap("program A; var s: string[30]; begin s := 'abc'; writeln(s) end."), 30)
+        self.assertEqual(cap("program A; var s: string; begin readln(s) end."), 80)
+        # un paramètre string s'adapte : il ne compte pas
+        self.assertEqual(cap("""program A; var m: string[12];
+procedure P(var s: string; n: integer); begin if length(s) > n then s[0] := chr(n) end;
+begin m := 'abc'; P(m, 2) end."""), 24)
+        self.assertEqual(cap("program A; var a, b: string[20]; begin a := 'x'; b := a + a + 'y'; writeln(b) end."), 41)
 
     def test_names_and_line_map(self):
         qb, warns, lines = pascal.translate(

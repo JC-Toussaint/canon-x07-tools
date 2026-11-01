@@ -198,6 +198,9 @@ def build_basic(path, org="auto", ram=8, direct=False, **opts):
     text = read_text(path) if (direct or pas) else read_basic(path)
     name = os.path.splitext(os.path.basename(path))[0].upper()
 
+    if opts.get("strcap") is None:               # non précisée : 80, ou automatique
+        opts.pop("strcap", None)                 # pour le Pascal
+
     def once(o):
         if pas:                                  # Pascal : traduit, puis qbcomp
             from . import pascal
@@ -859,8 +862,9 @@ def main(argv=None):
                    help="adresse d'implantation (hexa) ou auto : en haut de la RAM")
     b.add_argument("--ram", type=int, choices=(8, 16, 24), default=8,
                    help="mémoire du X-07 en Ko (défaut : 8)")
-    b.add_argument("--strlen", type=int, default=80,
-                   help="longueur maximale des chaînes (défaut : 80)")
+    b.add_argument("--strlen", type=int, default=None,
+                   help="longueur maximale des chaînes (défaut : 80 ; Pascal : la plus "
+                        "longue chaîne possible du programme)")
     b.add_argument("--no-break", action="store_true",
                    help="pas de test de la touche BREAK dans les boucles")
     b.add_argument("--no-bounds", action="store_true",
@@ -943,7 +947,8 @@ def main(argv=None):
     r.add_argument("--max", type=int, default=20_000_000, help="instructions au plus")
     r.add_argument("--org", default="auto")
     r.add_argument("--ram", type=int, choices=(8, 16, 24), default=8)
-    r.add_argument("--strlen", type=int, default=80)
+    r.add_argument("--strlen", type=int, default=None,
+                   help="longueur maximale des chaînes (défaut : 80 ; Pascal : automatique)")
     r.add_argument("--debug", action="store_true")
     r.add_argument("--default", choices=("d", "f", "i"), default="d")
     r.add_argument("--fenetre", action="store_true",

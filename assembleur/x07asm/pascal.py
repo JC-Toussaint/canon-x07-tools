@@ -766,6 +766,8 @@ class Translator:
         self.shared_extra = set()  # variables partagées de la traduction (TP.N%)
         self.init_lines = []       # préparé au lancement : ensembles constants
         self.nchan = 0             # canaux de fichiers attribués (1 à 5)
+        self.max_str = 0           # plus longue chaîne possible du programme
+        self.in_params = False
         self.bits = False          # table TP.B% des 8 bits d'un octet d'ensemble
         self.ntemp = 0
         self.indent = 0
@@ -836,6 +838,8 @@ class Translator:
             self.err("type inconnu : %s" % n, t[2])
         if k == "string":
             n = t[1] if isinstance(t[1], int) else self.const_int(t[1])
+            if not self.in_params:
+                self.note_len(n)
             return string_t(n)
         if k == "array":
             lo, hi = (self.const_ord(e) for e in t[1])
@@ -948,7 +952,7 @@ class Translator:
                 s = "%sD%s" % (m, x)
                 return ("(%s)" % s if v < 0 else s), REAL
             return ("(%s#)" % s if v < 0 else s + "#"), REAL
-        return self.qbstring(v), (CHAR if len(v) == 1 else string_t())
+        return self.qbstring(v), (CHAR if len(v) == 1 else ("str", max(1, len(v))))
 
     @staticmethod
     def qbstring(s):
@@ -1063,7 +1067,9 @@ class Translator:
         rt = self.resolve(ret, line) if ret else None
         if rt is not None and not is_scalar(rt):
             self.err("une fonction rend un type simple (pas de tableau ni de record)", line)
+        self.in_params = True                     # un paramètre chaîne s'adapte
         ptypes = [(n, self.resolve(t, line), byref) for n, t, byref in params]
+        self.in_params = False
         qb = self.qbname(name)
         self.display["routines"][qb] = self.spelling.get(name, name)
         sym = {"cls": "func" if kind == "function" else "proc", "name": name, "qb": qb,
@@ -1608,6 +1614,8 @@ class Translator:
             self.err("write : impossible d'écrire un %s" % tname(t), line)
         if w is not None:
             self.use("TPPAD$")
+            wc = self.const_or_none(w)
+            self.note_len(wc if wc is not None else 255)     # largeur calculée : 80
             s = "TPPAD$(%s, %s)" % (s, self.value(w, INT))
         return s
 
@@ -1752,7 +1760,25 @@ class Translator:
     def byval(self, e, want):
         return "(%s)" % self.value(e, want)
 
+    def note_len(self, n):
+        """Longueur maximale d'une chaîne du programme : la plus grande fixe la
+        place de chaque chaîne (compile_pascal)."""
+        self.max_str = max(self.max_str, n)
+
+    @staticmethod
+    def str_len(t):
+        return 1 if t[0] == "char" else t[1] if t[0] == "str" else 0
+
     def ex(self, e):
+        # seule une constante ou une concaténation produit une chaîne nouvelle ;
+        # une variable lue a déjà sa place (comptée à sa déclaration, ou chez
+        # l'appelant pour un paramètre)
+        text, t = self.ex1(e)
+        if t[0] == "str" and e[0] in ("str", "bin"):
+            self.note_len(t[1])
+        return text, t
+
+    def ex1(self, e):
         """Expression -> (texte QuickBASIC complètement parenthésé, type)."""
         k = e[0]
         if k == "num":
@@ -1800,7 +1826,8 @@ class Translator:
                 return "(%s %s %s)" % (x, op, y), BOOL
             self.err("comparaison de %s et de %s" % (tname(t1), tname(t2)))
         if op == "+" and is_text(t1) and is_text(t2):
-            return "(%s + %s)" % (x, y), string_t()
+            return "(%s + %s)" % (x, y), string_t(min(255, self.str_len(t1) +
+                                                       self.str_len(t2)))
         if op in ("and", "or", "xor"):
             if t1[0] == t2[0] == "bool":
                 return "(%s %s %s)" % (x, op.upper(), y), BOOL
@@ -2190,12 +2217,21 @@ class Translator:
         if name == "copy":
             if n != 3:
                 self.err("copy(chaîne, position, nombre) attendu", line)
-            return "MID$(%s, %s, %s)" % (self.value(a[0], string_t()), self.value(a[1], INT),
-                                         self.value(a[2], INT)), string_t()
+            src, st = self.ex(a[0])
+            if not is_text(st):
+                self.err("copy : chaîne attendue", line)
+            self.note_len(self.str_len(st))
+            return "MID$(%s, %s, %s)" % (src, self.value(a[1], INT),
+                                         self.value(a[2], INT)), string_t(self.str_len(st))
         if name == "concat":
             if n < 1:
                 self.err("concat : au moins une chaîne attendue", line)
-            return "(%s)" % " + ".join(self.value(x, string_t()) for x in a), string_t()
+            parts = [self.ex(x) for x in a]
+            if not all(is_text(t) for _, t in parts):
+                self.err("concat : chaînes attendues", line)
+            n = min(255, sum(self.str_len(t) for _, t in parts))
+            self.note_len(n)
+            return "(%s)" % " + ".join(x for x, _ in parts), string_t(n)
         if name == "pos":
             if n != 2:
                 self.err("pos(motif, chaîne) attendu", line)
@@ -2239,12 +2275,25 @@ def pascal_line(msg, linemap):
     return msg[:m.start()] + ("ligne %d (Pascal)" % n if n else m.group()) + msg[m.end():]
 
 
+def auto_strcap(tr):
+    """Longueur des chaînes du programme compilé : la plus longue chaîne
+    possible (variable déclarée, constante, concaténation, largeur d'écriture),
+    au moins 24 (ligne tapée au clavier), au plus 80 (string sans longueur)."""
+    return min(80, max(24, tr.max_str))
+
+
 def compile_pascal(text, name="PROG", org=0x1000, **opts):
     """Programme Pascal -> (texte assembleur, compilateur, avertissements,
     correspondance des lignes)."""
     from . import qbcomp
     from .qbasic import QBError
-    qb, warns, linemap = translate(text)
+    tr = Translator(text)
+    lines = tr.translate()
+    qb = "\n".join(t for t, _ in lines) + "\n"
+    linemap = {k: l for k, (_, l) in enumerate(lines, 1)}
+    warns = tr.warnings
+    if opts.get("strcap") is None:                # place de chaque chaîne : la plus
+        opts["strcap"] = auto_strcap(tr)          # longue possible du programme
     try:
         asm, comp, w2 = qbcomp.compile_qbasic(qb, name, org, **opts)
     except QBError as e:
