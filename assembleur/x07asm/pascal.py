@@ -135,7 +135,7 @@ def suffix(t):
 def tname(t):
     return {"int": "integer", "real": "real", "bool": "boolean", "char": "char",
             "str": "string", "enum": "énuméré", "array": "tableau",
-            "record": "record"}[t[0]]
+            "record": "record", "set": "ensemble", "file": "fichier"}[t[0]]
 
 
 def ord_value(v):
@@ -152,7 +152,11 @@ def ord_value(v):
 def leaves(t, path=(), dims=()):
     """Feuilles scalaires d'un type : (chemin de champs, type, dimensions).
     Une dimension est (bas, haut) ; un tableau de records donne un tableau
-    par champ."""
+    par champ ; un ensemble est un tableau de 32 entiers (8 éléments chacun)."""
+    if t[0] == "set":
+        return [(path, INT, dims + ((0, 31),))]
+    if t[0] == "file":                        # fichier texte : canal et nom
+        return [(path + ("CH",), INT, dims), (path + ("NOM",), ("str", 255), dims)]
     if t[0] == "array":
         return leaves(t[3], path, dims + ((t[1], t[2]),))
     if t[0] == "record":
@@ -174,9 +178,9 @@ QB_RESERVED = (set(STATEMENT_WORDS) | set(OPERATOR_WORDS) | {f.rstrip("$") for f
 # et ceux de leurs variables commencent par TP, réservé (un identifiant
 # Pascal « tp... » est renommé).
 PRELUDE = {
-    "TPINT$": ("FUNCTION TPINT$ (TP.N%)", """
-    TP.S$ = STR$(TP.N%)
-    IF TP.N% >= 0 THEN TP.S$ = MID$(TP.S$, 2)
+    "TPINT$": ("FUNCTION TPINT$ (TP.NI%)", """
+    TP.S$ = STR$(TP.NI%)
+    IF TP.NI% >= 0 THEN TP.S$ = MID$(TP.S$, 2)
     TPINT$ = TP.S$"""),
     "TPPAD$": ("FUNCTION TPPAD$ (TP.S$, TP.W%)", """
     IF LEN(TP.S$) < TP.W% THEN
@@ -184,8 +188,8 @@ PRELUDE = {
     ELSE
         TPPAD$ = TP.S$
     END IF"""),
-    "TPBOOL$": ("FUNCTION TPBOOL$ (TP.B%)", """
-    IF TP.B% THEN TPBOOL$ = "TRUE" ELSE TPBOOL$ = "FALSE\""""),
+    "TPBOOL$": ("FUNCTION TPBOOL$ (TP.BO%)", """
+    IF TP.BO% THEN TPBOOL$ = "TRUE" ELSE TPBOOL$ = "FALSE\""""),
     # notation scientifique de Turbo Pascal : " 1.2345678900E+00" (d décimales)
     "TPSCI$": ("FUNCTION TPSCI$ (TP.X#, TP.D%)", """
     TP.G$ = " ": TP.A# = TP.X#: TP.E% = 0
@@ -225,6 +229,50 @@ PRELUDE = {
     "TPUPC$": ("FUNCTION TPUPC$ (TP.C$)", """
     TPUPC$ = TP.C$
     IF TP.C$ >= "a" AND TP.C$ <= "z" THEN TPUPC$ = CHR$(ASC(TP.C$) - 32)"""),
+    # readln(a, b, ...) : valeur suivante de la ligne TP.L$, à partir de TP.P%
+    # (séparateurs : espaces et virgules)
+    "TPTOK$": ("FUNCTION TPTOK$", """
+    DO WHILE TP.P% <= LEN(TP.L$)
+        TP.C$ = MID$(TP.L$, TP.P%, 1)
+        IF TP.C$ <> " " AND TP.C$ <> "," THEN EXIT DO
+        TP.P% = TP.P% + 1
+    LOOP
+    TP.D% = TP.P%
+    DO WHILE TP.P% <= LEN(TP.L$)
+        TP.C$ = MID$(TP.L$, TP.P%, 1)
+        IF TP.C$ = " " OR TP.C$ = "," THEN EXIT DO
+        TP.P% = TP.P% + 1
+    LOOP
+    TPTOK$ = MID$(TP.L$, TP.D%, TP.P% - TP.D%)"""),
+    # comparaison d'ensembles : 0 =, 1 <>, 2 <= (inclusion), 3 >=
+    # (paramètres TP.SA, TP.SB : pas TP.B, la table partagée des bits)
+    "TPSETCMP%": ("FUNCTION TPSETCMP% (TP.SA%(), TP.SB%(), TP.O%)", """
+    TPSETCMP% = 0
+    FOR TP.K% = 0 TO 31
+        TP.X% = TP.SA%(TP.K%): TP.Y% = TP.SB%(TP.K%)
+        IF TP.O% < 2 THEN
+            IF TP.X% <> TP.Y% THEN TPSETCMP% = (TP.O% = 1): EXIT FUNCTION
+        ELSEIF TP.O% = 2 THEN
+            IF (TP.X% AND NOT TP.Y%) <> 0 THEN EXIT FUNCTION
+        ELSE
+            IF (TP.Y% AND NOT TP.X%) <> 0 THEN EXIT FUNCTION
+        END IF
+    NEXT TP.K%
+    TPSETCMP% = (TP.O% <> 1)"""),
+    # nom de fichier calculé -> nom du X-07 : 6 caractères, majuscules, sans
+    # extension ni chemin
+    "TPFNAME$": ("FUNCTION TPFNAME$ (TP.NF$)", """
+    TP.R$ = ""
+    FOR TP.I% = 1 TO LEN(TP.NF$)
+        TP.C$ = MID$(TP.NF$, TP.I%, 1)
+        IF TP.C$ = "." THEN EXIT FOR
+        IF TP.C$ = "/" OR TP.C$ = ":" THEN TP.R$ = ""
+        IF TP.C$ >= "a" AND TP.C$ <= "z" THEN TP.C$ = CHR$(ASC(TP.C$) - 32)
+        IF (TP.C$ >= "A" AND TP.C$ <= "Z") OR (TP.C$ >= "0" AND TP.C$ <= "9") THEN
+            TP.R$ = TP.R$ + TP.C$
+        END IF
+    NEXT TP.I%
+    TPFNAME$ = LEFT$(TP.R$, 6)"""),
     "TPKP%": ("FUNCTION TPKP%", """
     IF TP.K$ = "" THEN TP.K$ = INKEY$
     TPKP% = (TP.K$ <> "")"""),
@@ -472,7 +520,10 @@ class Parser:
                 self.err("record à partie variable (case) : non pris en charge")
             self.expect_kw("end")
             return ("record", fields)
-        if self.is_kw("set", "file") or self.is_op("^"):
+        if self.accept_kw("set"):
+            self.expect_kw("of")
+            return ("setof", self.type_spec(), t.line)
+        if self.is_kw("file") or self.is_op("^"):
             self.err("%s : non pris en charge" % ("pointeur" if self.is_op("^") else t.val))
         if self.accept_op("("):
             names = [self.ident()]
@@ -596,7 +647,7 @@ class Parser:
             op = self.next().val
             return ("bin", op, a, self.simple())
         if self.accept_kw("in"):
-            return ("in", a, self.set_value())
+            return ("in", a, self.simple())
         return a
 
     def set_value(self):
@@ -648,8 +699,8 @@ class Parser:
             e = self.expr()
             self.expect_op(")")
             return ("paren", e)
-        if self.is_op("["):
-            self.err("ensemble [...] : seulement après « in »")
+        if self.is_op("["):                       # ensemble [a, b..c]
+            return ("setc", self.set_value())
         if self.is_kw("nil"):
             self.err("nil / pointeurs : non pris en charge")
         if t.kind == "id":
@@ -708,6 +759,9 @@ class Translator:
         self.qbnames = set()       # noms QuickBASIC déjà pris (variables, routines)
         self.with_stack = []       # (record désigné, type)
         self.shared_extra = set()  # variables partagées de la traduction (TP.N%)
+        self.init_lines = []       # préparé au lancement : ensembles constants
+        self.nchan = 0             # canaux de fichiers attribués (1 à 5)
+        self.bits = False          # table TP.B% des 8 bits d'un octet d'ensemble
         self.ntemp = 0
         self.indent = 0
         self.line = self.prog["line"]
@@ -773,7 +827,7 @@ class Translator:
             if n in base:
                 return base[n]
             if n == "text":
-                self.err("fichiers : non pris en charge", line)
+                return ("file",)
             self.err("type inconnu : %s" % n, t[2])
         if k == "string":
             n = t[1] if isinstance(t[1], int) else self.const_int(t[1])
@@ -782,11 +836,17 @@ class Translator:
             lo, hi = (self.const_ord(e) for e in t[1])
             if hi < lo:
                 self.err("array[%d..%d] : bornes inversées" % (lo, hi), line)
-            return ("array", lo, hi, self.resolve(t[2], line))
+            elem = self.resolve(t[2], line)
+            if any(lt == ("file",) or lt[0] == "file" for _, lt, _ in leaves(elem)) or \
+                    elem == ("file",):
+                self.err("tableau de fichiers : non pris en charge", line)
+            return ("array", lo, hi, elem)
         if k == "openarray":
             self.err("paramètre « array of ... » sans bornes : déclarez un type tableau", line)
         if k == "record":
             fields = [(n, self.resolve(ft, line)) for n, ft in t[1]]
+            if any(ft == ("file",) for _, ft in fields):
+                self.err("fichier dans un record : non pris en charge", line)
             names = [n for n, _ in fields]
             if len(set(names)) != len(names):
                 self.err("champ déclaré deux fois dans un record", line)
@@ -797,6 +857,20 @@ class Translator:
                 self.declare(self.local if self.local is not None else self.globals, n,
                              {"cls": "const", "type": et, "value": i}, line)
             return et
+        if k == "setof":
+            base = t[1]
+            bt = self.resolve(base, line)
+            if bt[0] == "int":
+                if base[0] != "range":
+                    self.err("set of integer : 256 éléments au plus (set of 0..255)", t[2])
+                lo, hi = (self.const_value(e) for e in base[1:])
+                if not 0 <= lo <= hi <= 255:
+                    self.err("set of %s..%s : éléments de 0 à 255 seulement" % (lo, hi), t[2])
+            elif bt[0] == "enum" and len(bt[1]) > 256:
+                self.err("ensemble : 256 éléments au plus", t[2])
+            elif bt[0] not in ("char", "bool", "enum", "int"):
+                self.err("set of %s : type ordinal attendu" % tname(bt), t[2])
+            return ("set", bt[0])
         if k == "range":
             lo, hi = (self.const_value(e) for e in t[1:])
             if isinstance(lo, str):
@@ -897,6 +971,8 @@ class Translator:
         self.lines = main
         self.line = p["line"]
         for name, sym in self.globals.items():
+            if sym.get("chan"):
+                self.emit("%s.CH%% = %d" % (sym["qb"], sym["chan"]), sym["line"])
             if sym["cls"] == "var" and sym.get("init") is not None:
                 self.assign_value(self.var_access(sym, [], sym["line"]), sym["init"],
                                   sym["line"])
@@ -924,6 +1000,10 @@ class Translator:
                          | self.shared_extra)
         for k in range(0, len(shared), 6):
             out.append(("DIM SHARED " + ", ".join(shared[k:k + 6]), p["line"]))
+        if self.bits:
+            out.append(("TP.B%(0) = 1: TP.B%(1) = 2: TP.B%(2) = 4: TP.B%(3) = 8: "
+                        "TP.B%(4) = 16: TP.B%(5) = 32: TP.B%(6) = 64: TP.B%(7) = 128", p["line"]))
+        out += self.init_lines
         out += main
         for b in bodies:
             out += b
@@ -956,6 +1036,11 @@ class Translator:
                     qb = self.qbname(n, scope is not self.globals)
                     self.declare(scope, n, {"cls": "var", "type": typ, "byref": False,
                                             "qb": qb, "line": line, "init": init}, line)
+                    if typ == ("file",):              # canal 1 à 5 du X-07
+                        self.nchan += 1
+                        if self.nchan > 5:
+                            self.err("6 fichiers : le X-07 n'a que les canaux 1 à 5", line)
+                        scope[n]["chan"] = self.nchan
                     self.show_var(n, qb, typ, scope is self.globals)
             elif k == "routine":
                 self.declare_routine(d, scope, routines)
@@ -1050,6 +1135,8 @@ class Translator:
                 dims = [n for n in self.dim_list(sym) if "(" in n]
                 if dims:
                     self.emit("DIM " + ", ".join(dims), sym["line"])
+                if sym.get("chan"):
+                    self.emit("%s.CH%% = %d" % (sym["qb"], sym["chan"]), sym["line"])
                 if sym.get("init") is not None:
                     self.assign_value(self.var_access(sym, [], sym["line"]), sym["init"],
                                       sym["line"])
@@ -1172,6 +1259,9 @@ class Translator:
 
     def assign_value(self, acc, e, line):
         t = acc["type"]
+        if t[0] == "set":                         # ensemble : calcul octet par octet
+            self.set_into(acc, e, line)
+            return
         if e[0] == "agg":                         # constante typée tableau
             if t[0] != "array":
                 self.err("liste de valeurs ( ... ) : tableau attendu", line)
@@ -1182,6 +1272,16 @@ class Translator:
             for k, item in enumerate(e[1]):
                 sub = dict(acc, idx=acc["idx"] + (str(k),), type=t[3])
                 self.assign_value(sub, item, line)
+            return
+        if acc.get("strlen"):                     # s[0] := chr(n) : longueur n
+            s = acc["strlen"]
+            n = self.temp("%")
+            self.emit("%s = ASC(%s)" % (n, self.value(e, CHAR)), line)
+            self.emit("IF %s <= LEN(%s) THEN" % (n, s), line)
+            self.emit("    %s = LEFT$(%s, %s)" % (s, s, n), line)
+            self.emit("ELSE", line)
+            self.emit('    %s = %s + STRING$(%s - LEN(%s), " ")' % (s, s, n, s), line)
+            self.emit("END IF", line)
             return
         if acc.get("strindex"):                   # s[i] := c
             s, i = acc["strindex"]
@@ -1277,6 +1377,8 @@ class Translator:
         elif name == "nosound":
             self.use("TPDELAY")
             self.emit("TP.F% = 0", line)
+        elif name in ("assign", "rewrite", "reset", "append", "close", "erase"):
+            self.file_proc(name, args, line)
         elif name == "beep":
             need(2, "Beep(note, durée) attendu (BEEP du X-07)")
             self.emit("BEEP %s, %s" % (self.value(args[0], INT), self.value(args[1], INT)), line)
@@ -1344,6 +1446,57 @@ class Translator:
             return False
         return True
 
+    # ------------------------------------------------------------ fichiers
+    def file_acc(self, a, what):
+        """Fichier texte : (canal, nom) en QuickBASIC, ou erreur."""
+        acc = self.access(a) if a[0] == "desig" else None
+        if acc is None or acc["type"] != ("file",):
+            self.err("%s : fichier (text) attendu" % what)
+        return (self.leaf_text(acc, ("CH",), INT), self.leaf_text(acc, ("NOM",), ("str", 255)))
+
+    def is_file(self, a):
+        if a[0] != "desig":
+            return False
+        sym = self.lookup(a[1], quiet=True)
+        if sym is None or sym["cls"] != "var":
+            return False
+        try:
+            return self.access(a)["type"] == ("file",)
+        except PasError:
+            return False
+
+    def file_proc(self, name, args, line):
+        if not args:
+            self.err("%s : fichier attendu" % name, line)
+        ch, nom = self.file_acc(args[0], name)
+        if name == "assign":
+            if len(args) != 2:
+                self.err("assign(fichier, nom) attendu", line)
+            try:                                  # nom constant : au format du X-07
+                from .qbasic import QBError, ram_file_name
+                v = self.const_value(args[1])
+                try:
+                    short, note = ram_file_name(v)
+                except QBError as e:
+                    self.err(str(e), line)
+                if note:
+                    self.warn(note)
+                self.emit("%s = %s" % (nom, self.qbstring(short)), line)
+            except PasError:                      # nom calculé : à l'exécution
+                self.use("TPFNAME$")
+                self.emit("%s = TPFNAME$(%s)" % (nom, self.byval(args[1], string_t())), line)
+        elif name in ("rewrite", "append", "reset"):
+            if len(args) not in (1, 2) or (name == "reset" and len(args) != 1):
+                self.err("%s(fichier%s) attendu" % (name, "" if name == "reset" else
+                                                    "[, taille]"), line)
+            mode = {"rewrite": "OUTPUT", "append": "APPEND", "reset": "INPUT"}[name]
+            size = " LEN = %s" % self.value(args[1], INT) if len(args) == 2 else ""
+            self.emit("OPEN %s FOR %s AS #%s%s" % (nom, mode, ch, size), line)
+        elif name == "close":
+            self.emit("CLOSE #%s" % ch, line)
+        elif name == "erase":
+            self.emit("KILL %s" % nom, line)
+
     def is_zero(self, e):
         try:
             return self.const_value(e) == 0
@@ -1357,6 +1510,12 @@ class Translator:
         """write / writeln : les éléments simples dans un même PRINT ; un champ de
         largeur constante dans son propre PRINT USING (routine de la ROM, sans
         chaîne ni fonction d'appui), les PRINT s'enchaînant par « ; »."""
+        if args and self.is_file(args[0]):        # writeln(f, ...) : PRINT #canal
+            ch, _ = self.file_acc(args[0], "write")
+            items = [self.format_item(a, line) for a in args[1:]]
+            text = "; ".join(items) if items else '""'
+            self.emit("PRINT #%s, %s%s" % (ch, text, "" if newline else ";"), line)
+            return
         cur = []
 
         def flush(end):
@@ -1454,22 +1613,29 @@ class Translator:
                 self.use("TPRK$")
                 self.emit("%s = TPRK$" % self.scalar(acc), line)
             return
-        if not args:
-            v = self.temp("$")
-            self.emit('LINE INPUT "", %s' % v, line)
-            return
+        # la ligne entière, puis une valeur par variable, comme Turbo Pascal :
+        # nombres séparés par des espaces, chaîne = reste de la ligne
+        self.shared_extra |= {"TP.L$", "TP.P%"}
+        if args and self.is_file(args[0]):        # readln(f, ...) : une ligne du fichier
+            ch, _ = self.file_acc(args[0], "read")
+            self.emit("LINE INPUT #%s, TP.L$" % ch, line)
+            args = args[1:]
+        else:
+            self.emit('LINE INPUT "", TP.L$', line)
+        self.emit("TP.P% = 1", line)
         for a in args:
             acc = self.access(a)
             t = acc["type"]
             target = self.scalar(acc)
             if t[0] == "str":
-                self.emit('LINE INPUT "", %s' % target, line)
+                self.emit("%s = MID$(TP.L$, TP.P%%)" % target, line)
+                self.emit("TP.P% = LEN(TP.L$) + 1", line)
             elif t[0] == "char":
-                v = self.temp("$")
-                self.emit('LINE INPUT "", %s' % v, line)
-                self.emit("%s = LEFT$(%s, 1)" % (target, v), line)
+                self.emit("%s = MID$(TP.L$, TP.P%%, 1)" % target, line)
+                self.emit("TP.P% = TP.P% + 1", line)
             elif t[0] in ("int", "real"):
-                self.emit('INPUT "", %s' % target, line)
+                self.use("TPTOK$")
+                self.emit("%s = VAL(TPTOK$)" % target, line)
             else:
                 self.err("read : impossible de lire un %s" % tname(t), line)
 
@@ -1510,6 +1676,9 @@ class Translator:
                     if lo:
                         i = "%s - %d" % (i, lo) if lo > 0 else "%s + %d" % (i, -lo)
                     acc = dict(acc, idx=acc["idx"] + (i,), type=t[3])
+                elif t[0] == "str" and self.const_or_none(v) == 0:   # s[0] : longueur
+                    s = self.scalar(acc)
+                    acc = {"type": CHAR, "strlen": s, "text": "CHR$(LEN(%s))" % s}
                 elif t[0] == "str":
                     s = self.scalar(acc)
                     i = self.value(v, INT)
@@ -1611,6 +1780,12 @@ class Translator:
 
     def binary(self, e):
         _, op, a, b = e
+        if self.is_set_expr(a) or self.is_set_expr(b):
+            if op in ("=", "<>", "<=", ">="):
+                return self.set_compare(op, a, b)
+            if op in ("+", "-", "*"):
+                self.err("expression d'ensembles : seulement dans une affectation (s := a + b)")
+            self.err("%s : impossible sur des ensembles" % op)
         ta, tb = self.ex(a), self.ex(b)
         (x, t1), (y, t2) = ta, tb
         num = ("int", "real", "enum")
@@ -1647,19 +1822,150 @@ class Translator:
         return "(%s %s %s)" % (x, op, y), real
 
     def membership(self, e):
-        _, a, items = e
+        _, a, sv = e
         x, t = self.ex(a)
         if not is_ordinal(t):
             self.err("in : valeur de type ordinal attendue")
-        conds = []
-        for lo, hi in items:
-            v = self.literal(self.const_value(lo))[0]
-            if hi is None:
-                conds.append("(%s = %s)" % (x, v))
-            else:
-                conds.append("(%s >= %s AND %s <= %s)" % (x, v, x, self.literal(
-                    self.const_value(hi))[0]))
-        return ("(%s)" % " OR ".join(conds) if conds else "0"), BOOL
+        while sv[0] == "paren":
+            sv = sv[1]
+        if sv[0] == "setc":                       # x in [a, b..c] : des comparaisons
+            conds = []
+            for lo, hi in sv[1]:
+                v = self.item_text(lo)
+                if hi is None:
+                    conds.append("(%s = %s)" % (x, v))
+                else:
+                    conds.append("(%s >= %s AND %s <= %s)" % (x, v, x, self.item_text(hi)))
+            return ("(%s)" % " OR ".join(conds) if conds else "0"), BOOL
+        acc = self.set_access(sv)
+        if acc is None:
+            self.err("in : ensemble variable ou [...] attendu (affectez d'abord une "
+                     "expression d'ensembles à une variable)")
+        o, _ = self.ordinal(a)
+        self.need_bits()
+        return "((%s AND TP.B%%(%s MOD 8)) <> 0)" % (self.set_elem(acc, "%s \\ 8" % o), o), BOOL
+
+    def item_text(self, e):
+        try:
+            return self.literal(self.const_value(e))[0]
+        except PasError:
+            return self.ex(e)[0]
+
+    # ------------------------------------------------------------ ensembles
+    # Un ensemble : 32 entiers de 8 éléments (bit k de l'octet n = élément
+    # 8n + k) ; TP.B%(k) = 2^k.  Les expressions d'ensembles se calculent
+    # dans des tableaux temporaires TP.Sn%(31), octet par octet.
+    def ordinal(self, e):
+        text, t = self.ex(e)
+        if t[0] == "char":
+            return "ASC(%s)" % text, t
+        if t[0] == "bool":
+            return "(-%s)" % text, t
+        if t[0] in ("int", "enum"):
+            return text, t
+        self.err("ensemble : valeur de type ordinal attendue (%s)" % tname(t))
+
+    def need_bits(self):
+        self.shared_extra.add("TP.B%(7)")
+        self.bits = True
+
+    def set_temp(self):
+        self.ntemp += 1
+        name = "TP.S%d%%" % self.ntemp
+        self.shared_extra.add(name + "(31)")
+        return {"tmp": name}
+
+    def set_elem(self, acc, k):
+        if "tmp" in acc:
+            return "%s(%s)" % (acc["tmp"], k)
+        return self.leaf_text(acc, (), INT, (k,))
+
+    def set_access(self, e):
+        """Accès à une variable ensemble, ou None."""
+        while e[0] == "paren":
+            e = e[1]
+        if e[0] != "desig":
+            return None
+        try:
+            acc = self.access(e)
+        except PasError:
+            return None
+        return acc if acc["type"][0] == "set" else None
+
+    def is_set_expr(self, e):
+        while e[0] == "paren":
+            e = e[1]
+        if e[0] == "setc":
+            return True
+        if e[0] == "bin" and e[1] in ("+", "-", "*"):
+            return self.is_set_expr(e[2]) or self.is_set_expr(e[3])
+        if e[0] == "desig":
+            sym = self.lookup(e[1], quiet=True)
+            if sym is None or sym["cls"] != "var":
+                if not any(w["type"][0] == "record" and any(f == e[1] for f, _ in w["type"][1])
+                           for w in self.with_stack):
+                    return False
+            return self.set_access(e) is not None
+        return False
+
+    def set_into(self, dst, e, line):
+        """Calcule l'expression d'ensembles e dans dst, octet par octet."""
+        while e[0] == "paren":
+            e = e[1]
+        loop = "FOR TP.K%% = 0 TO 31: %s = %s: NEXT TP.K%%"
+        if e[0] == "setc":
+            self.need_bits()
+            self.emit(loop % (self.set_elem(dst, "TP.K%"), "0"), line)
+            for lo, hi in e[1]:
+                o, _ = self.ordinal(lo)
+                if hi is None:
+                    if not re.fullmatch(r"[A-Z0-9.]+%?|\(?-?\d+\)?", o):
+                        self.emit("TP.O% = " + o, line)
+                        o = "TP.O%"
+                    el = self.set_elem(dst, "%s \\ 8" % o)
+                    self.emit("%s = %s OR TP.B%%(%s MOD 8)" % (el, el, o), line)
+                else:
+                    h, _ = self.ordinal(hi)
+                    el = self.set_elem(dst, "TP.J% \\ 8")
+                    self.emit("FOR TP.J%% = %s TO %s: %s = %s OR TP.B%%(TP.J%% MOD 8): "
+                              "NEXT TP.J%%" % (o, h, el, el), line)
+            return
+        src = self.set_access(e)
+        if src is not None:
+            self.emit(loop % (self.set_elem(dst, "TP.K%"), self.set_elem(src, "TP.K%")), line)
+            return
+        if e[0] == "bin" and e[1] in ("+", "-", "*"):
+            ta, tb = self.set_temp(), self.set_temp()
+            self.set_into(ta, e[2], line)
+            self.set_into(tb, e[3], line)
+            a, b = self.set_elem(ta, "TP.K%"), self.set_elem(tb, "TP.K%")
+            f = {"+": "%s OR %s", "*": "%s AND %s", "-": "%s AND NOT %s"}[e[1]] % (a, b)
+            self.emit(loop % (self.set_elem(dst, "TP.K%"), f), line)
+            return
+        self.err("ensemble attendu (variable, [...], ou opération + - * d'ensembles)", line)
+
+    def set_compare(self, op, a, b):
+        """s = t, s <> t, s <= t (inclusion), s >= t : variables ensembles
+        entières, ou ensembles constants (préparés au lancement)."""
+        code = {"=": 0, "<>": 1, "<=": 2, ">=": 3}[op]
+        args = []
+        for x in (a, b):
+            while x[0] == "paren":
+                x = x[1]
+            if x[0] == "setc":
+                tmp = self.set_temp()
+                saved, self.lines = self.lines, self.init_lines
+                self.set_into(tmp, x, self.line)
+                self.lines = saved
+                args.append(tmp["tmp"] + "()")
+                continue
+            acc = self.set_access(x)
+            if acc is None or acc["idx"]:
+                self.err("comparaison d'ensembles : variables ou [...] constants attendus "
+                         "(affectez d'abord le résultat à une variable)")
+            args.append(self.leaf_text(acc, (), INT) + "()")
+        self.use("TPSETCMP%")
+        return "TPSETCMP%%(%s, %s, %d)" % (args[0], args[1], code), BOOL
 
     def designator(self, e):
         _, name, sels, line = e
@@ -1706,7 +2012,7 @@ class Translator:
         return self.acc_value(acc), acc["type"]
 
     def acc_value(self, acc):
-        if acc.get("strindex"):
+        if acc.get("strindex") or acc.get("strlen"):
             return acc["text"]
         return self.scalar(acc)
 
@@ -1740,9 +2046,9 @@ class Translator:
             if acc is None or not self.same_type(acc["type"], pt):
                 self.err("%s : paramètre %s : %s du même type attendu"
                          % (sym["name"], pn, tname(pt)), line)
-            if not byref and pt[0] == "array":
-                self.warn("tableau passé par valeur : passé par adresse sur le X-07 "
-                          "(une modification dans la procédure se voit chez l'appelant)")
+            if not byref and pt[0] in ("array", "set"):
+                self.warn("tableau ou ensemble passé par valeur : passé par adresse sur le "
+                          "X-07 (une modification dans la procédure se voit chez l'appelant)")
             for path, lt, dims in leaves(pt):
                 if dims and acc["idx"]:
                     self.err("%s : partie de tableau passée en paramètre : non prise en charge"
@@ -1771,6 +2077,11 @@ class Translator:
             return "32767", INT
         if name == "pi":
             return "3.14159265358979#", REAL
+        if name == "eof":
+            if n != 1:
+                self.err("eof(fichier) attendu", line)
+            ch, _ = self.file_acc(a[0], "eof")
+            return "EOF(%s)" % ch, BOOL
         if name in ("keypressed",):
             self.use("TPKP%")
             return "TPKP%", BOOL
@@ -1899,4 +2210,5 @@ def compile_pascal(text, name="PROG", org=0x1000, **opts):
         asm, comp, w2 = qbcomp.compile_qbasic(qb, name, org, **opts)
     except QBError as e:
         raise PasError("compilation : %s" % pascal_line(str(e), linemap))
+    w2 = [w for w in w2 if not w.startswith("nom de fichier calculé")]   # mis au format
     return asm, comp, warns + w2, linemap

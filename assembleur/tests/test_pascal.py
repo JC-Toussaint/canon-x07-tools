@@ -248,6 +248,84 @@ end.''', "262 294 330 349 \nfa10")
                                   "begin end.")
         self.assertIn("3 valeurs attendues", str(cm.exception))
 
+    def test_sets(self):
+        self.out('''program Ens;
+type Jour = (lun, mar, mer, jeu, ven, sam, dim);
+  Semaine = set of Jour;
+var
+  voy, lettres, vues, aussi: set of char;
+  travail, repos, tous, commun: Semaine;
+  c, lo, hi: char; j: Jour; n: integer;
+  s: string;
+begin
+  voy := ['a', 'e', 'i', 'o', 'u', 'y'];
+  s := 'canon x-07 zebre';
+  lettres := [];
+  lo := 'a'; hi := 'z';
+  for n := 1 to length(s) do
+    if s[n] in [lo..hi] then lettres := lettres + [s[n]];
+  vues := lettres * voy;
+  for c := 'a' to 'z' do if c in vues then write(c);
+  write(' ');
+  aussi := lettres - voy;
+  for c := 'a' to 'z' do if c in aussi then write(c);
+  writeln;
+  travail := [lun..ven]; repos := [sam, dim];
+  tous := travail + repos;
+  writeln(tous = [lun..dim], ' ', repos <= tous, ' ', travail >= tous, ' ',
+          travail <> repos);
+  n := 0; for j := lun to dim do if j in travail then n := n + 1;
+  commun := repos * travail;
+  write(n, ' ', commun = [], ' ', mer in repos)
+end.''', "aeo bcnrxz\nTRUE TRUE FALSE TRUE\n5 TRUE FALSE")
+        for src, what in (("program A; var s: set of integer; begin end.", "0..255"),
+                          ("program A; var a, b: set of char; begin\n"
+                           "  writeln(a + b = [])\nend.", "affectez")):
+            with self.assertRaises(pascal.PasError) as cm:
+                pascal.compile_pascal(src)
+            self.assertIn(what, str(cm.exception))
+
+    def test_text_files(self):
+        # écriture par une procédure (fichier en var), relecture jusqu'à eof,
+        # append, nombres sur une ligne, nom calculé (mis au format du X-07)
+        m, warns = self.out('''program Fich;
+var
+  f, g: text;
+  i, a, b, n: integer;
+  nom, ligne: string;
+procedure Ecrire(var h: text; k: integer);
+begin
+  writeln(h, k, ' ', k * k)
+end;
+begin
+  assign(f, 'carres.txt');
+  rewrite(f);
+  for i := 1 to 4 do Ecrire(f, i);
+  close(f);
+  append(f); writeln(f, 10, ',', 100); close(f);
+  reset(f);
+  n := 0;
+  while not eof(f) do begin
+    readln(f, a, b);
+    n := n + b
+  end;
+  close(f);
+  writeln('somme ', n);
+  nom := 'Notes.dat';
+  assign(g, 'mes' + nom);              { calculé : MESNOT }
+  rewrite(g, 512); writeln(g, 'bonjour'); close(g);
+  reset(g); readln(g, ligne); close(g);
+  writeln(ligne);
+  erase(g)
+end.''', "somme 130\nbonjour")
+        self.assertTrue(any("CARRES" in w for w in warns))
+        self.assertFalse([w for w in warns if "calculé" in w])
+        for src, what in (("program A; var a, b, c, d, e, f: text; begin end.", "canaux 1 à 5"),
+                          ("program A; var t: array[1..2] of text; begin end.", "tableau de fichiers")):
+            with self.assertRaises(pascal.PasError) as cm:
+                pascal.compile_pascal(src)
+            self.assertIn(what, str(cm.exception))
+
     def test_real_formats(self):
         # notation scientifique de Turbo Pascal 3.0 et virgule fixe
         # (1/3*3 = 1 serait faux : le X-07 calcule en décimal, sur 14 chiffres)
@@ -283,7 +361,7 @@ end.''', "touche A FALSE\nici", keys="A", setup=lambda m: setattr(m, "on_note",
 
     def test_errors_give_pascal_lines(self):
         cases = [("program A;\nbegin\n  x := 1\nend.", "ligne 3", "inconnu : x"),
-                 ("program A;\nvar s: set of char;\nbegin end.", "ligne 2", "set"),
+                 ("program A;\nvar p: ^integer;\nbegin end.", "ligne 2", "pointeur"),
                  ("program A;\nprocedure P;\n  procedure Q; begin end;\nbegin end;\nbegin end.",
                   "ligne 3", "imbriquée"),
                  ("program A;\nvar i: integer;\nbegin\n  i := 2.5\nend.", "ligne 4", "Round")]
@@ -313,6 +391,15 @@ class TestDebugger(unittest.TestCase):
 
 
 class TestTranslation(unittest.TestCase):
+    def test_prelude_parameters_are_not_shared_names(self):
+        # un paramètre de la bibliothèque d'appui homonyme d'une variable
+        # partagée serait pris par QuickBASIC pour cette variable
+        import re
+        shared = set(pascal.PRELUDE_SHARED.values()) | {"TP.B%", "TP.L$", "TP.P%", "TP.N%"}
+        for name, (head, body) in pascal.PRELUDE.items():
+            params = re.findall(r"TP\.\w+[%#$!]", head)
+            self.assertFalse(set(params) & shared, name)
+
     def test_all_examples_compile(self):
         import glob
         for f in sorted(glob.glob(os.path.join(ROOT, "exemples", "pascal", "*.pas"))):

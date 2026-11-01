@@ -40,18 +40,19 @@ Dans l'éditeur-débogueur (`ide`), l'onglet *Variables* montre les **noms Pasca
 | `record ... end` | imbriqués, tableaux de records, records contenant des tableaux ; `with` |
 | `if`, `while`, `repeat`, `for ... to / downto`, `case ... of ... else` | |
 | `procedure`, `function`, `forward` | paramètres par valeur et `var` (traduits par un argument QuickBASIC entre parenthèses, ou par la variable seule), récursivité, `exit` |
-| `x in [constantes]` | pour tester une valeur : `c in ['a'..'z', '_']` |
+| `set of ...` | ensembles de 256 éléments au plus (`set of char`, d'un type énuméré, de `0..255`) : `[a, b..c]`, `+`, `-`, `*`, `in`, `=`, `<>`, `<=`, `>=`. 32 octets chacun |
+| `text` | fichiers texte en RAM du X-07 : voir plus bas |
 
 ### Entrées, sorties, chaînes, calculs
 
 | Turbo Pascal | Sur le X-07 |
 |---|---|
 | `write`, `writeln` | comme Turbo Pascal : entiers sans espace, `x:n` à droite sur n colonnes, réels en notation scientifique ` 1.2345678900E+03`, `x:n:d` en virgule fixe, booléens `TRUE` / `FALSE` |
-| `read`, `readln` | une valeur par ligne tapée ; `read(kbd, c)` lit une touche sans l'afficher |
+| `read`, `readln` | `readln(a, b)` : valeurs séparées par des espaces sur une même ligne, une chaîne prend le reste de la ligne ; `read(kbd, c)` lit une touche sans l'afficher |
 | `KeyPressed`, `ReadKey` | `KeyPressed` ne consomme pas la touche, que `ReadKey` lit ensuite |
 | `ClrScr`, `GotoXY(colonne, ligne)`, `WhereX`, `WhereY` | à partir de 1, comme Turbo Pascal |
 | `Delay(ms)`, `Sound(f)`, `NoSound` | `Sound(440); Delay(500); NoSound` joue une note (BEEP du X-07, par pas de 50 ms). Sans son, `Delay` est une boucle d'attente approximative |
-| `length`, `copy`, `concat`, `pos`, `upcase`, `insert`, `delete`, `str`, `val`, `s[i]` | |
+| `length`, `copy`, `concat`, `pos`, `upcase`, `insert`, `delete`, `str`, `val`, `s[i]`, `s[0]` | `ord(s[0])` est la longueur, `s[0] := chr(n)` la fixe |
 | `abs`, `sqr`, `sqrt`, `sin`, `cos`, `arctan`, `exp`, `ln`, `trunc`, `round`, `frac`, `int`, `odd`, `pi` | |
 | `ord`, `chr`, `succ`, `pred`, `inc`, `dec`, `lo`, `hi` | |
 | `random`, `random(n)`, `randomize` | |
@@ -67,6 +68,36 @@ Dans l'éditeur-débogueur (`ide`), l'onglet *Variables* montre les **noms Pasca
 | `Draw(x1, y1, x2, y2)`, `Draw(..., 0)` | trace ou efface une ligne |
 | `Circle(x, y, r)` | trace un cercle |
 | `Beep(note, durée)` | le `BEEP` du X-07 |
+
+## Les ensembles
+
+Un ensemble occupe 32 octets : 256 bits, un par élément possible. `c in s` lit directement le bit de `c`. Une affectation (`s := s + [c]`, `s := a * b`) se calcule octet par octet. Une comparaison (`s = []`, `a <= b`) porte sur des **variables** ensembles ou sur des ensembles **constants** : `(a + b) = c` doit passer d'abord par une variable.
+
+## Les fichiers texte
+
+Les fichiers sont ceux de la RAM du X-07 (voir [FICHIERS.md](FICHIERS.md)) : ils survivent à l'extinction.
+
+```pascal
+var f: text;
+...
+assign(f, 'notes.txt');     { « NOTES » sur le X-07 : 6 caractères, sans extension }
+rewrite(f, 1024);           { taille du fichier : 256 octets par défaut }
+writeln(f, 'x = ', x:0:2);
+close(f);
+reset(f);
+while not eof(f) do begin readln(f, ligne); writeln(ligne) end;
+close(f)
+```
+
+| Turbo Pascal | Sur le X-07 |
+|---|---|
+| `assign(f, nom)` | nom ramené à 6 caractères, en majuscules, sans extension (avertissement si le nom est constant) |
+| `rewrite(f)`, `append(f)`, `reset(f)` | `OPEN … FOR OUTPUT / APPEND / INPUT`. Extension pour le X-07 : `rewrite(f, taille)` et `append(f, taille)`, car un fichier en RAM a une taille fixée à sa création (256 octets par défaut) |
+| `write(f, …)`, `writeln(f, …)` | comme à l'écran |
+| `read(f, …)`, `readln(f, …)` | une ligne, découpée comme au clavier |
+| `eof(f)`, `close(f)`, `erase(f)` | |
+
+Un fichier passé à une procédure doit l'être en `var`, comme en Turbo Pascal. Cinq fichiers au plus : le X-07 a cinq canaux.
 
 ## Les records
 
@@ -84,9 +115,8 @@ Les records gardent ainsi leur sens exact, y compris dans une procédure récurs
 
 ## Ce qui n'est pas pris en charge
 
-- **`set`**, sauf dans un test `x in [...]` avec des constantes.
 - **Pointeurs**, `new`, `dispose`, `nil`.
-- **Fichiers** (`text`, `file of`, `assign`…).
+- **Fichiers typés** (`file of ...`), et un tableau ou un record de fichiers.
 - **Procédures imbriquées** dans une autre procédure : il faut les déclarer au niveau du programme.
 - `goto`, `label` ; records à partie variable (`case` dans un record).
 - **Fonction qui rend un tableau ou un record** (Turbo Pascal 3.0 ne le permet pas non plus).
