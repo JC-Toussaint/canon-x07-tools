@@ -346,6 +346,18 @@ end.'''
                                   "procedure P(var r: real); begin end;\nbegin P(x) end.")
         self.assertIn("real attendu", str(cm.exception))
 
+    def test_files_program_placed_under_fset_area(self):
+        # FSET réécrit les 65 octets sous la zone des fichiers (chaînes, pile de
+        # la ROM) : le placement automatique doit laisser cette marge (meteo.pas
+        # plantait dans l'IDE, compilé avec --debug)
+        from x07asm import cli
+        _, a, mem, comp = cli.build_basic(os.path.join(ROOT, "exemples", "pascal", "meteo.pas"),
+                                          "auto", 16, debug=True)
+        self.assertLessEqual(a.symbols["VARS_END"], 0x3FFF - comp.file_space - 65)
+        m = emu.prepare_binary(mem, a.entry, "  ", ["3", "12 18.5", "0 0"], 16)
+        m.run(80_000_000)
+        self.assertIn("min  18.5 max  18.5", m.output())
+
     def test_long_concatenation_not_truncated(self):
         self.out("""program A;
 procedure P(s: string); begin writeln(s + ' !') end;

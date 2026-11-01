@@ -156,6 +156,8 @@ def cmd_sym(args):
 
 RAM_TOP = {8: 0x1FFF, 16: 0x3FFF, 24: 0x5FFF}
 RAM_RESERVED = 14       # haut de la RAM gardé par la ROM (MEMSIZ = $xFF1, signature 5A A5)
+FSET_RESERVED = 80      # sous les fichiers : FSET y refait la zone des chaînes (50 octets)
+                        # et y pose la pile de la ROM, 65 octets écrits en tout
 
 
 def free_top(ram):
@@ -231,7 +233,7 @@ def build_basic(path, org="auto", ram=8, direct=False, **opts):
         if getattr(comp, "file_space", 0):
             # FSET n : la zone des fichiers est en haut de la RAM ; le code va dessous
             # (MEMSIZ après FSET n = haut de la RAM - n - 1)
-            top = RAM_TOP[ram] - comp.file_space - 1
+            top = RAM_TOP[ram] - comp.file_space - 1 - FSET_RESERVED
         size = a.symbols["VARS_END"] - 0x1000
         o = (top + 1 - size) & ~0xF
         if o < 0x0600:
