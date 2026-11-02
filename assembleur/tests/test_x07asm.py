@@ -342,5 +342,29 @@ class TestCliEmu(unittest.TestCase):
             self.assertIn("--charger %s" % name, err.getvalue())
 
 
+
+class TestExempleInterruptions(unittest.TestCase):
+    def test_int_a_hook_counts_and_restores(self):
+        # l'émulateur ne produit pas INT A : une interruption $3C est simulée
+        from x07asm import emu
+        if emu.rom_path() is None:
+            self.skipTest("ROM_x07/x07.bin absente")
+        a = Assembler()
+        mem = a.assemble_file(os.path.join(ROOT, "exemples", "interruptions.asm"))
+        self.assertFalse(a.errors)
+        m = emu.prepare_binary(mem, a.entry, "A\r", [], 16)
+        orig, pend = m.irq, [300000, 700000]
+
+        def irq():
+            if pend and m.steps >= pend[0] and m.iff:
+                pend.pop(0)
+                return 0x3C                          # INT A
+            return orig()
+        m.irq = irq
+        m.run(5_000_000)
+        self.assertIn("INT A  2", m.screen_text())
+        self.assertEqual(bytes(m.mem[0x3C:0x3F]), bytes([0xC3, 0x99, 0xC7]))   # vecteur remis
+
+
 if __name__ == "__main__":
     unittest.main()

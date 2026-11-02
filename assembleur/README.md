@@ -142,7 +142,8 @@ x07asm/qbcomp.py    compilation directe QuickBASIC -> assembleur (voir QBASIC.md
 x07asm/runtime.py   bibliothèque d'exécution du compilateur
 x07asm/sim.py       simulateur Z80 pour essayer les programmes sur PC
 x07asm/emu.py       démarrage de la vraie ROM : le BASIC du X-07 sur PC
-exemples/           caso.asm (livre, p. 60), bonjour.asm, *.bas
+exemples/           caso.asm (livre, p. 60), bonjour.asm, mult32.asm,
+                    interruptions.asm (détourne INT A, le clavier), *.bas
 tests/              tests unitaires
 ```
 
