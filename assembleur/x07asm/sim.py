@@ -725,6 +725,7 @@ class X07(CPU):
         self.rx_err = 0
         self.overruns = 0
         self.int_mask = 0
+        self.keys_signaled = 0     # touches déjà annoncées par INT A
         self.byte_steps = 1500        # ~ un octet à 4800 bauds
         self.t6ram = bytearray(0x10000)   # RAM du T6834 (RAM READ / RAM WRITE), par adresse
         self.t6ram[T6_SCROLL_FIRST], self.t6ram[T6_SCROLL_LAST] = 0, 3
@@ -828,7 +829,14 @@ class X07(CPU):
             self._uart_tick()
             if self.rx_latch is not None and self.int_mask & 0x01:
                 return 0x34                   # INTERRUPT B : interruptions série
-        return None
+        n = len(self.keys)
+        if n != self.keys_signaled:
+            if n < self.keys_signaled:        # touches lues
+                self.keys_signaled = n
+            else:                             # INTERRUPT A : le T6834 annonce une touche.
+                self.keys_signaled += 1       # La ROM ($C799) n'y trouve rien à lire (la
+                return 0x3C                   # touche reste dans la file des routines
+        return None                           # imitées) ; un programme qui détourne $003C la voit
 
     # Comme dans la ROM : $B8 = ligne, $B9 = colonne, comptées à partir de 1.
     def _cursor(self):
