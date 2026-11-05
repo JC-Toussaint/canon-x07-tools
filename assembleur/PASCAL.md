@@ -7,6 +7,7 @@ python3 x07asm.py run exemples/pascal/fiches.pas --fenetre    # compilé, dans l
 python3 x07asm.py run exemples/pascal/hanoi.pas               # sortie dans le terminal
 python3 x07asm.py ide exemples/pascal/fiches.pas              # éditeur-débogueur
 python3 x07asm.py pas exemples/pascal/fiches.pas              # QuickBASIC produit, à examiner
+python3 x07asm.py pas exemples/pascal/fiches.pas -f lst,bin  # et le listing, le binaire
 python3 x07asm.py send exemples/pascal/fiches.pas --port /dev/ttyUSB0   # vers la machine
 python3 x07asm.py emu --fenetre --charger exemples/pascal/fiches.pas    # puis EXEC &H...
 ```

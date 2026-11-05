@@ -343,6 +343,23 @@ class TestCliEmu(unittest.TestCase):
 
 
 
+    def test_pas_writes_listing_with_format(self):
+        import contextlib
+        import io
+        import shutil
+        import tempfile
+        from x07asm.cli import main
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "hanoi.pas")
+            shutil.copy(os.path.join(ROOT, "exemples", "pascal", "hanoi.pas"), src)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["pas", src, "-f", "lst,bin"]), 0)
+            self.assertEqual(sorted(os.listdir(d)),
+                             ["hanoi.bin", "hanoi.lst", "hanoi.pas", "hanoi_pas.qbas"])
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(main(["pas", src, "-f", "lst,zip"]), 1)
+            self.assertIn("format inconnu : zip", err.getvalue())
+
 class TestExempleInterruptions(unittest.TestCase):
     def test_int_a_hook_counts_and_restores(self):
         # chaque touche déclenche INT A ($003C) dans l'émulateur

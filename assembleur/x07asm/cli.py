@@ -261,10 +261,26 @@ def cmd_basic(args):
     for w in comp.warnings:
         print("attention : %s" % w, file=sys.stderr)
     base = args.output or os.path.splitext(args.source)[0]
-    wanted = {f for f in (args.format or "asm,bin").split(",") if f}
-    unknown = wanted - {"asm", "bin", "hex", "lst", "txt", "bas"}
+    return write_outputs(src, a, mem, base, args.format or "asm,bin")
+
+
+FORMATS = ("asm", "bin", "hex", "lst", "txt", "bas")
+
+
+def check_formats(spec):
+    """Formats demandés par -f (asm,bin...), ou None s'il y en a un inconnu."""
+    wanted = {f for f in spec.split(",") if f}
+    unknown = wanted - set(FORMATS)
     if unknown:
         print("format inconnu : %s" % ", ".join(sorted(unknown)), file=sys.stderr)
+        return None
+    return wanted
+
+
+def write_outputs(src, a, mem, base, spec, summary=True):
+    """Écrit les fichiers demandés (base.asm, base.bin...) d'un programme compilé."""
+    wanted = check_formats(spec)
+    if wanted is None:
         return 1
     written = []
 
@@ -289,9 +305,10 @@ def cmd_basic(args):
             print("attention : %s" % w, file=sys.stderr)
         write(base + "_chargeur.bas", text)
     org, end = a.entry, a.symbols["VARS_END"]
-    print("%d octets de code, %d avec les variables : $%04X-$%04X" % (
-        len(mem), end - org, org, end - 1))
-    print("sur le X-07 : CLEAR 50,&H%X  puis  EXEC &H%X" % (org - 1, org))
+    if summary:
+        print("%d octets de code, %d avec les variables : $%04X-$%04X" % (
+            len(mem), end - org, org, end - 1))
+        print("sur le X-07 : CLEAR 50,&H%X  puis  EXEC &H%X" % (org - 1, org))
     for p in written:
         print("  ->", p)
     return 0
@@ -790,6 +807,8 @@ def cmd_ide(args):
 def cmd_pas(args):
     """Pascal : écrit le QuickBASIC produit (pour l'examiner), et compile."""
     from . import basic, pascal
+    if args.format and check_formats(args.format) is None:
+        return 1
     try:
         qb, warns, lines = pascal.translate(read_text(args.source))
     except pascal.PasError as e:
@@ -810,6 +829,8 @@ def cmd_pas(args):
     print("%d octets avec les variables : $%04X-$%04X ; sur le X-07 : CLEAR 50,&H%X  puis  "
           "EXEC &H%X" % (a.symbols["VARS_END"] - min(mem), min(mem), a.symbols["VARS_END"] - 1,
                          min(mem) - 1, a.entry))
+    if args.format:                               # fichiers compilés : NOM.lst, NOM.bin...
+        return write_outputs(src, a, mem, root, args.format, summary=False)
     return 0
 
 
@@ -969,6 +990,9 @@ def main(argv=None):
     pa.add_argument("--ram", type=int, choices=(8, 16, 24), default=16,
                     help="mémoire du X-07 en Ko (défaut : 16)")
     pa.add_argument("--org", default="auto", help="adresse d'implantation")
+    pa.add_argument("-f", "--format",
+                    help="fichiers compilés en plus du QuickBASIC, à côté du source : "
+                         "asm,bin,hex,lst,txt,bas (ex. -f lst,bin)")
     pa.set_defaults(func=cmd_pas)
 
     q = sub.add_parser("qb", help="traduire un programme QuickBASIC en BASIC du X-07")
