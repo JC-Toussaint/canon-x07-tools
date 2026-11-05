@@ -25,7 +25,7 @@ _QB_TOKEN = re.compile(r'"[^"]*"?|\'.*|[A-Za-z_][A-Za-z0-9_.]*[$%!#&]?|&[HhOo][0
 
 def zones(text, kind):
     line_zones = {"bas": _bas_line, "qbas": _qb_line, "asm": _asm_line,
-                  "pas": _pas_line}.get(kind)
+                  "pas": _pas_line, "c": _c_line}.get(kind)
     if line_zones is None:
         return []
     return [(c, n, a, b) for n, line in enumerate(text.split("\n"), 1)
@@ -128,6 +128,37 @@ def _pas_line(text):
         elif low in PAS_FUNCS:
             out.append(("fonction", a, b))
         elif tok[0].isdigit() or tok[0] == "$":
+            out.append(("numero", a, b))
+    return tuple(out)
+
+
+# C (SDCC) : commentaire /* */ ligne par ligne, comme pour le Pascal
+C_KEYWORDS = {"auto", "break", "case", "char", "const", "continue", "default", "do", "double",
+              "else", "enum", "extern", "float", "for", "goto", "if", "int", "long",
+              "register", "return", "short", "signed", "sizeof", "static", "struct",
+              "switch", "typedef", "union", "unsigned", "void", "volatile", "while",
+              "bool", "true", "false", "__asm", "__endasm", "__naked"}
+C_FUNCS = {"printf", "puts", "putchar", "cls", "locate", "pset", "preset", "line", "circle",
+           "inkey", "getkey", "input", "beep", "x07_break", "x07_putc", "x07_puts", "inp",
+           "outp", "PEEK", "POKE", "main", "exit", "strlen", "strcpy", "atoi", "sprintf"}
+_C_TOKEN = re.compile(r"//.*|/\*.*?(?:\*/|$)|\"(?:[^\"\\]|\\.)*\"?|'(?:[^'\\]|\\.)*'?"
+                      r"|^\s*#\s*\w+|0[xX][0-9A-Fa-f]+|[A-Za-z_]\w*|\d+(?:\.\d+)?|.")
+
+
+@functools.lru_cache(maxsize=4096)
+def _c_line(text):
+    out = []
+    for m in _C_TOKEN.finditer(text):
+        tok, a, b = m.group(), m.start(), m.end()
+        if tok.startswith(("//", "/*")):
+            out.append(("commentaire", a, b))
+        elif tok[0] in "\"'":
+            out.append(("chaine", a, b))
+        elif tok.lstrip().startswith("#") or tok in C_KEYWORDS:
+            out.append(("motcle", a, b))
+        elif tok in C_FUNCS:
+            out.append(("fonction", a, b))
+        elif tok[0].isdigit():
             out.append(("numero", a, b))
     return tuple(out)
 
