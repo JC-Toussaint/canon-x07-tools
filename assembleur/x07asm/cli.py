@@ -568,8 +568,55 @@ def cmd_recepteur(args):
     return 0
 
 
+def cmd_send_text(args):
+    from . import serie
+    try:
+        with open(args.source, encoding="utf-8") as f:
+            lines = serie.text_lines(f.read())
+    except (ValueError, OSError, UnicodeDecodeError) as e:
+        print("erreur : %s" % e, file=sys.stderr)
+        return 1
+    print("%d lignes de BASIC, envoyées en texte" % len(lines))
+    if args.emu:
+        ok, m = serie.send_text_emulated("\n".join(lines), args.baud, args.ram,
+                                         restore=not args.garder)
+        print("[émulation : %s, %d octets perdus par l'UART]" % (
+            "programme reçu identique" if ok else "ÉCHEC", m.overruns))
+        return 0 if ok else 2
+    if not args.port:
+        print("erreur : indiquez le port série (--port /dev/ttyUSB0 ou COM3)", file=sys.stderr)
+        return 1
+    try:
+        port = serie.SerialPort(args.port, args.baud)
+    except (OSError, serie.TransferError) as e:
+        print("erreur : port %s : %s" % (args.port, e), file=sys.stderr)
+        return 1
+    try:
+        print("Sur le X-07, tapez :  %s" % serie.text_setup(args.baud))
+        input("puis appuyez sur Entrée ici... ")
+        serie.send_text(port, lines, args.pause_car, args.pause_ligne,
+                        restore=not args.garder, log=lambda *a, **k: print(*a, **k, flush=True))
+    except (KeyboardInterrupt, EOFError):
+        print("\ninterrompu ; sur le X-07, le clavier se rétablit par :  %s"
+              % serie.TEXT_RESTORE, file=sys.stderr)
+        return 2
+    finally:
+        port.close()
+    if args.garder:
+        print("Envoi terminé. Le X-07 lit toujours la prise série ; pour rendre le clavier,"
+              " envoyez :  %s" % serie.TEXT_RESTORE)
+    else:
+        print("Envoi terminé, clavier du X-07 rétabli. Vérifiez par LIST, puis RUN.")
+    return 0
+
+
 def cmd_send(args):
     from . import serie, basic, sim
+    if args.texte:
+        if not args.source.lower().endswith(".bas"):
+            print("erreur : --texte n'envoie que des programmes BASIC (.bas)", file=sys.stderr)
+            return 1
+        return cmd_send_text(args)
     try:
         mem, entry, _ = _load_program(args)
     except (basic.CompileError, asmmod.AsmError, ValueError, OSError) as e:
@@ -1014,6 +1061,15 @@ def main(argv=None):
     sd.add_argument("--direct", action="store_true",
                    help="QuickBASIC (.qbas) compilé directement, sans BASIC du X-07 "
                         "(récursivité, tableaux par adresse)")
+    sd.add_argument("--texte", action="store_true",
+                    help="envoyer un .bas en texte, comme tapé au clavier, sans le compiler "
+                         "(le X-07 exécute d'abord INIT#5,\"COM:\":EXEC &HEE1F)")
+    sd.add_argument("--pause-car", type=float, default=0.01,
+                    help="--texte : pause après chaque caractère, en s (défaut 0,01)")
+    sd.add_argument("--pause-ligne", type=float, default=0.3,
+                    help="--texte : pause après chaque ligne, en s (défaut 0,3)")
+    sd.add_argument("--garder", action="store_true",
+                    help="--texte : ne pas rendre le clavier au X-07 à la fin")
     sd.set_defaults(func=cmd_send)
 
     args = p.parse_args(argv)

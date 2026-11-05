@@ -74,6 +74,48 @@ Le PC n'a jamais plus de 22 octets d'avance, ce qui tient dans le tampon de 32 o
 
 **Avec la machine réelle**, le premier essai a montré que la liaison du X-07 est en logique inversée : le « R » arrive en `2B 00` sur un FT232RL non inversé, et le X-07 répond « IO Error in 30 ». Le transfert complet reste à confirmer une fois TXD et RXD inversés. Il reste aussi à vérifier le nombre de bits d'arrêt du mode `B`.
 
+## Envoi d'un programme BASIC en texte (`--texte`)
+
+`send --texte` envoie un `.bas` **sans le compiler**, comme si on le tapait au clavier du X-07. Aucun récepteur n'est nécessaire.
+
+```sh
+python3 x07asm.py send jeu.bas --texte --port COM3        # l'envoi
+python3 x07asm.py send jeu.bas --texte --emu              # essai sans câble
+```
+
+1. Sur le PC, lancez la commande : elle affiche la ligne à taper sur le X-07, puis attend.
+2. **Sur le X-07, tapez** (avec la même vitesse que `--baud`) :
+   ```
+   INIT#5,"COM:",4800,"B":EXEC &HEE1F
+   ```
+   À partir de là, le BASIC lit ses lignes **sur la prise série**, et le clavier du X-07 ne répond plus.
+3. Sur le PC, appuyez sur Entrée : les lignes partent une à une, puis le PC envoie `POKE &HA3,&H0A:POKE &HA4,&HC9`, qui **rend le clavier** au X-07.
+4. Sur le X-07 : `LIST` pour vérifier, puis `RUN`.
+
+Les lignes s'ajoutent au programme déjà en mémoire : faites `NEW` avant l'étape 2 si nécessaire.
+
+| Option | Rôle |
+|---|---|
+| `--pause-car` | pause après chaque caractère, en secondes (défaut 0,01) |
+| `--pause-ligne` | pause après chaque ligne, le temps que le X-07 la range (défaut 0,3) |
+| `--garder` | ne pas rendre le clavier à la fin : le X-07 continue de lire la prise série, et l'on peut lui envoyer des commandes depuis un terminal |
+
+Rien ne signale au PC que le X-07 a fini une ligne : pas d'écho, et RTS n'est pas câblé. L'envoi repose donc sur des pauses fixes, choisies larges. Si des lignes arrivent tronquées, augmentez `--pause-ligne`, puis `--pause-car`. Les lignes de plus de 79 caractères et les caractères hors ASCII (lettres accentuées) sont refusés avant l'envoi : l'éditeur du X-07 les perdrait.
+
+### La fonction cachée `$EE1F`
+
+Lue dans la ROM : **aucune routine ne l'appelle**, on n'y accède que par `EXEC &HEE1F`.
+
+- Elle lit l'entrée du **fichier #5** dans la table des fichiers ouverts (`$02E5` = `$02C5` + 4 × 8). D'où l'obligation d'ouvrir COM: sous le numéro 5.
+- Elle range la routine d'entrée de ce dispositif dans le **crochet d'entrée de la console** (`JP` en `$00A2`, normalement `JP $C90A`, la lecture du clavier). Pour COM:, c'est `$E00A`.
+- L'attente d'une touche de la ROM (`$C8C5`) appelle ce crochet : l'éditeur reçoit donc les caractères de la prise série.
+
+Si un envoi est interrompu, le clavier reste muet. Pour le rétablir, envoyez la ligne `POKE &HA3,&H0A:POKE &HA4,&HC9` (suivie d'un retour chariot) depuis un terminal, ou éteignez puis rallumez le X-07.
+
+### Vérification
+
+Dans l'émulateur, avec le vrai éditeur de la ROM et l'UART émulée : le programme reçu est **identique, octet pour octet**, à celui tapé au clavier, sans octet perdu, et le clavier est bien rétabli. L'émulation n'impose aucune pause, mais son affichage est instantané alors que le vrai X-07 passe chaque caractère au T6834 : les pauses par défaut restent à confirmer sur la machine.
+
 ## Autres moyens de transfert
 
 | Moyen | Commande | Remarque |
@@ -81,7 +123,7 @@ Le PC n'a jamais plus de 22 octets d'avance, ce qui tient dans le tampon de 32 o
 | chargeur BASIC | `basic prog.bas -f bas` | à taper ou envoyer ; chaque ligne de DATA porte une somme de contrôle. Il faut assez de place sous le programme |
 | vidage hexadécimal | `basic prog.bas -f txt` | à recopier avec l'« entreur de codes » du livre |
 
-`LOAD"COM:"`, qui chargerait directement un programme BASIC envoyé en texte, n'a pas fonctionné dans l'émulateur, même en ralentissant beaucoup l'envoi. Ce mode reste à étudier.
+`LOAD"COM:"`, qui chargerait directement un programme BASIC envoyé en texte, n'a pas fonctionné dans l'émulateur, même en ralentissant beaucoup l'envoi. L'envoi en texte (`--texte`, ci-dessus) le remplace.
 
 ## Fichiers
 

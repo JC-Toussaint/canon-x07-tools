@@ -82,6 +82,64 @@ class TestEmulatedX07(unittest.TestCase):
         self.assertNotIn("Error", out)
 
 
+class TestTextLines(unittest.TestCase):
+    def test_clean(self):
+        self.assertEqual(serie.text_lines("10 PRINT 1\n\n  20 END  \n"),
+                         ["10 PRINT 1", "20 END"])
+
+    def test_errors(self):
+        with self.assertRaises(ValueError):
+            serie.text_lines("10 PRINT \"%s\"" % ("X" * 80))
+        with self.assertRaises(ValueError):
+            serie.text_lines('10 PRINT "é"')
+        with self.assertRaises(ValueError):
+            serie.text_lines("\n\n")
+
+
+@needs_rom
+class TestEmulatedText(unittest.TestCase):
+    """Envoi en texte : $EE1F redirige la saisie du BASIC vers la prise série."""
+    SRC = '10 A$="BONJOUR":FOR I=1 TO 3\n20 PRINT A$;I:NEXT\n30 END\n'
+
+    def test_text_transfer(self):
+        ok, m = serie.send_text_emulated(self.SRC)
+        self.assertTrue(ok)
+        self.assertEqual(m.overruns, 0)
+        self.assertEqual(m.rd16(0x00A3), 0xC90A)        # clavier rétabli
+
+    def test_keep_serial_input(self):
+        ok, m = serie.send_text_emulated(self.SRC, restore=False)
+        self.assertTrue(ok)
+        self.assertNotEqual(m.rd16(0x00A3), 0xC90A)     # entrée toujours sur COM:
+
+
+@unittest.skipUnless(hasattr(os, "openpty"), "pseudo-terminaux indisponibles")
+class TestTextOverPty(unittest.TestCase):
+    def test_bytes_sent(self):
+        import tty
+        master, slave = os.openpty()
+        tty.setraw(master)
+        port = serie.SerialPort(os.ttyname(slave), 4800)
+        try:
+            serie.send_text(port, ["10 PRINT 1", "20 END"], pause_car=0, pause_ligne=0,
+                            log=lambda *a, **k: None)
+        finally:
+            port.close()
+        got = b""
+        while True:
+            try:
+                d = os.read(master, 256)
+            except OSError:
+                break
+            if not d:
+                break
+            got += d
+            if got.endswith(b"&HC9\r"):
+                break
+        os.close(master)
+        self.assertEqual(got, b"10 PRINT 1\r20 END\r" + serie.TEXT_RESTORE.encode() + b"\r")
+
+
 @needs_rom
 @unittest.skipUnless(hasattr(os, "openpty"), "pseudo-terminaux indisponibles")
 class TestPseudoPort(unittest.TestCase):

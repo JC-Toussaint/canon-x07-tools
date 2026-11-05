@@ -175,6 +175,98 @@ def send(port, mem, entry, timeout=60, log=print):
     return snd
 
 
+# ---------------------------------------------------------------- envoi en texte
+
+# Fonction cachée de la ROM, appelée nulle part ($EE1F, vérifié ROM) : elle met
+# dans le crochet d'entrée de la console ($00A2, JP $C90A) la routine d'entrée
+# du fichier #5.  Ouvert sur COM:, le BASIC lit alors ses lignes sur la prise
+# série comme si on les tapait.  Le clavier du X-07 n'est plus lu jusqu'à ce
+# que le crochet soit rétabli (TEXT_RESTORE, envoyé en fin de transfert).
+TEXT_RESTORE = "POKE &HA3,&H0A:POKE &HA4,&HC9"
+
+
+def text_setup(baud=4800):
+    """Commande à taper sur le X-07 avant l'envoi en texte."""
+    return 'INIT#5,"COM:",%d,"B":EXEC &HEE1F' % baud
+
+
+def text_lines(src):
+    """Lignes d'un programme BASIC, prêtes à envoyer.  ValueError si une
+    ligne ne passerait pas l'éditeur du X-07."""
+    from .emu import LINE_MAX
+    lines = []
+    for n, raw in enumerate(src.splitlines(), 1):
+        line = raw.strip()
+        if not line:
+            continue
+        if len(line) > LINE_MAX:
+            raise ValueError("ligne %d : %d caractères, l'éditeur du X-07 n'en garde que %d"
+                             % (n, len(line), LINE_MAX))
+        bad = sorted({c for c in line if not 32 <= ord(c) < 127})
+        if bad:
+            raise ValueError("ligne %d : caractère(s) hors ASCII %s" % (n, " ".join(bad)))
+        lines.append(line)
+    if not lines:
+        raise ValueError("programme vide")
+    return lines
+
+
+def send_text(port, lines, pause_car=0.01, pause_ligne=0.3, restore=True, log=print):
+    """Envoie les lignes au X-07 qui a exécuté text_setup(), un caractère à la
+    fois : rien ne signale que le X-07 a fini une ligne (pas d'écho, RTS non
+    câblé), d'où des pauses fixes, larges par prudence."""
+    todo = lines + ([TEXT_RESTORE] if restore else [])
+    for k, line in enumerate(todo, 1):
+        for b in (line + "\r").encode("ascii"):
+            port.write(bytes([b]))
+            time.sleep(pause_car)
+        time.sleep(pause_ligne)
+        log("\r  %d / %d lignes" % (min(k, len(lines)), len(lines)), end="")
+    log("")
+
+
+def send_text_emulated(src, baud=4800, ram=16, restore=True, char_steps=None,
+                       line_steps=60_000):
+    """Envoi en texte au X-07 émulé (vraie ROM, éditeur de la ROM, UART émulée).
+    Renvoie (programme reçu identique à celui tapé au clavier, machine)."""
+    from . import emu
+    from .sim import SimError, REAL
+    lines = text_lines(src)
+    m = emu.boot(ram, real_display=True)
+    m.interactive = True
+    m.traps[0xEBFF] = lambda c: REAL          # l'éditeur de la ROM
+    m.traps[0xEBF2] = lambda c: REAL
+    m.traps.pop(0xC8C5, None)                 # attente d'une touche : vraie ROM, par $00A2
+    m.byte_steps = max(200, int(1500 * 4800 / baud))
+
+    def no_key():
+        raise SimError("le X-07 attend une touche")
+    m._wait_key = no_key
+    m.keys = list(text_setup(baud) + "\r")
+    m.pc = 0xEBFF
+
+    def run(n):
+        try:
+            m.run(m.steps + n)
+        except SimError as e:
+            if "limite" not in str(e):
+                raise
+    run(3_000_000)
+    gap = char_steps or m.byte_steps
+    for line in lines + ([TEXT_RESTORE] if restore else []):
+        for b in (line + "\r").encode("ascii"):
+            m.serial_in.append(b)
+            run(gap)
+        run(line_steps)
+    run(2_000_000)
+
+    def program(mm):
+        a, b = mm.rd16(0x00B2), mm.rd16(0x0322)          # TXTTAB, VARTAB
+        return bytes(mm.mem[a:b])
+    _, ref = emu.run_basic("\n".join(lines) + "\n", ram=ram, max_steps=200_000_000)
+    return program(m) == program(ref), m
+
+
 # ---------------------------------------------------------------- émulation
 
 def send_emulated(mem, entry, baud=4800, ram=16, clear=True, max_steps=200_000_000):

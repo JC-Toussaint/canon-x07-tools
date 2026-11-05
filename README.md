@@ -24,6 +24,7 @@ python3 x07asm.py run exemples/devine.bas                  # l'essayer sur PC
 python3 x07asm.py emu exemples/devine.bas                  # le BASIC du X-07 (vraie ROM)
 python3 x07asm.py emu --fenetre                            # le X-07 dans une fenêtre, au clavier
 python3 x07asm.py send exemples/devine.bas --emu           # transfert série (ici émulé)
+python3 x07asm.py send exemples/devine.bas --texte --emu   # envoi du BASIC en texte, comme au clavier
 python3 -m unittest discover -s tests                      # tests
 ```
 
@@ -44,5 +45,6 @@ Les adresses de la ROM utilisées par les outils ont été vérifiées dans le v
 - *Les mystères du X-07* et *Applications en assembleur* (Éditions Neptune) : notes de référence (`X07_mysteres_reference.tex`, `X07_AppsASM.tex`) et originaux numérisés.
 - *Canon X-07 Technical Guide / Parts Catalog* (`x07_technicalguide.pdf`).
 - Raccordement du port série à un PC par un module FT232RL (`X07_FT232RL_liaison_serie.md`).
+- Test de bouclage du port série du X-07, sans PC (`X07_test_bouclage_serie.md`).
 
 La ROM, les livres et le guide technique restent la propriété de leurs auteurs et éditeurs (Canon, Éditions Neptune). Ils sont fournis ici à des fins de conservation et d'étude de cette machine ancienne.
