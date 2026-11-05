@@ -5,6 +5,7 @@
         .module crt0
         .globl  _main
         .globl  ___x07_exit
+        .globl  _x07_error
 
         .area   _CODE
 init:
@@ -15,11 +16,23 @@ init:
         push    ix
         push    iy
         ld      (x07_sp), sp
+        ld      hl, (0x00AB)            ; crochet d erreur de la ROM (HKERROR) :
+        ld      (x07_hook), hl          ; OV, /0... arrêtent le programme
+        ld      a, (0x00AD)             ; (x07_error, dans x07.c)
+        ld      (x07_hook+2), a
+        ld      a, #0xC3                ; JP _x07_error
+        ld      (0x00AB), a
+        ld      hl, #_x07_error
+        ld      (0x00AC), hl
         call    gsinit                  ; variables globales
         call    _main
 _exit::                                 ; exit(n) : retour au BASIC
 ___x07_exit::
         ld      sp, (x07_sp)
+        ld      hl, (x07_hook)          ; crochet d erreur rétabli
+        ld      (0x00AB), hl
+        ld      a, (x07_hook+2)
+        ld      (0x00AD), a
         pop     iy
         pop     ix
         pop     hl
@@ -28,7 +41,9 @@ ___x07_exit::
         pop     af
         ret
 x07_sp:
-        .dw     0                       ; dans le code : la remise à zéro l'épargne
+        .dw     0                       ; dans le code : la remise à zéro l épargne
+x07_hook:
+        .db     0, 0, 0
 
         ;; ordre des zones : le code, puis les données, puis le tas
         .area   _HOME

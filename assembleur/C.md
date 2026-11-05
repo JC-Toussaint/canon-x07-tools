@@ -46,7 +46,38 @@ Elle est compilée avec chaque programme et passe par les routines de la ROM, co
 | `x07_break()` | traite BREAK, la pause, les piles faibles et l'extinction, comme l'interpréteur |
 | `PEEK(a)`, `POKE(a, v)`, `inp(port)`, `outp(port, v)` | mémoire et ports |
 
+**Erreurs de la ROM** (`OV`, `/0`…) : le programme affiche `OV Error` et revient au BASIC, comme un programme BASIC compilé. Le démarrage détourne pour cela le crochet d'erreur de la ROM (`$00AB`), et le rétablit à la fin.
+
 **BREAK** arrête le programme, qui affiche alors « Break » et revient au BASIC. La touche est vue pendant un affichage et pendant l'attente d'une touche. Dans une longue boucle de calcul sans affichage, appelez `x07_break()` de temps en temps.
+
+## Réels : la double précision du X-07
+
+Le type `real` (8 octets) est le réel **en double précision du BASIC du X-07** : 14 chiffres, calcul **décimal** (BCD). Chaque opération est faite par la routine de la ROM, si bien que les résultats sont les mêmes qu'en BASIC, au chiffre près : `0.1 + 0.2` vaut exactement `0.3`, et `1/3*3` vaut `.99999999999999`.
+
+Le C n'a pas d'opérateurs pour un type à soi : on écrit `r = a + b` sous la forme `r_add(&r, &a, &b)`. Le résultat peut être l'un des opérandes (`r_mul(&x, &x, &x)`).
+
+```c
+real x, deux, t;
+char buf[26];
+r_int(&deux, 2);            /* depuis un entier */
+r_set(&t, "0.5");           /* depuis un texte : "3.14159265358979", "1E-5" */
+r_pow(&x, &deux, &t);       /* x = 2 ^ 0.5 */
+printf("%s\n", r_str(buf, &x));            /*  1.414213562373, comme PRINT */
+printf("[%s]\n", r_fmt(buf, &x, 3, 4));    /* [  1.4142], comme PRINT USING "###.####" */
+```
+
+| Fonction | Rôle |
+|---|---|
+| `r_set(&r, "texte")`, `r_int(&r, n)` | valeur depuis un texte (comme `VAL`) ou un entier |
+| `r_add`, `r_sub`, `r_mul`, `r_div`, `r_pow` | `r = a + b`, `-`, `*`, `/`, `^` |
+| `r_neg`, `r_abs`, `r_sqrt`, `r_sin`, `r_cos`, `r_tan`, `r_atn`, `r_exp`, `r_log` | `r = f(a)`, comme `-`, `ABS`, `SQR`, `SIN`… (angles en radians, `LOG` népérien) |
+| `r_intp`, `r_fix` | `INT` (partie entière par défaut) et `FIX` (tronquée) |
+| `r_toint(&a)` | entier C, tronqué ; `OV Error` hors de -32 768 à 32 767 |
+| `r_cmp(&a, &b)` | -1, 0 ou 1 |
+| `r_str(buf, &a)`, `r_print(&a)` | texte comme `STR$` ou `PRINT` (espace devant un positif) ; `buf` de 26 octets |
+| `r_fmt(buf, &a, chiffres, decimales)` | texte comme `PRINT USING` : chiffres avant le point, décimales. Un nombre trop grand est précédé de `%` |
+
+La vitesse est celle du BASIC compilé : une racine carrée prend environ 75 000 instructions (150 ms), un sinus 34 000. Exemple complet : `exemples/c/reels.c` (Newton, e, table de sinus).
 
 ## Mémoire
 
@@ -58,7 +89,7 @@ Elle est compilée avec chaque programme et passe par les routines de la ROM, co
 
 ## Ce que le C du X-07 ne fait pas
 
-- **Réels :** `float` est l'IEEE 754 simulé par la bibliothèque de SDCC. C'est lent et encombrant, et ce n'est pas le calcul décimal (BCD) de la ROM. `printf` n'affiche pas les `float`.
+- **`float` et `double` du C :** c'est l'IEEE 754 simulé par la bibliothèque de SDCC, lent et encombrant, que `printf` n'affiche pas. Préférez `real`, ci-dessus.
 - **Un seul fichier source** par programme (plus la bibliothèque `x07.h`).
 - **Fichiers en RAM, liaison série :** pas encore dans la bibliothèque.
 
@@ -67,9 +98,10 @@ Elle est compilée avec chaque programme et passe par les routines de la ROM, co
 ```
 programme.c --sdcc -mz80--> .rel --+
 x07asm/c/crt0.s  (démarrage) ------+--sdldz80 (+ z80.lib)--> .ihx --> mémoire du X-07
-x07asm/c/x07.c   (bibliothèque) ---+
+x07asm/c/x07*.c  (x07.lib) --------+
 ```
 
+- **Bibliothèque :** `x07.c` et `x07real.c` sont réunis dans `x07.lib` (par `sdar`). L'éditeur de liens n'y prend que les modules utilisés : un programme sans `real` n'emporte pas les réels.
 - **`crt0.s`** sauve les registres et la pile du BASIC, initialise les variables, appelle `main`, puis rend la main au BASIC (fin de `main` ou `exit()`). Les zones suivent le code dans cet ordre : `_CODE`, `_INITIALIZER`, `_GSINIT`, `_DATA`, `_INITIALIZED`, puis le tas.
 - **Placement automatique :** un premier lien en `$1000` donne la taille, un second place le programme en haut de la RAM.
 - **Convention d'appel de SDCC 4 :** premier argument dans A (octet) ou HL (mot), second dans L ou DE, résultat dans A ou DE. Les enveloppes de la ROM, dans `x07.c`, sauvent IX et IY.
@@ -80,7 +112,10 @@ x07asm/c/x07.c   (bibliothèque) ---+
 ```
 x07asm/ccomp.py      appel de SDCC, placement, symboles et lignes
 x07asm/c/crt0.s      démarrage
-x07asm/c/x07.h, x07.c  bibliothèque d'appui (ROM du X-07)
-exemples/c/          bonjour.c (saisie, printf, récursivité), dessin.c (graphismes, son)
+x07asm/c/x07.h       bibliothèque d'appui : déclarations
+x07asm/c/x07.c       écran, clavier, graphismes, son, BREAK, erreurs (ROM du X-07)
+x07asm/c/x07real.c   réels en double précision de la ROM
+exemples/c/          bonjour.c (saisie, printf, récursivité), dessin.c (graphismes, son),
+                     reels.c (réels de la ROM)
 tests/test_c.py      compilation et exécution par la ROM (passés sans SDCC)
 ```

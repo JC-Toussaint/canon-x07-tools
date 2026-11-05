@@ -66,7 +66,8 @@ _x07_stop::                             ; BREAK : « Break », retour au BASIC
         ld      a, #0x0A
         call    0xC1BE
 4$:
-        ld      hl, #5$
+        ld      hl, #x07_brk_msg
+x07_msg_exit::                          ; affiche (HL), passe à la ligne, retour au BASIC
 6$:
         ld      a, (hl)
         or      a
@@ -80,8 +81,44 @@ _x07_stop::                             ; BREAK : « Break », retour au BASIC
         ld      a, #0x0A
         call    0xC1BE
         jp      ___x07_exit
-5$:
+x07_brk_msg:
         .ascii  "Break"
+        .db     0
+    __endasm;
+}
+
+/* erreur de la ROM (crochet $00AB, installé par crt0.s) : E = numéro.
+   « OV Error », comme le BASIC compilé, puis retour au BASIC. */
+void x07_error(void) __naked
+{
+    __asm
+        push    de
+        call    0xE89E                  ; sortie vers l écran
+        pop     de
+        ld      a, (0x00B9)             ; à la ligne si le curseur n est pas
+        dec     a                       ; en colonne 1
+        jr      z, 1$
+        ld      a, #0x0D
+        call    0xC1BE
+        ld      a, #0x0A
+        call    0xC1BE
+1$:
+        ld      a, e                    ; code sur deux lettres (ERRTAB, $F123)
+        dec     a
+        add     a, a
+        ld      l, a
+        ld      h, #0
+        ld      de, #0xF123
+        add     hl, de
+        ld      a, (hl)
+        call    0xC1BE
+        inc     hl
+        ld      a, (hl)
+        call    0xC1BE
+        ld      hl, #2$
+        jp      x07_msg_exit
+2$:
+        .ascii  " Error"
         .db     0
     __endasm;
 }

@@ -32,6 +32,39 @@ void beep(unsigned int note, unsigned int duree);
 /* BREAK, piles faibles, extinction : comme l'interpréteur */
 void x07_break(void);
 
+/* réels : la double précision du X-07 (14 chiffres, calcul décimal BCD),
+   calculée par la ROM comme en BASIC.  r = a + b s'écrit r_add(&r, &a, &b) ;
+   le résultat peut être l'un des opérandes.  Une erreur (OV, /0...) arrête
+   le programme avec son message, comme le BASIC. */
+typedef struct { unsigned char b[8]; } real;
+void r_set(real *r, const char *texte);           /* "3.14159265358979", "1E-5" */
+void r_int(real *r, int n);
+int  r_toint(const real *a);                      /* partie entière tronquée (OV hors
+                                                     de -32768..32767) */
+void r_add(real *r, const real *a, const real *b);
+void r_sub(real *r, const real *a, const real *b);
+void r_mul(real *r, const real *a, const real *b);
+void r_div(real *r, const real *a, const real *b);
+void r_pow(real *r, const real *a, const real *b);   /* a ^ b */
+void r_neg(real *r, const real *a);
+void r_abs(real *r, const real *a);
+void r_sqrt(real *r, const real *a);
+void r_sin(real *r, const real *a);               /* radians */
+void r_cos(real *r, const real *a);
+void r_tan(real *r, const real *a);
+void r_atn(real *r, const real *a);
+void r_exp(real *r, const real *a);
+void r_log(real *r, const real *a);               /* logarithme népérien */
+void r_intp(real *r, const real *a);              /* INT : partie entière par défaut */
+void r_fix(real *r, const real *a);               /* FIX : partie entière tronquée */
+int  r_cmp(const real *a, const real *b);         /* -1 si a < b, 0 si égaux, 1 si a > b */
+char *r_str(char *buf, const real *a);            /* comme STR$ (espace devant un
+                                                     positif) ; buf : 26 octets */
+char *r_fmt(char *buf, const real *a, unsigned char chiffres, unsigned char decimales);
+                                                  /* comme PRINT USING "###.##" :
+                                                     chiffres avant le point, décimales */
+void r_print(const real *a);                      /* affiche r_str */
+
 /* mémoire et ports */
 #define PEEK(a)    (*(volatile unsigned char *)(a))
 #define POKE(a, v) (*(volatile unsigned char *)(a) = (v))

@@ -19,6 +19,7 @@ from . import formats
 
 LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "c")
 SDCC_LIB = "/usr/share/sdcc/lib/z80"
+LIB_MODULES = ("x07.c", "x07real.c")            # bibliothèque d'appui (x07.h)
 
 
 class CError(Exception):
@@ -33,8 +34,8 @@ class CProgram:
 
 
 def tools():
-    """Chemins de sdcc, sdasz80 et sdldz80 ; CError si SDCC n'est pas installé."""
-    found = [shutil.which(t) for t in ("sdcc", "sdasz80", "sdldz80")]
+    """Chemins de sdcc, sdasz80, sdldz80 et sdar ; CError si SDCC n'est pas installé."""
+    found = [shutil.which(t) for t in ("sdcc", "sdasz80", "sdldz80", "sdar")]
     if None in found:
         raise CError("SDCC n'est pas installé (sous Debian, Ubuntu, WSL : "
                      "sudo apt install sdcc)")
@@ -112,7 +113,7 @@ def _labels(rst_text):
 def build_c(path, org="auto", top=None, min_org=0x0600):
     """Compile et relie un programme C.  org : adresse (entier) ou "auto"
     (en haut de la RAM, sous top).  Rend un CProgram."""
-    sdcc, sdas, sdld = tools()
+    sdcc, sdas, sdld, sdar = tools()
     libdir = _lib_dir(sdcc)
     src = os.path.abspath(path)
     name = os.path.splitext(os.path.basename(path))[0]
@@ -121,16 +122,21 @@ def build_c(path, org="auto", top=None, min_org=0x0600):
         warns = []
         _run([sdas, "-plosgff", "crt0.rel", os.path.join(LIB, "crt0.s")], tmp,
              "démarrage crt0.s")
-        for c, rel in ((os.path.join(LIB, "x07.c"), "x07.rel"), (src, name + ".rel")):
+        lib = [os.path.splitext(f)[0] for f in LIB_MODULES]
+        for c, rel in [(os.path.join(LIB, m + ".c"), m + ".rel") for m in lib] + \
+                [(src, name + ".rel")]:
             out = _run([sdcc, "-mz80", "-c", "-I", LIB, c, "-o", rel], tmp,
-                       "erreur de compilation" if c == src else "bibliothèque x07.c")
+                       "erreur de compilation" if c == src else
+                       "bibliothèque %s" % os.path.basename(c))
             if c == src:
                 warns += _warnings(out)
+        # bibliothèque : l'éditeur de liens n'y prend que les modules utilisés
+        _run([sdar, "-rc", "x07.lib"] + [m + ".rel" for m in lib], tmp, "bibliothèque x07.lib")
 
         def link(at):
             with open(os.path.join(tmp, "prog.lk"), "w") as f:
-                f.write("-mjwxiu\n-b _CODE=0x%04X\n-k %s\n-l z80\nprog.ihx\ncrt0.rel\n"
-                        "%s.rel\nx07.rel\n-e\n" % (at, libdir, name))
+                f.write("-mjwxiu\n-b _CODE=0x%04X\n-k .\n-l x07\n-k %s\n-l z80\nprog.ihx\n"
+                        "crt0.rel\n%s.rel\n-e\n" % (at, libdir, name))
             out = _run([sdld, "-f", "prog.lk"], tmp, "édition de liens")
             if re.search(r"\?ASlink-Warning-Undefined", out):
                 raise CError("édition de liens :\n%s" % "\n".join(
