@@ -146,7 +146,8 @@ x07asm/emu.py       démarrage de la vraie ROM : le BASIC du X-07 sur PC
 x07asm/ccomp.py     programmes C : appel de SDCC (voir C.md) ; x07asm/c/ : démarrage, bibliothèque
 exemples/           caso.asm (livre, p. 60), bonjour.asm, mult32.asm,
                     interruptions.asm (détourne INT A, le clavier), *.bas ;
-                    pascal/, qbasic/, c/ : exemples dans ces langages
+                    pascal/, qbasic/, c/ : exemples dans ces langages ;
+                    bench/ : vitesse comparée du C et du Pascal
 tests/              tests unitaires
 ```
 

@@ -107,6 +107,22 @@ while (f_gets(2, s, sizeof s) >= 0)        /* -1 en fin de fichier */
 
 Exemple complet : `exemples/c/carnet.c`, un carnet d'adresses gardé dans un fichier (ajout, liste, recherche).
 
+## Vitesse : C ou Turbo Pascal ?
+
+Les mêmes programmes, écrits dans les deux langages (`exemples/bench/`), ont été exécutés dans l'émulateur ; on compte les instructions Z80, environ 2 µs chacune sur la machine. `python3 exemples/bench/mesure.py` refait la mesure.
+
+| Programme | C | Turbo Pascal | C plus rapide | Octets C / Pascal |
+|---|---|---|---|---|
+| `crible` : crible d'Ératosthène jusqu'à 2000 | 101 000 (0,2 s) | 327 000 (0,65 s) | 3,2 fois | 5 707 / 4 805 |
+| `fib` : Fibonacci(18) récursif | 146 000 (0,3 s) | 1 840 000 (3,7 s) | 12,6 fois | 3 594 / 627 |
+| `prodi` : double boucle 100 x 100, multiplication | 797 000 | 1 087 000 | 1,4 fois | 3 664 / 605 |
+| `racines` : somme de 30 racines carrées (réels) | 2 075 000 | 2 079 000 | pareil | 4 500 / 1 735 |
+
+- **Le C va plus vite sur les entiers, et surtout sur les appels de fonction.** SDCC produit directement de l'assembleur, et garde les variables dans les registres quand il le peut. Le Pascal passe par le QuickBASIC : ses variables sont en mémoire, et il sauve ses variables locales à chaque appel récursif.
+- **Le Pascal vérifie, pas le C.** Le Pascal signale le dépassement des entiers (`OV Error`) et les indices hors du tableau, et il teste BREAK à chaque ligne. En C, `32767 + 1` donne `-32768`, et un indice faux écrit ailleurs en mémoire.
+- **Avec des réels, les deux langages se valent :** le calcul est fait par la même routine de la ROM.
+- **Le C est plus gros :** `printf` coûte à lui seul 3 Ko environ.
+
 ## Mémoire
 
 - **Placement :** par défaut, le programme et ses données sont placés **en haut de la RAM**, comme le BASIC compilé. La commande affiche le `CLEAR` à taper. `--org 2000` impose l'adresse.
@@ -147,5 +163,6 @@ x07asm/c/x07file.c   fichiers en RAM ; x07fsp.c : taille par défaut de leur zon
 exemples/c/          bonjour.c (saisie, printf, récursivité), dessin.c (graphismes, son),
                      reels.c (réels de la ROM), pret.c (prêt : mensualité, courbe),
                      carnet.c (carnet d'adresses dans un fichier en RAM)
+exemples/bench/      les mêmes programmes en C et en Pascal ; mesure.py compare leur vitesse
 tests/test_c.py      compilation et exécution par la ROM (passés sans SDCC)
 ```

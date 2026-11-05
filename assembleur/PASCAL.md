@@ -161,6 +161,7 @@ exemples/pascal/limites.pas   le X-07 dans ses retranchements : 14 chiffres en d
                               120 x 32 points, Mandelbrot en entiers, buzzer de 47 à 3918 Hz (16 Ko)
 exemples/pascal/meteo.pas     carnet de températures : un fichier en RAM par mois (nom calculé),
                               ensembles, readln(j, t), single, constante tableau, s[0], courbe
+exemples/bench/*.pas          les mêmes programmes qu'en C : vitesse comparée (voir C.md)
 ```
 
 ## Fichiers

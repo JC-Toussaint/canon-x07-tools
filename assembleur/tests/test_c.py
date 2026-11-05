@@ -224,6 +224,15 @@ int main(void) { f_open(1, "petit", F_WRITE, 10); f_puts(1, "0123456789AB"); ret
         m.run(20_000_000)
         self.assertIn("Mensualite   869.94\nTotal paye   208785\nInterets      58785", m.output())
 
+    def test_benchmarks_c_and_pascal_agree(self):
+        sys.path.insert(0, os.path.join(ROOT, "exemples", "bench"))
+        import mesure
+        for nom in ("crible", "fib", "prodi"):
+            c = mesure.mesure(os.path.join(ROOT, "exemples", "bench", nom + ".c"))
+            p = mesure.mesure(os.path.join(ROOT, "exemples", "bench", nom + ".pas"))
+            self.assertEqual(c[2], p[2], nom)
+            self.assertLess(c[0], p[0], nom)                    # le C est plus rapide
+
     def test_cli_formats(self):
         from x07asm.cli import main
         with tempfile.TemporaryDirectory() as d:
