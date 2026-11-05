@@ -140,9 +140,15 @@ int main(void) { real a, b; %s printf("jamais"); return 0; }''' % body)
         self.assertIn("faux.c", str(e.exception))
 
     def test_examples_build(self):
-        for name in ("bonjour.c", "dessin.c", "reels.c"):
+        for name in ("bonjour.c", "dessin.c", "reels.c", "pret.c"):
             prog = ccomp.build_c(os.path.join(ROOT, "exemples", "c", name), "auto", top=0x3FF1)
             self.assertIn("main", prog.symbols)
+
+    def test_pret_example(self):
+        prog = ccomp.build_c(os.path.join(ROOT, "exemples", "c", "pret.c"), "auto", top=0x3FF1)
+        m = emu.prepare_binary(prog.mem, prog.entry, "  ", ["150000", "3.5", "20"], 16)
+        m.run(20_000_000)
+        self.assertIn("Mensualite   869.94\nTotal paye   208785\nInterets      58785", m.output())
 
     def test_cli_formats(self):
         from x07asm.cli import main

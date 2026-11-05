@@ -77,7 +77,7 @@ printf("[%s]\n", r_fmt(buf, &x, 3, 4));    /* [  1.4142], comme PRINT USING "###
 | `r_str(buf, &a)`, `r_print(&a)` | texte comme `STR$` ou `PRINT` (espace devant un positif) ; `buf` de 26 octets |
 | `r_fmt(buf, &a, chiffres, decimales)` | texte comme `PRINT USING` : chiffres avant le point, décimales. Un nombre trop grand est précédé de `%` |
 
-La vitesse est celle du BASIC compilé : une racine carrée prend environ 75 000 instructions (150 ms), un sinus 34 000. Exemple complet : `exemples/c/reels.c` (Newton, e, table de sinus).
+La vitesse est celle du BASIC compilé : une racine carrée prend environ 75 000 instructions (150 ms), un sinus 34 000. Exemples complets : `exemples/c/reels.c` (Newton, e, table de sinus) et `exemples/c/pret.c` (mensualité d'un prêt, courbe du capital restant dû).
 
 ## Mémoire
 
@@ -116,6 +116,6 @@ x07asm/c/x07.h       bibliothèque d'appui : déclarations
 x07asm/c/x07.c       écran, clavier, graphismes, son, BREAK, erreurs (ROM du X-07)
 x07asm/c/x07real.c   réels en double précision de la ROM
 exemples/c/          bonjour.c (saisie, printf, récursivité), dessin.c (graphismes, son),
-                     reels.c (réels de la ROM)
+                     reels.c (réels de la ROM), pret.c (prêt : mensualité, courbe)
 tests/test_c.py      compilation et exécution par la ROM (passés sans SDCC)
 ```
