@@ -23,7 +23,8 @@ def build(text, name="t.c", **kw):
         path = os.path.join(d, name)
         with open(path, "w", encoding="utf-8") as f:
             f.write(text)
-        return ccomp.build_c(path, kw.pop("org", "auto"), top=kw.pop("top", 0x3FF1))
+        return ccomp.build_c(path, kw.pop("org", "auto"), top=kw.pop("top", 0x3FF1),
+                             ram_top=0x3FFF)
     finally:
         shutil.rmtree(d)
 
@@ -134,13 +135,86 @@ int main(void) { real a, b; %s printf("jamais"); return 0; }''' % body)
         prog = build('#include "x07.h"\nint main(void) { cls(); return 0; }')
         self.assertNotIn("r_add", prog.symbols)
 
+    def test_ram_files(self):
+        prog = build('''#include <stdio.h>
+#include "x07.h"
+int main(void)
+{
+    char s[30];
+    int n;
+    f_open(1, "notes", F_WRITE, 200);
+    f_printf(1, "%d,%s\\n", 12, "bonjour");
+    f_puts(1, "ligne 2\\n");
+    f_open(2, "notes", F_READ, 0);
+    while ((n = f_gets(2, s, sizeof s)) >= 0)
+        printf("[%s]%d\\n", s, n);
+    f_open(1, "notes", F_APPEND, 200);
+    f_putc(1, 'X');
+    f_open(2, "NOTES", F_READ, 0);
+    for (n = 0; !f_eof(2); n++)
+        f_gets(2, s, sizeof s);
+    printf("%d %d\\n", n, f_getc(2));
+    f_open(1, "notes", F_WRITE, 200);
+    printf("%d\\n", f_eof(1));
+    f_delete("notes");
+    f_open(3, "notes", F_READ, 0);
+    printf("jamais\\n");
+    return 0;
+}''')
+        self.assertLessEqual(prog.end, 0x3FFF - 1024 - 1 - 80)       # sous la zone des fichiers
+        m = run(prog)
+        self.assertEqual(m.output(), "[12,bonjour]10\n[ligne 2]7\n3 -1\n1\nNE Error\n")
+
+    def test_files_shared_with_basic(self):
+        # fichier écrit en C, relu par un programme BASIC, et inversement ; la RAM
+        # passe d'un programme à l'autre comme sur la machine (--memoire)
+        from x07asm.cli import main
+        with tempfile.TemporaryDirectory() as d:
+            mem = os.path.join(d, "x07.mem")
+            files = {
+                "w.c": '#include "x07.h"\nint main(void) { f_open(1, "echang", F_WRITE, 100);'
+                       ' f_printf(1, "%d,%s\\n", 42, "DEPUIS C"); return 0; }\n',
+                "r.bas": '10 INIT#1,"RAM:ECHANG"\n20 INPUT #1,A,B$\n30 PRINT A;B$\n'
+                         '40 INIT#2,"RAM:RETOUR",100\n50 PRINT #2,"DU BASIC":PRINT #2,"FIN"\n',
+                "r.c": '#include <stdio.h>\n#include "x07.h"\nint main(void) { char s[20];'
+                       ' f_open(1, "retour", F_READ, 0); while (f_gets(1, s, sizeof s) >= 0)'
+                       ' printf("<%s>", s); return 0; }\n'}
+            for n, t in files.items():
+                with open(os.path.join(d, n), "w") as f:
+                    f.write(t)
+            outs = []
+            for cmd in ("run", "emu", "run"):
+                name = {"run": "w.c", "emu": "r.bas"}[cmd] if not outs or cmd == "emu" else "r.c"
+                with contextlib.redirect_stdout(io.StringIO()) as out, \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    main([cmd, os.path.join(d, name), "--ram", "16", "--memoire", mem])
+                outs.append(out.getvalue())
+            self.assertIn(" 42 DEPUIS C", outs[1])
+            self.assertIn("<DU BASIC><FIN>", outs[2])
+
+    def test_file_full_and_zone_size(self):
+        prog = build('''#include "x07.h"
+const unsigned int x07_fspace = 2000;
+int main(void) { f_open(1, "petit", F_WRITE, 10); f_puts(1, "0123456789AB"); return 0; }''')
+        self.assertEqual(prog.file_space, 2000)
+        self.assertLessEqual(prog.end, 0x3FFF - 2000 - 1 - 80)
+        m = run(prog)
+        self.assertEqual(m.output().strip(), "IO Error")
+        self.assertEqual(m.pc, emu.EXIT)
+
+    def test_files_only_linked_when_used(self):
+        prog = build('#include "x07.h"\nint main(void) { cls(); return 0; }')
+        self.assertNotIn("f_open", prog.symbols)
+        self.assertEqual(prog.file_space, 0)
+        self.assertGreater(prog.end, 0x3FFF - 1024)               # en haut de la RAM
+
     def test_compile_error_is_reported(self):
         with self.assertRaises(ccomp.CError) as e:
             build("int main(void) { return x; }", name="faux.c")
         self.assertIn("faux.c", str(e.exception))
 
     def test_examples_build(self):
-        for name in ("bonjour.c", "dessin.c", "reels.c", "pret.c"):
+        for name in ("bonjour.c", "dessin.c", "reels.c", "pret.c", "carnet.c"):
             prog = ccomp.build_c(os.path.join(ROOT, "exemples", "c", name), "auto", top=0x3FF1)
             self.assertIn("main", prog.symbols)
 

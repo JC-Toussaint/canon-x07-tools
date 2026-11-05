@@ -123,6 +123,15 @@ void x07_error(void) __naked
     __endasm;
 }
 
+void x07_raise(unsigned char code) __naked   /* erreur numéro code de la ROM */
+{
+    (void)code;
+    __asm
+        ld      e, a
+        jp      _x07_error
+    __endasm;
+}
+
 int putchar(int c)
 {
     x07_break();
@@ -266,9 +275,9 @@ int input(char *buf, int max)
     return n;
 }
 
-void beep(unsigned int note, unsigned int duree) __naked
+void beep(unsigned int note, unsigned int duration) __naked
 {
-    (void)note; (void)duree;
+    (void)note; (void)duration;
     __asm
         push    ix
         push    iy

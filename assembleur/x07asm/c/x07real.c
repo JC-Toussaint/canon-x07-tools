@@ -154,13 +154,13 @@ static void r_fin(const char *s) __naked
     __endasm;
 }
 
-void r_set(real *r, const char *texte)
+void r_set(real *r, const char *text)
 {
     unsigned char n = 0;
-    while (*texte == ' ')
-        texte++;
-    while (texte[n] && n < sizeof r_txt - 2) {
-        r_txt[n] = texte[n];
+    while (*text == ' ')
+        text++;
+    while (text[n] && n < sizeof r_txt - 2) {
+        r_txt[n] = text[n];
         n++;
     }
     r_txt[n++] = '#';                   /* lu en double précision, comme 1.5# */
@@ -223,11 +223,11 @@ static const char *r_out(unsigned char flags, unsigned int bc) __naked
         push    de
         ld      hl, (_r_a)
         call    x07r_ld
-        pop     bc                      ; B = chiffres avant le point, C = après
+        pop     bc                      ; B = digits prefix le point, C = après
         pop     af
         or      a
         jr      nz, 1$
-        call    0xBBAB                  ; FOUT : HL = texte, fin 00
+        call    0xBBAB                  ; FOUT : HL = text, fin 00
         jr      2$
 1$:
         call    0xBBAC                  ; comme PRINT USING ($D0EA)
@@ -253,11 +253,11 @@ char *r_str(char *buf, const real *a)
     return r_copy(buf, r_out(0, 0));
 }
 
-char *r_fmt(char *buf, const real *a, unsigned char chiffres, unsigned char decimales)
+char *r_fmt(char *buf, const real *a, unsigned char digits, unsigned char decimals)
 {
     r_a = a;
-    return r_copy(buf, r_out(0x80, (unsigned int)chiffres << 8
-                                   | (decimales ? decimales + 1 : 0)));
+    return r_copy(buf, r_out(0x80, (unsigned int)digits << 8
+                                   | (decimals ? decimals + 1 : 0)));
 }
 
 void r_print(const real *a)

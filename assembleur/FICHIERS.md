@@ -6,6 +6,8 @@
 
 Cette page est l'étape 1 : comprendre ce que fait la ROM. La prise en charge de `OPEN`, `PRINT #`, `INPUT #`, `EOF`… dans la traduction et la compilation viendra ensuite.
 
+Les programmes C ont accès aux mêmes fichiers (`f_open`, `f_gets`, `f_printf`…) : voir [C.md](C.md#fichiers-en-ram).
+
 ## Ce que la ROM sait faire
 
 ```basic

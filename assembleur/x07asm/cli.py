@@ -253,7 +253,7 @@ def build_c(path, org="auto", ram=16):
     from . import basic, ccomp
     try:
         prog = ccomp.build_c(path, "auto" if org in (None, "auto") else _num(org),
-                             top=free_top(ram))
+                             top=free_top(ram), ram_top=RAM_TOP[ram])
     except ccomp.CError as e:
         raise basic.CompileError("C : %s" % e)
     for w in prog.warnings:

@@ -19,7 +19,8 @@ from . import formats
 
 LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "c")
 SDCC_LIB = "/usr/share/sdcc/lib/z80"
-LIB_MODULES = ("x07.c", "x07real.c")            # bibliothèque d'appui (x07.h)
+LIB_MODULES = ("x07.c", "x07real.c", "x07file.c", "x07fsp.c")   # bibliothèque (x07.h)
+FSET_RESERVED = 80     # sous les fichiers : FSET y écrit la zone des chaînes et sa pile
 
 
 class CError(Exception):
@@ -110,9 +111,11 @@ def _labels(rst_text):
     return labels, variables
 
 
-def build_c(path, org="auto", top=None, min_org=0x0600):
+def build_c(path, org="auto", top=None, min_org=0x0600, ram_top=None):
     """Compile et relie un programme C.  org : adresse (entier) ou "auto"
-    (en haut de la RAM, sous top).  Rend un CProgram."""
+    (en haut de la RAM, sous top).  Un programme qui ouvre des fichiers est
+    placé sous leur zone (x07_fspace octets sous ram_top, dernier octet de la
+    RAM), avec la marge qu'écrit FSET.  Rend un CProgram."""
     sdcc, sdas, sdld, sdar = tools()
     libdir = _lib_dir(sdcc)
     src = os.path.abspath(path)
@@ -145,8 +148,21 @@ def build_c(path, org="auto", top=None, min_org=0x0600):
             end = syms["s__HEAP_END"] + syms.get("l__HEAP_END", 0)
             return syms, end
 
+        def image():
+            with open(os.path.join(tmp, "prog.ihx")) as f:
+                mem = formats.from_ihex(f.read())
+            return mem[0] if isinstance(mem, tuple) else mem
+
+        syms, end = link(0x1000)
+        file_space = 0
+        if "_f_open" in syms:                     # fichiers en RAM : zone en haut de la RAM
+            mem = image()
+            a = syms["_x07_fspace"]
+            file_space = mem.get(a, 0) | mem.get(a + 1, 0) << 8
+            if ram_top is not None:
+                below = ram_top - file_space - 1 - FSET_RESERVED
+                top = below if top is None else min(top, below)
         if org == "auto":
-            syms, end = link(0x1000)
             size = end - 0x1000
             at = ((top + 1) - size) & ~0xF
             if at < min_org:
@@ -157,10 +173,9 @@ def build_c(path, org="auto", top=None, min_org=0x0600):
         syms, end = link(at)
         if top is not None and end - 1 > top:
             raise CError("le programme et ses données finissent en $%04X, au-delà de la "
-                         "RAM libre ($%04X)" % (end - 1, top))
-        with open(os.path.join(tmp, "prog.ihx")) as f:
-            mem = formats.from_ihex(f.read())
-        mem = mem[0] if isinstance(mem, tuple) else mem
+                         "RAM libre ($%04X%s)" % (end - 1, top, ", sous les %d octets des "
+                                                  "fichiers" % file_space if file_space else ""))
+        mem = image()
         rst_path = os.path.join(tmp, name + ".rst")
         listing = ""
         if os.path.exists(rst_path):
@@ -176,6 +191,8 @@ def build_c(path, org="auto", top=None, min_org=0x0600):
             symbols.setdefault(n, a)
         symbols["VARS_END"] = end
         symbols.update(_line_symbols(listing, os.path.basename(path)))
-        return CProgram(mem, at, end - 1, symbols, listing, warns, variables)
+        prog = CProgram(mem, at, end - 1, symbols, listing, warns, variables)
+        prog.file_space = file_space
+        return prog
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

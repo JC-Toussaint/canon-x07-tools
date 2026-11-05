@@ -42,7 +42,7 @@ Elle est compilée avec chaque programme et passe par les routines de la ROM, co
 | `inkey()` | touche tapée, ou 0 si aucune (comme `INKEY$`) |
 | `getkey()` | attend une touche |
 | `input(buf, max)` | saisit une ligne, avec écho ; rend sa longueur |
-| `beep(note, duree)` | comme `BEEP note, durée` : note de 1 à 4095 (192 000/note Hz), durée en 1/20 s |
+| `beep(note, duration)` | comme `BEEP note, durée` : note de 1 à 4095 (192 000/note Hz), durée en 1/20 s |
 | `x07_break()` | traite BREAK, la pause, les piles faibles et l'extinction, comme l'interpréteur |
 | `PEEK(a)`, `POKE(a, v)`, `inp(port)`, `outp(port, v)` | mémoire et ports |
 
@@ -75,9 +75,37 @@ printf("[%s]\n", r_fmt(buf, &x, 3, 4));    /* [  1.4142], comme PRINT USING "###
 | `r_toint(&a)` | entier C, tronqué ; `OV Error` hors de -32 768 à 32 767 |
 | `r_cmp(&a, &b)` | -1, 0 ou 1 |
 | `r_str(buf, &a)`, `r_print(&a)` | texte comme `STR$` ou `PRINT` (espace devant un positif) ; `buf` de 26 octets |
-| `r_fmt(buf, &a, chiffres, decimales)` | texte comme `PRINT USING` : chiffres avant le point, décimales. Un nombre trop grand est précédé de `%` |
+| `r_fmt(buf, &a, digits, decimals)` | texte comme `PRINT USING` : chiffres avant le point, décimales. Un nombre trop grand est précédé de `%` |
 
 La vitesse est celle du BASIC compilé : une racine carrée prend environ 75 000 instructions (150 ms), un sinus 34 000. Exemples complets : `exemples/c/reels.c` (Newton, e, table de sinus) et `exemples/c/pret.c` (mensualité d'un prêt, courbe du capital restant dû).
+
+## Fichiers en RAM
+
+Les fichiers en RAM du X-07 **survivent à l'extinction**, comme ceux du BASIC (voir [FICHIERS.md](FICHIERS.md)). Ce sont les mêmes fichiers : un programme BASIC relit ce qu'un programme C a écrit, et inversement. Les lignes finissent par CR LF, comme avec `PRINT #`.
+
+```c
+char s[30];
+f_open(1, "notes", F_APPEND, 500);       /* canal 1, créé s'il n'existe pas */
+f_printf(1, "%d;%s\n", 12, "bonjour");
+f_open(2, "notes", F_READ, 0);             /* NE Error s'il n'existe pas */
+while (f_gets(2, s, sizeof s) >= 0)        /* -1 en fin de fichier */
+    printf("%s\n", s);
+```
+
+| Fonction | Rôle |
+|---|---|
+| `f_open(channel, name, mode, size)` | ouvre le fichier `name` sur le canal 1 à 5, comme `INIT#c,"RAM:NOM",taille`. Le nom a 6 caractères au plus et passe en majuscules. Modes : `F_READ` (depuis le début), `F_WRITE` (fichier vidé), `F_APPEND` (écriture après les données). En écriture, le fichier est créé s'il n'existe pas, avec `size` octets (256 si 0) |
+| `f_putc`, `f_puts`, `f_printf` | écrire un caractère, un texte, un texte mis en forme (80 caractères au plus) ; `'\n'` donne CR LF |
+| `f_gets(channel, buf, max)` | lire une ligne, sans sa fin ; rend sa longueur, ou -1 en fin de fichier |
+| `f_getc(channel)`, `f_eof(channel)` | lire un octet (-1 en fin) ; fin de fichier ? |
+| `f_delete(name)` | supprimer le fichier, comme `DELETE "NOM"` |
+| `f_close(channel)` | ne fait rien : le X-07 ne ferme pas les fichiers |
+
+- **Taille fixe :** comme sur le X-07, la taille d'un fichier est fixée à sa création. Écrire au-delà donne `IO Error`, qui arrête le programme.
+- **Zone des fichiers :** à la première ouverture, si la zone est trop petite, le programme la réserve par `FSET`, avec 1 024 octets par défaut. Chaque fichier y prend sa taille plus 14 octets d'en-tête : un fichier trop grand donne `OM Error`. Pour réserver davantage, le programme définit `const unsigned int x07_fspace = 3000;`.
+- **Placement :** la zone des fichiers est en haut de la RAM. Un programme qui ouvre des fichiers est donc placé **sous elle**, avec la marge de 80 octets qu'écrit `FSET`. La commande `c` en tient compte dans le `CLEAR` qu'elle affiche.
+
+Exemple complet : `exemples/c/carnet.c`, un carnet d'adresses gardé dans un fichier (ajout, liste, recherche).
 
 ## Mémoire
 
@@ -91,7 +119,7 @@ La vitesse est celle du BASIC compilé : une racine carrée prend environ 75 000
 
 - **`float` et `double` du C :** c'est l'IEEE 754 simulé par la bibliothèque de SDCC, lent et encombrant, que `printf` n'affiche pas. Préférez `real`, ci-dessus.
 - **Un seul fichier source** par programme (plus la bibliothèque `x07.h`).
-- **Fichiers en RAM, liaison série :** pas encore dans la bibliothèque.
+- **Liaison série :** pas encore dans la bibliothèque.
 
 ## Fonctionnement
 
@@ -101,7 +129,7 @@ x07asm/c/crt0.s  (démarrage) ------+--sdldz80 (+ z80.lib)--> .ihx --> mémoire 
 x07asm/c/x07*.c  (x07.lib) --------+
 ```
 
-- **Bibliothèque :** `x07.c` et `x07real.c` sont réunis dans `x07.lib` (par `sdar`). L'éditeur de liens n'y prend que les modules utilisés : un programme sans `real` n'emporte pas les réels.
+- **Bibliothèque :** `x07.c`, `x07real.c`, `x07file.c` et `x07fsp.c` sont réunis dans `x07.lib` (par `sdar`). L'éditeur de liens n'y prend que les modules utilisés : un programme sans `real` n'emporte pas les réels, ni un programme sans `f_open` les fichiers. `x07fsp.c` ne contient que la taille par défaut de la zone des fichiers : il n'est pas pris si le programme la définit.
 - **`crt0.s`** sauve les registres et la pile du BASIC, initialise les variables, appelle `main`, puis rend la main au BASIC (fin de `main` ou `exit()`). Les zones suivent le code dans cet ordre : `_CODE`, `_INITIALIZER`, `_GSINIT`, `_DATA`, `_INITIALIZED`, puis le tas.
 - **Placement automatique :** un premier lien en `$1000` donne la taille, un second place le programme en haut de la RAM.
 - **Convention d'appel de SDCC 4 :** premier argument dans A (octet) ou HL (mot), second dans L ou DE, résultat dans A ou DE. Les enveloppes de la ROM, dans `x07.c`, sauvent IX et IY.
@@ -115,7 +143,9 @@ x07asm/c/crt0.s      démarrage
 x07asm/c/x07.h       bibliothèque d'appui : déclarations
 x07asm/c/x07.c       écran, clavier, graphismes, son, BREAK, erreurs (ROM du X-07)
 x07asm/c/x07real.c   réels en double précision de la ROM
+x07asm/c/x07file.c   fichiers en RAM ; x07fsp.c : taille par défaut de leur zone
 exemples/c/          bonjour.c (saisie, printf, récursivité), dessin.c (graphismes, son),
-                     reels.c (réels de la ROM), pret.c (prêt : mensualité, courbe)
+                     reels.c (réels de la ROM), pret.c (prêt : mensualité, courbe),
+                     carnet.c (carnet d'adresses dans un fichier en RAM)
 tests/test_c.py      compilation et exécution par la ROM (passés sans SDCC)
 ```
