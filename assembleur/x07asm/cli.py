@@ -1024,7 +1024,7 @@ def main(argv=None):
     e.add_argument("--max", type=int, default=50_000_000, help="instructions au plus")
     e.add_argument("--charger", metavar="FICHIER",
                    help="avec --fenetre : met un programme machine en mémoire, comme le câble "
-                        "(.bas compilé au passage, .asm, .hex, .bin avec --org) ; tapez ensuite EXEC")
+                        "(.bas, .qbas, .pas compilés au passage, .asm, .hex, .bin avec --org) ; tapez ensuite EXEC")
     e.add_argument("--org", help="adresse (hexa) d'un .bin, ou implantation d'un .bas pour --charger")
     e.add_argument("--entry", help="adresse de lancement (hexa) d'un .bin pour --charger")
     e.add_argument("--fenetre", action="store_true",
@@ -1049,7 +1049,7 @@ def main(argv=None):
     rc.set_defaults(func=cmd_recepteur)
 
     sd = sub.add_parser("send", help="envoyer un programme au X-07 par le câble série (FT232RL)")
-    sd.add_argument("source", help=".bas (compilé au passage), .asm, .hex, ou .bin avec --org")
+    sd.add_argument("source", help=".bas, .qbas ou .pas (compilé au passage), .asm, .hex, ou .bin avec --org")
     sd.add_argument("-p", "--port", help="port série : /dev/ttyUSB0, COM3...")
     sd.add_argument("--baud", type=int, default=4800, choices=(1200, 2400, 4800, 8000))
     sd.add_argument("--org", help="adresse (hexa) d'un .bin, ou implantation d'un .bas")

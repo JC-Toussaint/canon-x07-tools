@@ -20,7 +20,7 @@ python3 x07asm.py send jeu.bas --ram 16 --emu                  # essai complet s
    ```
    Le X-07 le garde en mémoire, même éteint. Vous pouvez aussi le sauvegarder sur cassette (`CSAVE"RECEPT"`).
 2. **Sur le PC, lancez `send`.** Il accepte :
-   - un `.bas`, compilé au passage ;
+   - un `.bas`, un `.qbas` (QuickBASIC) ou un `.pas` (Pascal), compilé au passage ;
    - un `.asm`, assemblé au passage ;
    - un `.hex` ;
    - un `.bin`, avec `--org`, et `--entry` si l'adresse de lancement diffère de l'adresse de chargement.
