@@ -75,8 +75,11 @@ class Sender:
         return out
 
     def on_byte(self, b):
-        """Octet reçu du X-07 -> octets à lui envoyer."""
-        c = chr(b)
+        """Octet reçu du X-07 -> octets à lui envoyer.
+        Le bit 7 est ignoré : le X-07 ne répond que par des lettres ASCII, et
+        sur la machine réelle « R » arrive parfois en $D2 au lieu de $52 (le
+        bit 7 lu sur le bit d'arrêt)."""
+        c = chr(b & 0x7F)
         if c == "C":
             self.result = "clear"
             return b""
@@ -151,8 +154,11 @@ class SerialPort:
             os.close(self.fd)
 
 
-def send(port, mem, entry, timeout=60, log=print):
-    """Envoie mem au X-07 qui exécute RECEPTEUR.  Renvoie « ok »."""
+def send(port, mem, entry, timeout=60, log=print, pause_car=0.0):
+    """Envoie mem au X-07 qui exécute RECEPTEUR.  Renvoie « ok ».
+    pause_car : pause après chaque octet, en s.  Le vrai X-07 perd des octets
+    reçus d'affilée (pendant qu'il écrit à l'écran, par exemple) : sans pause,
+    le récepteur attend un octet perdu et le transfert se fige."""
     snd = Sender(mem, entry)
     snd.progress = lambda done, total: log("\r  %d / %d octets" % (done, total), end="")
     log("Attente du X-07 : lancez RECEPTEUR (RUN) sur la machine...")
@@ -163,10 +169,19 @@ def send(port, mem, entry, timeout=60, log=print):
             last = time.time()
             for b in data:
                 out = snd.on_byte(b)
-                if out:
+                if out and pause_car:
+                    for c in out:
+                        port.write(bytes([c]))
+                        time.sleep(pause_car)
+                elif out:
                     port.write(out)
         elif time.time() - last > timeout:
-            raise TransferError("le X-07 ne répond plus (vérifiez le câble, CTS, la vitesse)")
+            if snd.state == "attente":
+                raise TransferError("le X-07 ne répond pas (vérifiez le câble, CTS, la vitesse,"
+                                    " et que RECEPTEUR est lancé)")
+            raise TransferError("le X-07 ne répond plus : un octet s'est sans doute perdu."
+                                " Arrêtez RECEPTEUR (BREAK), puis recommencez avec une"
+                                " --pause-car plus grande")
     log("")
     if snd.result == "clear":
         raise TransferError("tapez d'abord CLEAR 50,&H%X sur le X-07" % (snd.org - 1))

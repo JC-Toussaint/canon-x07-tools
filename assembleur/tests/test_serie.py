@@ -82,6 +82,19 @@ class TestEmulatedX07(unittest.TestCase):
         self.assertNotIn("Error", out)
 
 
+class TestBit7(unittest.TestCase):
+    def test_replies_with_bit7_set(self):
+        """« R » reçu en $D2 et « K » en $CB, comme sur la machine réelle."""
+        mem = program(40)
+        snd = serie.Sender(mem, 0x1C00)
+        got = bytearray(snd.on_byte(0xD2))
+        while snd.state != "fin":
+            got += snd.on_byte(0xCB)
+        snd.on_byte(0xCF)                           # « O »
+        self.assertEqual(snd.result, "ok")
+        self.assertEqual(bytes(got[6:6 + 40]), bytes(mem[k] for k in sorted(mem)))
+
+
 class TestTextLines(unittest.TestCase):
     def test_clean(self):
         self.assertEqual(serie.text_lines("10 PRINT 1\n\n  20 END  \n"),
@@ -175,7 +188,8 @@ class TestPseudoPort(unittest.TestCase):
             t.start()
             port = serie.SerialPort(os.ttyname(slave), 4800)
             try:
-                serie.send(port, mem, 0x3800, timeout=60, log=lambda *a, **k: None)
+                serie.send(port, mem, 0x3800, timeout=60, log=lambda *a, **k: None,
+                           pause_car=0.002)
             finally:
                 port.close()
             t.join(120)

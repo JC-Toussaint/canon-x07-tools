@@ -733,7 +733,7 @@ def cmd_send(args):
         print("erreur : port %s : %s" % (args.port, e), file=sys.stderr)
         return 1
     try:
-        serie.send(port, mem, entry, timeout=args.timeout,
+        serie.send(port, mem, entry, timeout=args.timeout, pause_car=args.pause_car,
                    log=lambda *a, **k: print(*a, **k, flush=True))
     except serie.TransferError as e:
         print("\nerreur : %s" % e, file=sys.stderr)
@@ -1189,7 +1189,8 @@ def main(argv=None):
                     help="envoyer un .bas en texte, comme tapé au clavier, sans le compiler "
                          "(le X-07 exécute d'abord INIT#5,\"COM:\":EXEC &HEE1F)")
     sd.add_argument("--pause-car", type=float, default=0.02,
-                    help="--texte : pause après chaque caractère, en s (défaut 0,02)")
+                    help="pause après chaque octet envoyé, en s (défaut 0,02) : sans elle, "
+                         "le vrai X-07 perd des octets")
     sd.add_argument("--pause-ligne", type=float, default=0.5,
                     help="--texte : pause après chaque ligne, en s (défaut 0,5)")
     sd.add_argument("--garder", action="store_true",

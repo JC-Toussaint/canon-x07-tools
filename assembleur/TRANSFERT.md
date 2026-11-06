@@ -35,6 +35,7 @@ python3 x07asm.py send jeu.bas --ram 16 --emu                  # essai complet s
 | `--baud` | 1200, 2400, 4800 (défaut) ou 8000. 9600 n'existe pas sur le X-07. Même valeur que pour `recepteur` |
 | `--ram`, `--org` | comme pour `basic` : mémoire du X-07, implantation |
 | `--timeout` | attente maximale d'une réponse du X-07, en secondes (défaut 60) |
+| `--pause-car` | pause après chaque octet, en secondes (défaut 0,02). Sans pause, le vrai X-07 perd des octets et le transfert se fige après le premier bloc |
 | `--emu` | transfert complet avec le X-07 émulé, sans câble |
 
 ## Sous WSL2
