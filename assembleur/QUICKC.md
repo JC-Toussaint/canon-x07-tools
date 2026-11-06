@@ -120,6 +120,7 @@ exemples/qc/         reels.qc (Newton, e, sinus), pret.qc (prêt, courbe) : comp
                      conso.qc (consommation d'une voiture, dans un fichier en RAM),
                      notes.qc (carnet de notes : moyennes, écart type, dans un fichier),
                      dichotomie.qc (cos(x) = x : à suivre au débogueur, voir DEBOGUEUR.md),
-                     traceur.qc (courbes de fonctions : axes, échelle automatique)
+                     traceur.qc (courbes de fonctions : axes, échelle automatique),
+                     formats.qc (printf, sprintf : tableaux alignés, ticket de caisse)
 tests/test_qc.py     traduction, calculs, fonctions, erreurs
 ```
