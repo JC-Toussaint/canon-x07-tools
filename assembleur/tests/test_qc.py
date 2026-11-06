@@ -70,6 +70,17 @@ class TestTranslation(unittest.TestCase):
             self.assertIn(msg, str(e.exception), src)
 
 
+class TestDecodeReal(unittest.TestCase):
+    def test_bcd_to_text(self):
+        from x07asm.cdebug import decode_real
+        for data, text in (("4120", "2"), ("4050", "0.5"), ("C12250", "-2.25"),
+                           ("2D10", "1E-20"), ("7F10", "1E+62"), ("3D123", "0.000123"),
+                           ("4E12345678901234", "12345678901234"),
+                           ("411414213562373", "1.414213562373"), ("00", "0")):
+            b = bytes.fromhex((data + "0" * 16)[:16])
+            self.assertEqual(decode_real(b), text)
+
+
 @needs_sdcc
 class TestQuickC(unittest.TestCase):
     def test_arithmetic_like_basic(self):
@@ -144,6 +155,39 @@ int main(void)
     return 0;
 }''')
         self.assertEqual(out, "12: 18.5 14:-2.25 20: 7 3 7.75\nIO Error\n")
+
+    def test_debugger_shows_locals_and_reals(self):
+        from x07asm.ide import Session
+        d = tempfile.mkdtemp()
+        try:
+            path = os.path.join(d, "v.qc")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(HEAD + '''real g = 2.5;
+int carre(int a) { return a * a; }
+int main(void)
+{
+    real x = 3;
+    int t[3] = {1, 2, 3};
+    long w = 70000;
+    char c = 'A';
+    x = x * g;
+    printf("%d %ld %c %s", carre(t[1]), w, c, str(x));
+    return 0;
+}
+''')
+            s = Session(path, 16)
+            s.build()
+            s.toggle_break(11)                               # la ligne du printf
+            s.m.interactive = False
+            self.assertEqual(s.run(), "point d'arrêt")
+            text = "\n".join(s.variables())
+        finally:
+            shutil.rmtree(d)
+        for want in ("g = 2.5", "— main —", "x = 7.5", "t = {1, 2, 3}"):
+            self.assertIn(want, text)
+        for name in ("w", "c"):          # selon SDCC : valeur, registre, ou optimisée
+            self.assertRegex(text, r"(?m)^%s [=:]" % name)
+        self.assertNotIn("_qc_", text)                      # temporaires cachés
 
     def test_sdcc_errors_point_to_qc_lines(self):
         with self.assertRaises(ccomp.CError) as e:

@@ -18,7 +18,7 @@ python3 x07asm.py qc exemples/qc/pret.qc -f bin,lst       # C produit (pret_qc.c
 python3 x07asm.py send exemples/qc/pret.qc --ram 16 --port /dev/ttyUSB0
 ```
 
-Les commandes `run`, `send`, `debug`, `ide`, `emu --charger` et `c` acceptent les `.qc`. Les messages de SDCC, les points d'arrêt et le pas à pas de l'IDE portent sur les lignes du `.qc`.
+Les commandes `run`, `send`, `debug`, `ide`, `emu --charger` et `c` acceptent les `.qc`. Les messages de SDCC, les points d'arrêt et le pas à pas de l'IDE portent sur les lignes du `.qc`, et le débogueur montre les variables, locales comprises, les réels en nombres ([DEBOGUEUR.md](DEBOGUEUR.md#programmes-c-et-quick-c)).
 
 ## Comparaison
 

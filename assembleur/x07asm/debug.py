@@ -32,7 +32,8 @@ Commandes (adresse : 3C40, $3C40, &H3C40, ÉTIQUETTE, ÉTIQUETTE+4, ligne 40) :
   m ADR v [v...]    écrire des octets
   l [ADR] [n]       désassembler (au PC par défaut)
   p [n]             pile
-  v [NOM]           variables BASIC compilées : v, v N, v A$, v T%(3)
+  v [NOM]           variables : BASIC compilé (v N, v A$, v T%(3)), C (globales,
+                    locales de la fonction en cours)
   k TEXTE           touches pour le programme (INKEY$) ; \\r : Entrée
   e [points]        écran du X-07 (points : graphismes compris, en braille)
   sym TEXTE         chercher un symbole
@@ -46,8 +47,11 @@ class DebugError(Exception):
 
 
 class Debugger:
-    def __init__(self, m, symbols=None, listing=None, prog_range=None, out=None):
+    def __init__(self, m, symbols=None, listing=None, prog_range=None, out=None, cinfo=None,
+                 line_word="ligne BASIC"):
         self.m = m
+        self.cinfo = cinfo                               # programme C : cdebug.CDebugInfo
+        self.line_word = line_word                       # « ligne BASIC 40 », « ligne 12 »
         self.out = out or (lambda s: print(s, flush=True))
         self.symbols = {n.upper(): a for n, a in x07sym.all_symbols().items()}
         lo, hi = prog_range or (0, -1)
@@ -88,7 +92,7 @@ class Debugger:
             for a, num in self.basic:
                 if num == n:
                     return a
-            raise DebugError("ligne BASIC %d introuvable" % n)
+            raise DebugError("%s %d introuvable" % (self.line_word, n))
         m = re.fullmatch(r"(.+?)\s*([+-])\s*(\S+)", t)
         if m and not t.startswith(("$", "&", "0X", "#")):
             base = self.addr(m.group(1))
@@ -186,7 +190,7 @@ class Debugger:
         head = "[%s]" % reason if reason else ""
         n = self.basic_line(m.pc)
         if n is not None:
-            head += "%sligne BASIC %d" % ("  " if head else "", n)
+            head += "%s%s %d" % ("  " if head else "", self.line_word, n)
         if head:
             self.out(head)
         if m.pc == EXIT:
@@ -403,7 +407,17 @@ class Debugger:
     TAGS = {"%": "I", "!": "F", "#": "D"}
 
     def show_vars(self, rest):
-        """v : toutes les variables simples ; v NOM, v NOM$, v T(3) : une seule."""
+        """v : toutes les variables simples ; v NOM, v NOM$, v T(3) : une seule.
+        Programme C : globales et locales de la fonction en cours (v NOM : une seule)."""
+        if self.cinfo is not None:
+            lines = self.cinfo.lines(self.m)
+            if rest:
+                lines = [l for l in lines if l.split(" ")[0] == rest.strip()]
+                if not lines:
+                    raise DebugError("variable %s introuvable (ici)" % rest.strip())
+            for l in lines or ["(pas de variable)"]:
+                self.out("  " + l)
+            return
         if not rest:
             found = sorted(n for n in self.symbols if re.fullmatch(r"(V_\w+_[IFD]|S_\w+)", n))
             if not found:

@@ -753,6 +753,7 @@ def load_for_debug(src, ram=16, org=None, entry=None, direct=False):
     .qbas est compilé avec les numéros de ligne (option --debug)."""
     low = src.lower()
     listing, symbols, warns = [], {}, []
+    load_for_debug.cinfo = None                  # C : variables pour le débogueur (cdebug)
     if low.endswith((".bas", ".qbas", ".pas")):
         _, a, mem, comp = build_basic(src, org or "auto", ram, debug=True, direct=direct)
         warns = comp.warnings
@@ -768,6 +769,7 @@ def load_for_debug(src, ram=16, org=None, entry=None, direct=False):
     elif low.endswith((".c", ".qc")):            # LN_n : ligne n du source C
         prog = build_c(src, org or "auto", ram)
         mem, start, symbols = prog.mem, prog.entry, dict(prog.symbols)
+        load_for_debug.cinfo = prog.debug
         listing = [(a, b"", ("", 0), "C %s %d" % (n, size))     # variables : onglet de l'IDE
                    for n, a, size in prog.variables]
     else:
@@ -813,7 +815,9 @@ def cmd_debug(args):
     def make(real_display):
         m = emu.prepare_binary(mem, entry, keys, args.input or [], args.ram,
                                real_display=real_display)
-        dbg = debug.Debugger(m, symbols, listing, prog_range)
+        dbg = debug.Debugger(m, symbols, listing, prog_range, cinfo=load_for_debug.cinfo,
+                             line_word="ligne BASIC" if src.lower().endswith(".bas")
+                             else "ligne")
         for b in args.arret or []:
             try:
                 dbg.breaks.add(dbg.addr(b))
@@ -1029,7 +1033,7 @@ def main(argv=None):
     b.set_defaults(func=cmd_basic)
 
     g = sub.add_parser("debug", help="déboguer un programme machine dans l'émulateur")
-    g.add_argument("source", help=".asm, .bas, .qbas (compilés), .hex ou .bin (--org)")
+    g.add_argument("source", help=".asm, .bas, .qbas, .pas, .c, .qc (compilés), .hex ou .bin (--org)")
     g.add_argument("--org", help="adresse de chargement d'un .bin, implantation d'un .bas")
     g.add_argument("--entry", help="adresse de départ (défaut : celle du programme)")
     g.add_argument("--ram", type=int, choices=(8, 16, 24), default=16,

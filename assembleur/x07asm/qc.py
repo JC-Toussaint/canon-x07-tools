@@ -445,6 +445,21 @@ class Translator:
             self.expect("}")
             self.replace(s, self.pos, "{ %s }" % ", ".join(items))
             return
+        if self.isop("{"):                                 # int t[3] = {1, 2, 3} : tel quel
+            depth = 0
+            while True:
+                t = self.next()
+                if t.kind == "eof":
+                    self.err("« } » manquant")
+                if t.text == "{":
+                    depth += 1
+                elif t.text == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return
+                elif t.kind == "id" and self.lookup(t.text) in REALS:
+                    self.err("réel dans les accolades d'un tableau qui n'est pas de réels",
+                             t.line)
         n = self.expr_assign()
         self.typeof(n)
         if typ == "real":

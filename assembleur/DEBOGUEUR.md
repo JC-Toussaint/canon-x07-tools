@@ -169,6 +169,28 @@ Une ligne QuickBASIC n'a pas de numéro : on s'arrête sur la ligne du programme
 
 Avec la **compilation directe** (`debug FICHIER.qbas --direct`, voir [QBASIC.md](QBASIC.md)), c'est plus simple : `b ligne 27` désigne la ligne 27 du **source QuickBASIC** lui-même, les variables gardent leur nom, et une variable locale s'écrit `v PROC.VAR` (`v TRI.PIVOT`). Le débogueur suit aussi la récursivité : chaque arrêt montre les variables de l'appel en cours.
 
+## Programmes C et Quick C
+
+Un `.c` ou un `.qc` ([C.md](C.md), [QUICKC.md](QUICKC.md)) est compilé au passage par SDCC, avec ses informations de débogage (`--debug`). Le débogueur connaît alors :
+- **les lignes du source** : `b ligne 24` s'arrête au début de la ligne 24 du `.c` ou du `.qc`. Dans l'IDE, on y pose les points d'arrêt et on avance ligne par ligne ;
+- **les variables** : les globales et `static`, puis les **locales de la fonction en cours**, lues sur la pile à partir de IX (le cadre que pose la fonction) ou dans les registres. Les réels (`real`) sont affichés comme des nombres :
+
+```
+(x07) b ligne 24
+(x07) c
+[point d'arrêt]  ligne 24
+(x07) v
+  — main —
+  x = 1.414213562373   (IX-34)
+  i = 6   (IX-2)
+(x07) v x
+  x = 1.414213562373   (IX-34)
+```
+
+- Au tout début d'une fonction, sur la ligne de son nom ou de son accolade, ses variables ne sont pas encore créées : le débogueur l'indique.
+- SDCC garde certaines variables dans un registre (`i = 3   (registre BC)`), ou les supprime quand leur valeur est connue d'avance (« optimisée par SDCC ») : le débogueur l'indique aussi.
+- Les temporaires du traducteur Quick C (`_qc_t1`…) et de SDCC (`sloc0`…) ne sont pas montrés.
+
 ## Exemple : déboguer `tri.qbas`
 
 **1. Repérer les lignes à surveiller.** On regarde la traduction, avec `--noms` pour savoir ce que deviennent les variables :

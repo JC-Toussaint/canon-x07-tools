@@ -192,8 +192,9 @@ def build_c(path, org="auto", top=None, min_org=0x0600, ram_top=None):
         lib = [os.path.splitext(f)[0] for f in LIB_MODULES]
         for c, rel in [(os.path.join(LIB, m + ".c"), m + ".rel") for m in lib] + \
                 [(src, name + ".rel")]:
-            out = _run([sdcc, "-mz80", "-c", "-I", LIB, "-I", os.path.dirname(os.path.abspath(path)),
-                        c, "-o", rel], tmp,
+            out = _run([sdcc, "-mz80", "-c"] + (["--debug"] if c == src else []) +
+                       ["-I", LIB, "-I", os.path.dirname(os.path.abspath(path)), c, "-o", rel],
+                       tmp,
                        "erreur de compilation" if c == src else
                        "bibliothèque %s" % os.path.basename(c))
             if c == src:
@@ -261,6 +262,12 @@ def build_c(path, org="auto", top=None, min_org=0x0600, ram_top=None):
         symbols.update(_line_symbols(listing, os.path.basename(path)))
         prog = CProgram(mem, at, end - 1, symbols, listing, warns, variables)
         prog.file_space = file_space
+        adb = os.path.join(tmp, name + ".adb")      # --debug : place et type des variables
+        prog.debug = None
+        if os.path.exists(adb):
+            from .cdebug import CDebugInfo
+            with open(adb, encoding="latin-1") as f:
+                prog.debug = CDebugInfo(f.read(), symbols, (at, end - 1))
         return prog
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

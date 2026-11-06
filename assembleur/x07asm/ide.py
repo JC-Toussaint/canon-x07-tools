@@ -192,7 +192,10 @@ class Session:
         self.saved = False
         m.interactive = True               # clavier : l'écran de la fenêtre
         self.messages = []
-        self.dbg = debug.Debugger(m, symbols, listing, prog_range, out=self.messages.append)
+        self.cinfo = load_for_debug.cinfo if self.kind in ("c", "qc") else None
+        self.dbg = debug.Debugger(m, symbols, listing, prog_range, out=self.messages.append,
+                                  cinfo=self.cinfo,
+                                  line_word="ligne BASIC" if self.kind == "bas" else "ligne")
         self.m = m
         self.symbols = {n.upper(): a for n, a in symbols.items()}
         self.prog_range = prog_range
@@ -419,6 +422,8 @@ class Session:
             return self._pascal_variables()
         if self.kind in ("bas", "qbas"):
             return self._basic_variables()
+        if self.kind in ("c", "qc") and getattr(self, "cinfo", None) is not None:
+            return self.cinfo.lines(self.m)        # globales, locales de la fonction en cours
         if self.kind in ("c", "qc"):                # globales et statiques du programme C
             return ["%s = %s   ($%04X)" % (n, self._data_text(a, size, {"s"} if size in (1, 2, 4)
                                                              else {"b"}), a)
