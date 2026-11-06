@@ -34,27 +34,74 @@ class CProgram:
         self.variables = list(variables)          # (nom, adresse, taille) des globales
 
 
+def _windows_dirs():
+    """Dossiers d'installation de SDCC sous Windows (l'installeur ne met pas
+    toujours SDCC dans le PATH)."""
+    out = []
+    if os.environ.get("SDCC_HOME"):
+        out.append(os.environ["SDCC_HOME"])
+    for var in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"):
+        if os.environ.get(var):
+            out.append(os.path.join(os.environ[var], "SDCC"))
+    return out
+
+
 def tools():
     """Chemins de sdcc, sdasz80, sdldz80 et sdar ; CError si SDCC n'est pas installé."""
-    found = [shutil.which(t) for t in ("sdcc", "sdasz80", "sdldz80", "sdar")]
+    names = ("sdcc", "sdasz80", "sdldz80", "sdar")
+    found = [shutil.which(t) for t in names]
     if None in found:
-        raise CError("SDCC n'est pas installé (sous Debian, Ubuntu, WSL : "
-                     "sudo apt install sdcc)")
+        for d in _windows_dirs():
+            alt = [shutil.which(t, path=os.path.join(d, "bin")) for t in names]
+            if None not in alt:
+                return alt
+    if None in found:
+        raise CError("SDCC n'est pas installé ou pas trouvé.\n"
+                     "  Debian, Ubuntu, WSL : sudo apt install sdcc\n"
+                     "  Windows : installeur de https://sdcc.sourceforge.net, puis "
+                     "ajoutez C:\\Program Files\\SDCC\\bin au PATH (ou définissez "
+                     "SDCC_HOME=C:\\Program Files\\SDCC)")
     return found
 
 
 def _lib_dir(sdcc):
-    """Bibliothèque z80.lib de SDCC (printf, multiplications...)."""
-    for d in (SDCC_LIB, os.path.join(os.path.dirname(os.path.dirname(sdcc)),
-                                     "share", "sdcc", "lib", "z80")):
+    """Bibliothèque z80.lib de SDCC (printf, multiplications...).
+    Linux : <préfixe>/share/sdcc/lib/z80 ; Windows : <préfixe>\\lib\\z80."""
+    prefix = os.path.dirname(os.path.dirname(os.path.abspath(sdcc)))
+    for d in (SDCC_LIB, os.path.join(prefix, "share", "sdcc", "lib", "z80"),
+              os.path.join(prefix, "lib", "z80")):
         if os.path.exists(os.path.join(d, "z80.lib")):
             return d
-    raise CError("z80.lib de SDCC introuvable")
+    raise CError("z80.lib de SDCC introuvable (cherchée sous %s)" % prefix)
+
+
+_ENV = None
+
+
+def _sdcc_env(sdcc):
+    """Environnement des outils SDCC.  Sous Windows, sdcpp.exe (un GCC réduit)
+    lance cc1.exe, rangé dans le dossier de SDCC ; il ne le trouve pas toujours
+    (« cannot execute 'cc1' »), surtout si un autre GCC a défini GCC_EXEC_PREFIX.
+    On lui indique alors le dossier de cc1.exe par COMPILER_PATH."""
+    env = dict(os.environ)
+    if os.name != "nt":
+        return env
+    env.pop("GCC_EXEC_PREFIX", None)
+    prefix = os.path.dirname(os.path.dirname(os.path.abspath(sdcc)))
+    dirs = []
+    for sub in ("libexec", "bin", "lib"):
+        for root, _, files in os.walk(os.path.join(prefix, sub)):
+            if any(f.lower() in ("cc1.exe", "cc1") for f in files):
+                dirs.append(root)
+    if dirs:
+        old = env.get("COMPILER_PATH")
+        env["COMPILER_PATH"] = os.pathsep.join(dirs + ([old] if old else []))
+    return env
 
 
 def _run(cmd, cwd, what):
     p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
+                       encoding="utf-8", errors="replace", env=_ENV)
     out = (p.stdout + p.stderr).strip()
     if p.returncode != 0:
         raise CError("%s :\n%s" % (what, out or "échec (code %d)" % p.returncode))
@@ -127,8 +174,10 @@ def build_c(path, org="auto", top=None, min_org=0x0600, ram_top=None):
     (en haut de la RAM, sous top).  Un programme qui ouvre des fichiers est
     placé sous leur zone (x07_fspace octets sous ram_top, dernier octet de la
     RAM), avec la marge qu'écrit FSET.  Rend un CProgram."""
+    global _ENV
     sdcc, sdas, sdld, sdar = tools()
     libdir = _lib_dir(sdcc)
+    _ENV = _sdcc_env(sdcc)
     src = os.path.abspath(path)
     name = os.path.splitext(os.path.basename(path))[0]
     tmp = tempfile.mkdtemp(prefix="x07c_")
@@ -151,11 +200,14 @@ def build_c(path, org="auto", top=None, min_org=0x0600, ram_top=None):
                 warns += _warnings(out)
         # bibliothèque : l'éditeur de liens n'y prend que les modules utilisés
         _run([sdar, "-rc", "x07.lib"] + [m + ".rel" for m in lib], tmp, "bibliothèque x07.lib")
+        # z80.lib copiée à côté : son chemin (« C:\Program Files\SDCC... » sous
+        # Windows) peut contenir des espaces, que le script de l'éditeur de liens coupe
+        shutil.copy(os.path.join(libdir, "z80.lib"), os.path.join(tmp, "z80.lib"))
 
         def link(at):
             with open(os.path.join(tmp, "prog.lk"), "w") as f:
-                f.write("-mjwxiu\n-b _CODE=0x%04X\n-k .\n-l x07\n-k %s\n-l z80\nprog.ihx\n"
-                        "crt0.rel\n%s.rel\n-e\n" % (at, libdir, name))
+                f.write("-mjwxiu\n-b _CODE=0x%04X\n-k .\n-l x07\n-l z80\nprog.ihx\n"
+                        "crt0.rel\n%s.rel\n-e\n" % (at, name))
             out = _run([sdld, "-f", "prog.lk"], tmp, "édition de liens")
             if re.search(r"\?ASlink-Warning-Undefined", out):
                 raise CError("édition de liens :\n%s" % "\n".join(
