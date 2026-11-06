@@ -169,7 +169,15 @@ def _labels(rst_text):
     return labels, variables
 
 
-def build_c(path, org="auto", top=None, min_org=0x0600, ram_top=None):
+DEBUG_FLAGS = ["--max-allocs-per-node", "1"]
+# Pour le débogueur : avec l'allocation de registres complète, SDCC réutilise sur
+# une ligne des calculs d'adresse de la précédente (après une copie de réel), et
+# cette ligne n'a plus d'instruction à elle : ni point d'arrêt ni pas à pas.  Ce
+# réglage les garde toutes ; le code est un peu plus gros (2 à 3 %) et le calcul
+# sur entiers plus lent (jusqu'à 2 fois) : seulement pour debug et l'IDE.
+
+
+def build_c(path, org="auto", top=None, min_org=0x0600, ram_top=None, debug=False):
     """Compile et relie un programme C.  org : adresse (entier) ou "auto"
     (en haut de la RAM, sous top).  Un programme qui ouvre des fichiers est
     placé sous leur zone (x07_fspace octets sous ram_top, dernier octet de la
@@ -193,6 +201,7 @@ def build_c(path, org="auto", top=None, min_org=0x0600, ram_top=None):
         for c, rel in [(os.path.join(LIB, m + ".c"), m + ".rel") for m in lib] + \
                 [(src, name + ".rel")]:
             out = _run([sdcc, "-mz80", "-c"] + (["--debug"] if c == src else []) +
+                       (DEBUG_FLAGS if debug and c == src else []) +
                        ["-I", LIB, "-I", os.path.dirname(os.path.abspath(path)), c, "-o", rel],
                        tmp,
                        "erreur de compilation" if c == src else

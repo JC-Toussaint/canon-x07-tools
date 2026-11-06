@@ -189,6 +189,16 @@ int main(void)
             self.assertRegex(text, r"(?m)^%s [=:]" % name)
         self.assertNotIn("_qc_", text)                      # temporaires cachés
 
+    def test_debug_build_keeps_every_line(self):
+        # ligne 16 (return de f, après la copie du paramètre) : sans le code de
+        # débogage, SDCC la fond dans la précédente
+        path = os.path.join(ROOT, "exemples", "qc", "dichotomie.qc")
+        fast = ccomp.build_c(path, "auto", top=0x3FF1, ram_top=0x3FFF)
+        dbg = ccomp.build_c(path, "auto", top=0x3FF1, ram_top=0x3FFF, debug=True)
+        self.assertIn("LN_16", dbg.symbols)
+        self.assertGreaterEqual(len([n for n in dbg.symbols if n.startswith("LN_")]),
+                                len([n for n in fast.symbols if n.startswith("LN_")]))
+
     def test_sdcc_errors_point_to_qc_lines(self):
         with self.assertRaises(ccomp.CError) as e:
             run("int main(void)\n{\n    real x;\n    x = inconnue;\n    return 0;\n}\n")

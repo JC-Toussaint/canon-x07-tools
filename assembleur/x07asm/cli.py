@@ -248,12 +248,13 @@ def build_basic(path, org="auto", ram=8, direct=False, **opts):
     return result
 
 
-def build_c(path, org="auto", ram=16):
-    """Compile un programme C avec SDCC (voir ccomp.py) ; rend un CProgram."""
+def build_c(path, org="auto", ram=16, debug=False):
+    """Compile un programme C avec SDCC (voir ccomp.py) ; rend un CProgram.
+    debug : chaque ligne garde ses instructions (débogueur, IDE)."""
     from . import basic, ccomp
     try:
         prog = ccomp.build_c(path, "auto" if org in (None, "auto") else _num(org),
-                             top=free_top(ram), ram_top=RAM_TOP[ram])
+                             top=free_top(ram), ram_top=RAM_TOP[ram], debug=debug)
     except ccomp.CError as e:
         raise basic.CompileError("C : %s" % e)
     for w in prog.warnings:
@@ -767,7 +768,7 @@ def load_for_debug(src, ram=16, org=None, entry=None, direct=False):
             raise asmmod.AsmError(str(a.errors[0]))
         start, listing, symbols = a.entry, a.listing, a.symbols
     elif low.endswith((".c", ".qc")):            # LN_n : ligne n du source C
-        prog = build_c(src, org or "auto", ram)
+        prog = build_c(src, org or "auto", ram, debug=True)
         mem, start, symbols = prog.mem, prog.entry, dict(prog.symbols)
         load_for_debug.cinfo = prog.debug
         listing = [(a, b"", ("", 0), "C %s %d" % (n, size))     # variables : onglet de l'IDE

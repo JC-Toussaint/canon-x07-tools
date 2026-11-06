@@ -190,7 +190,86 @@ Un `.c` ou un `.qc` ([C.md](C.md), [QUICKC.md](QUICKC.md)) est compilé au passa
 - Au tout début d'une fonction, sur la ligne de son nom ou de son accolade, ses variables ne sont pas encore créées : le débogueur l'indique.
 - SDCC garde certaines variables dans un registre (`i = 3   (registre BC)`), ou les supprime quand leur valeur est connue d'avance (« optimisée par SDCC ») : le débogueur l'indique aussi.
 - Les temporaires du traducteur Quick C (`_qc_t1`…) et de SDCC (`sloc0`…) ne sont pas montrés.
+- **Code de débogage :** pour `debug` et l'IDE, SDCC compile avec `--max-allocs-per-node 1`. Avec l'allocation de registres complète, il réutilise sur une ligne des calculs d'adresse de la ligne précédente (par exemple après la copie d'un réel), et cette ligne n'a plus d'instruction à elle : on ne pourrait ni s'y arrêter ni y passer. Ce code est un peu plus gros (2 à 3 %) et plus lent sur les entiers, jusqu'à 2 fois ; sur les réels, la ROM fait l'essentiel du travail et rien ne change. `run`, `send` et `c` gardent le code le plus rapide.
 
+## Exemple : déboguer `dichotomie.qc`
+
+`exemples/qc/dichotomie.qc` résout cos(x) = x par dichotomie : on part de a = 0 et b = 1, et l'on garde, tour après tour, la moitié de l'intervalle où cos(x) − x change de signe.
+
+```c
+19  static real dichotomie(real a, real b)
+20  {
+21      real milieu, fa;
+22      fa = f(a);
+23      while (b - a > PRECISION) {
+24          milieu = (a + b) / 2;
+25          if (fa * f(milieu) <= 0)        /* le signe change entre a et milieu */
+26              b = milieu;
+27          else {
+28              a = milieu;
+29              fa = f(a);
+30          }
+31          tours++;
+32      }
+33      return (a + b) / 2;
+```
+
+**1. S'arrêter quand b se rapproche de a :**
+
+```
+python3 x07asm.py debug exemples/qc/dichotomie.qc
+(x07) b ligne 26
+(x07) c
+[point d'arrêt]  ligne 26
+(x07) v
+  tours = 1   ($3F4B)
+  — dichotomie —
+  a = 0.5   (IX-36)
+  b = 1   (IX-28)
+  milieu = 0.75   (IX-20)
+  fa = 0.37758256189037   (IX-12)       ← f(0,5) > 0 et f(0,75) < 0 : b devient 0,75
+(x07) c
+[point d'arrêt]  ligne 26
+(x07) v
+  tours = 6   ($3F4B)
+  — dichotomie —
+  a = 0.734375   (IX-36)
+  b = 0.75   (IX-28)                    ← l'intervalle s'est déjà resserré
+```
+
+**2. Entrer dans f, puis en sortir :**
+
+```
+(x07) d tout
+(x07) b ligne 16
+(x07) c
+[point d'arrêt]  ligne 16
+(x07) v
+  tours = 7   ($3F4B)
+  — f —
+  x = 0.73828125   (IX-12)              ← le paramètre, copie de milieu
+(x07) f
+[retour de la routine]  ligne 25        ← de retour dans dichotomie
+```
+
+**3. Le résultat, au `return` :**
+
+```
+(x07) d tout
+(x07) b ligne 33
+(x07) c
+[point d'arrêt]  ligne 33
+(x07) v
+  tours = 34   ($3F4B)
+  — dichotomie —
+  a = 0.73908513318765   (IX-36)
+  b = 0.7390851332459   (IX-28)        ← b − a < 1E-10 après 34 moitiés
+  fa = 4.603E-11   (IX-12)
+```
+
+Dans l'IDE (`python3 x07asm.py ide exemples/qc/dichotomie.qc`), c'est la même chose à la souris : un clic dans la marge pose le point d'arrêt, ▶ continue, et l'onglet Variables montre les mêmes valeurs.
+
+## Exemple : déboguer `tri.qbas`
 ## Exemple : déboguer `tri.qbas`
 
 **1. Repérer les lignes à surveiller.** On regarde la traduction, avec `--noms` pour savoir ce que deviennent les variables :

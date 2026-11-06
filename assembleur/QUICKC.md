@@ -118,6 +118,7 @@ x07asm/c/x07ftok.c   f_tok, qui sert à f_val : valeur suivante d'un fichier
 exemples/qc/         reels.qc (Newton, e, sinus), pret.qc (prêt, courbe) : comparer à exemples/c/
                      tir.qc (tir balistique : durée, portée, hauteur, trajectoire),
                      conso.qc (consommation d'une voiture, dans un fichier en RAM),
-                     notes.qc (carnet de notes : moyennes, écart type, dans un fichier)
+                     notes.qc (carnet de notes : moyennes, écart type, dans un fichier),
+                     dichotomie.qc (cos(x) = x : à suivre au débogueur, voir DEBOGUEUR.md)
 tests/test_qc.py     traduction, calculs, fonctions, erreurs
 ```
