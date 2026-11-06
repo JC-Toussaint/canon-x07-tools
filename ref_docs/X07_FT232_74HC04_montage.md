@@ -59,7 +59,7 @@ Boîtier DIP-14, vu de dessus, encoche en haut : la broche 1 est en haut à gauc
 - **La résistance de 10 kΩ sur SP-4 reste indispensable** : la sortie du X-07 est « en l'air » au repos, et une entrée CMOS en l'air fait n'importe quoi.
 - **Entrées inutilisées à la masse** (5, 9, 11, 13), pour la même raison.
 - **Marge sur la réception :** à 5 V, le 74HC04 exige au moins 3,5 V pour voir un état haut, et la sortie du X-07 monte à environ 4,5 V. Ça devrait passer. Si la réception est capricieuse, prenez un **74HCT04**, de même brochage, qui se contente de 2 V.
-- **La fiche du côté du X-07 :** la prise CN9 n'est pas normalisée et ses contacts sont plats. Des broches Dupont y font de faux contacts. Voir [X07_FT232RL_liaison_serie.md](X07_FT232RL_liaison_serie.md), §3, « La prise et sa fiche ».
+- **La fiche du côté du X-07 :** la prise CN9 n'est pas normalisée. Elle accepte des broches rondes d'environ 1 mm, comme celles d'une fiche DB9 mâle. Les broches Dupont, trop fines, y font de faux contacts. Voir [X07_FT232RL_liaison_serie.md](X07_FT232RL_liaison_serie.md), §3, « La prise et sa fiche ».
 
 ---
 

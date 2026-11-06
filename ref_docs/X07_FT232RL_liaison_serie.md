@@ -81,21 +81,26 @@ Version compacte :
 
 **Ce que dit le guide :**
 
-- **Contacts plats.** Le dessin du câble **XC-940** (p. 81) représente la fiche avec des contacts **rectangulaires**, sur deux rangées décalées : 1-3-5-7-9 d'un côté, 2-4-6-8 de l'autre. Une broche Dupont (carrée, de 0,64 mm) est trop fine pour ces logements : elle bouge et donne des **faux contacts**.
+- **Des lames plates sur la fiche d'origine.** Le dessin du câble **XC-940** (p. 81) représente la fiche avec des contacts **rectangulaires**, sur deux rangées décalées : 1-3-5-7-9 d'un côté, 2-4-6-8 de l'autre.
 - **Le X-722 a la même prise.** Son CN2 porte la même référence, WS1-0221-000 (p. 59). Il s'y raccorde par une pièce rigide, la n° 12 de la vue éclatée (p. 58), appelée « Flat cable, 8P » (EH2-0398-000) : un peigne de lamelles plates.
 
 **La solution publiée :** un amateur a reproduit la fiche ([ketturi.kapsi.fi, 2018](https://ketturi.kapsi.fi/2018/03/serial-port-for-canon-x-07/)).
 
-- Il a mesuré des contacts plats d'environ 3 × 2,5 mm, d'après le résumé de son article.
-- Il a réutilisé les **broches d'une fiche D-sub mâle démontée** (DB9 ou DB25), qui entrent dans les logements du X-07.
-- Il les tient au bon écartement dans un boîtier imprimé en 3D.
+- **Les lames d'origine ne sont pas indispensables.** La prise « accepte à peu près n'importe quel contact rond qui entre dans les trous ».
+- **Des broches de D-sub mâle conviennent.** Ces broches rondes d'environ 1 mm de diamètre (DB9, DB25) « entrent dans la prise d'origine ». En revanche, une fiche D-sub entière ne s'y emboîte pas bien : il faut ses broches, pas la fiche.
+- **Des broches Dupont ne conviennent pas.** Carrées de 0,64 mm, elles sont trop fines : elles bougent dans les logements et donnent des **faux contacts**.
+- **Ses relevés :**
+  - pas des contacts de 3 mm × 2,5 mm, sans plus de précision ;
+  - longueur de la fiche très proche de 15,875 mm (5/8 de pouce) ;
+  - trous de 1 mm dans la face avant de son boîtier.
+- **Son boîtier :** imprimé en 3D. Les broches, tenues par leur collerette, sont prises entre deux plaques isolantes, dont une en acrylique découpée au laser.
 
 **En pratique :**
 
 - **Seuls 4 contacts servent** : SP-4, SP-5, SP-6 et SP-8. Ils sont tous sur la rangée paire (2-4-6-8).
-- **La fiche :** des broches de DB9 mâle, soudées aux fils et tenues par un bout de plaque à trous, de la colle chaude ou une pièce imprimée.
-- **En dépannage :** une patte plate de composant en boîtier TO-220 remplit mieux le logement qu'une broche Dupont.
-- **L'écartement exact des contacts n'est pas documenté.** Mesurez-le au pied à coulisse avant de fabriquer la fiche.
+- **La fiche :** des broches rondes de DB9 mâle, d'environ 1 mm, soudées aux fils. Tenez-les par un bout de plastique percé au bon écartement, de la colle chaude ou une pièce imprimée.
+- **En dépannage :** du fil de cuivre rigide de 1 mm (fil d'installation de 0,75 mm² environ) tient mieux qu'une broche Dupont.
+- **Le pas n'est pas sûr :** l'article ne précise pas lequel des 3 mm et 2,5 mm vaut entre les rangées et lequel le long d'une rangée. Mesurez-le au pied à coulisse avant de percer.
 
 > Des octets faussés seulement dans le sens X-07 → PC, par exemple le « R » reçu en `52`, `D2`, `F2` ou `FD`, peuvent venir d'un faux contact sur SP-4 ou SP-8.
 
@@ -126,7 +131,7 @@ FT232RL (VCCIO = 5V)            Canon X-07 CN9
 - 1 module FT232RL (TTL) ;
 - 1 résistance de 10 kΩ (pull-down sur RXD du FTDI) ;
 - 1 fil entre le +5 V du FTDI et SP-6 (vous pouvez aussi le souder dans la fiche du câble) ;
-- 1 fiche compatible avec CN9 : prise non normalisée, à contacts plats (voir §3, « La prise et sa fiche »).
+- 1 fiche compatible avec CN9 : prise non normalisée, qui accepte des broches rondes d'environ 1 mm (voir §3, « La prise et sa fiche »).
 
 ---
 
