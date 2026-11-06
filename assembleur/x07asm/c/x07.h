@@ -64,6 +64,9 @@ char *r_fmt(char *buf, const real *a, unsigned char digits, unsigned char decima
                                                   /* comme PRINT USING "###.##" :
                                                      chiffres avant le point, décimales */
 void r_print(const real *a);                      /* affiche r_str */
+char *r_s(const real *a);                         /* r_str dans un tampon tournant */
+char *r_f(const real *a, unsigned char digits, unsigned char decimals);
+                                                  /* r_fmt, tampon tournant */
 
 /* fichiers en RAM du X-07 : ils survivent à l'extinction.  Canal (channel) 1 à 5,
    nom (name) de 6 caractères au plus, taille (size) fixée à la création (256

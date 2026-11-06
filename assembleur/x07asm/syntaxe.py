@@ -25,7 +25,7 @@ _QB_TOKEN = re.compile(r'"[^"]*"?|\'.*|[A-Za-z_][A-Za-z0-9_.]*[$%!#&]?|&[HhOo][0
 
 def zones(text, kind):
     line_zones = {"bas": _bas_line, "qbas": _qb_line, "asm": _asm_line,
-                  "pas": _pas_line, "c": _c_line}.get(kind)
+                  "pas": _pas_line, "c": _c_line, "qc": _c_line}.get(kind)
     if line_zones is None:
         return []
     return [(c, n, a, b) for n, line in enumerate(text.split("\n"), 1)
@@ -137,10 +137,13 @@ C_KEYWORDS = {"auto", "break", "case", "char", "const", "continue", "default", "
               "else", "enum", "extern", "float", "for", "goto", "if", "int", "long",
               "register", "return", "short", "signed", "sizeof", "static", "struct",
               "switch", "typedef", "union", "unsigned", "void", "volatile", "while",
-              "bool", "true", "false", "__asm", "__endasm", "__naked"}
+              "bool", "true", "false", "__asm", "__endasm", "__naked", "real"}
 C_FUNCS = {"printf", "puts", "putchar", "cls", "locate", "pset", "preset", "line", "circle",
            "inkey", "getkey", "input", "beep", "x07_break", "x07_putc", "x07_puts", "inp",
-           "outp", "PEEK", "POKE", "main", "exit", "strlen", "strcpy", "atoi", "sprintf"}
+           "outp", "PEEK", "POKE", "main", "exit", "strlen", "strcpy", "atoi", "sprintf",
+           "sqrt", "sin", "cos", "tan", "atan", "exp", "log", "fabs", "floor", "trunc", "pow",
+           "val", "str", "fmt", "f_open", "f_gets", "f_puts", "f_printf", "f_putc", "f_getc",
+           "f_eof", "f_delete"}
 _C_TOKEN = re.compile(r"//.*|/\*.*?(?:\*/|$)|\"(?:[^\"\\]|\\.)*\"?|'(?:[^'\\]|\\.)*'?"
                       r"|^\s*#\s*\w+|0[xX][0-9A-Fa-f]+|[A-Za-z_]\w*|\d+(?:\.\d+)?|.")
 

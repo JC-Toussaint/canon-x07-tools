@@ -49,6 +49,21 @@ TEMPLATES = {   # point de départ d'un nouveau programme
            "    printf(\"Bonjour %s\\n\", nom);\n"
            "    return 0;\n"
            "}\n"),
+    ".qc": ("/* Nouveau programme Quick C pour le Canon X-07 : réels du X-07 */\n"
+            "#include <stdio.h>\n"
+            "\n"
+            "int main(void)\n"
+            "{\n"
+            "    real r, surface;\n"
+            "    char s[16];\n"
+            "    cls();\n"
+            "    printf(\"Rayon ? \");\n"
+            "    input(s, sizeof s);\n"
+            "    r = val(s);\n"
+            "    surface = 4 * atan(1) * r * r;\n"
+            "    printf(\"Surface %s\\n\", str(surface));\n"
+            "    return 0;\n"
+            "}\n"),
     ".asm": ("; Nouveau programme en assembleur pour le Canon X-07\n"
              "; Chargement : CLEAR 50,&H1BFF  puis  EXEC &H1C00\n"
              "\n"
@@ -65,7 +80,7 @@ TEMPLATES = {   # point de départ d'un nouveau programme
              "MSG:    DZ   \"BONJOUR X-07 !\"\n"),
 }
 KINDS = ((".bas", "BASIC du X-07"), (".qbas", "QuickBASIC"), (".pas", "Turbo Pascal"),
-         (".c", "C (SDCC)"), (".asm", "Assembleur Z80"))
+         (".c", "C (SDCC)"), (".qc", "Quick C (réels)"), (".asm", "Assembleur Z80"))
 
 # registres affichés en cases : (nom, chiffres hexadécimaux), par rangée
 REG_ROWS = ((("A", 2), ("F", 2), ("BC", 4), ("DE", 4), ("HL", 4)),
@@ -186,7 +201,7 @@ class Session:
             with open(self.path, encoding="utf-8", errors="replace") as f:
                 self.pas_info = pascal.display_info(f.read())
         self.c_vars = [(text.split()[1], a, int(text.split()[2])) for a, data, _, text in listing
-                       if self.kind == "c" and text.startswith("C ")]
+                       if self.kind in ("c", "qc") and text.startswith("C ")]
         self._map_lines(listing, symbols)
         kept = set()
         for line in self.break_lines:     # les points d'arrêt suivent la recompilation
@@ -216,7 +231,7 @@ class Session:
                     pairs.append((addr & 0xFFFF, src[1]))
         else:
             lab = {int(n[3:]): a for n, a in symbols.items() if re.fullmatch(r"LN_\d+", n)}
-            if self.kind in ("qbas", "pas", "c"):   # LN_n : ligne n du fichier
+            if self.kind in ("qbas", "pas", "c", "qc"):   # LN_n : ligne n du fichier
                 pairs = [(a, n) for n, a in lab.items()]
             else:                                   # BASIC du X-07 : numéro en tête de ligne
                 with open(self.path, encoding="utf-8", errors="replace") as f:
@@ -404,7 +419,7 @@ class Session:
             return self._pascal_variables()
         if self.kind in ("bas", "qbas"):
             return self._basic_variables()
-        if self.kind == "c":                        # globales et statiques du programme C
+        if self.kind in ("c", "qc"):                # globales et statiques du programme C
             return ["%s = %s   ($%04X)" % (n, self._data_text(a, size, {"s"} if size in (1, 2, 4)
                                                              else {"b"}), a)
                     for n, a, size in self.c_vars]
@@ -844,8 +859,9 @@ class Editeur:
         self.refresh()
 
     # -------------------------------------------------- fichier
-    FILETYPES = [("Programmes X-07", "*.bas *.qbas *.pas *.c *.asm"), ("BASIC du X-07", "*.bas"),
-                 ("QuickBASIC", "*.qbas"), ("Turbo Pascal", "*.pas"), ("C (SDCC)", "*.c"),
+    FILETYPES = [("Programmes X-07", "*.bas *.qbas *.pas *.c *.qc *.asm"),
+                 ("BASIC du X-07", "*.bas"), ("QuickBASIC", "*.qbas"), ("Turbo Pascal", "*.pas"),
+                 ("C (SDCC)", "*.c"), ("Quick C", "*.qc"),
                  ("Assembleur", "*.asm"),
                  ("Tous", "*")]
 
@@ -887,7 +903,7 @@ class Editeur:
         """Crée le programme (modèle selon l'extension) et l'ouvre."""
         ext = os.path.splitext(path)[1].lower()
         if ext not in TEMPLATES:
-            self.set_status("extension inconnue : .bas, .qbas, .pas, .c ou .asm")
+            self.set_status("extension inconnue : .bas, .qbas, .pas, .c, .qc ou .asm")
             return False
         with open(path, "w", encoding="utf-8") as f:
             f.write(TEMPLATES[ext])
@@ -912,7 +928,7 @@ class Editeur:
         """Enregistre le texte sous un autre nom, qui devient le fichier ouvert
         (les points d'arrêt sont gardés ; à recompiler)."""
         if os.path.splitext(path)[1].lower() not in TEMPLATES:
-            self.set_status("extension inconnue : .bas, .qbas, .pas, .c ou .asm")
+            self.set_status("extension inconnue : .bas, .qbas, .pas, .c, .qc ou .asm")
             return False
         if self.session is not None:
             self.sync_breaks_from_text()

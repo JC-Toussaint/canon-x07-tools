@@ -16,6 +16,7 @@ L'outil comprend aussi :
 - un **traducteur QuickBASIC** vers le BASIC du X-07 (étude, prototype) : [QBASIC.md](QBASIC.md) ;
 - un **Turbo Pascal 3.0 simplifié** (records, réels en double précision), compilé en code machine : [PASCAL.md](PASCAL.md) ;
 - des **programmes C**, compilés par SDCC, avec une bibliothèque pour l'écran, le clavier, les graphismes et le son : [C.md](C.md) ;
+- **Quick C**, du C où les réels du X-07 s'écrivent comme des nombres (`x = sqrt(a) * 2`) : [QUICKC.md](QUICKC.md) ;
 - le **transfert par le câble série** : [TRANSFERT.md](TRANSFERT.md).
 
 La carte des routines de la ROM est dans [ROM.md](ROM.md). Pour un premier parcours complet, voir le [guide de démarrage](../DEMARRAGE.md).
@@ -144,9 +145,10 @@ x07asm/runtime.py   bibliothèque d'exécution du compilateur
 x07asm/sim.py       simulateur Z80 pour essayer les programmes sur PC
 x07asm/emu.py       démarrage de la vraie ROM : le BASIC du X-07 sur PC
 x07asm/ccomp.py     programmes C : appel de SDCC (voir C.md) ; x07asm/c/ : démarrage, bibliothèque
+x07asm/qc.py        Quick C -> C (voir QUICKC.md)
 exemples/           caso.asm (livre, p. 60), bonjour.asm, mult32.asm,
                     interruptions.asm (détourne INT A, le clavier), *.bas ;
-                    pascal/, qbasic/, c/ : exemples dans ces langages ;
+                    pascal/, qbasic/, c/, qc/ : exemples dans ces langages ;
                     bench/ : vitesse comparée du C et du Pascal
 tests/              tests unitaires
 ```

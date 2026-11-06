@@ -19,7 +19,7 @@ from . import formats
 
 LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "c")
 SDCC_LIB = "/usr/share/sdcc/lib/z80"
-LIB_MODULES = ("x07.c", "x07real.c", "x07file.c", "x07fsp.c")   # bibliothèque (x07.h)
+LIB_MODULES = ("x07.c", "x07real.c", "x07rstr.c", "x07file.c", "x07fsp.c")   # bibliothèque (x07.h)
 FSET_RESERVED = 80     # sous les fichiers : FSET y écrit la zone des chaînes et sa pile
 
 
@@ -63,6 +63,17 @@ def _run(cmd, cwd, what):
 
 def _warnings(text):
     return [l.strip() for l in text.splitlines() if "warning" in l.lower()]
+
+
+def translate_qc(path):
+    """Texte C d'un programme Quick C (.qc) ; CError avec fichier et ligne."""
+    from . import qc
+    with open(path, encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    try:
+        return qc.translate(text, os.path.abspath(path))
+    except qc.QCError as e:
+        raise CError("%s:%s: %s" % (os.path.basename(path), e.line, e))
 
 
 def _read_map(path):
@@ -123,12 +134,17 @@ def build_c(path, org="auto", top=None, min_org=0x0600, ram_top=None):
     tmp = tempfile.mkdtemp(prefix="x07c_")
     try:
         warns = []
+        if path.lower().endswith(".qc"):          # Quick C : traduit en C, lignes gardées
+            src = os.path.join(tmp, name + "_qc.c")
+            with open(src, "w", encoding="utf-8") as f:
+                f.write(translate_qc(path))
         _run([sdas, "-plosgff", "crt0.rel", os.path.join(LIB, "crt0.s")], tmp,
              "démarrage crt0.s")
         lib = [os.path.splitext(f)[0] for f in LIB_MODULES]
         for c, rel in [(os.path.join(LIB, m + ".c"), m + ".rel") for m in lib] + \
                 [(src, name + ".rel")]:
-            out = _run([sdcc, "-mz80", "-c", "-I", LIB, c, "-o", rel], tmp,
+            out = _run([sdcc, "-mz80", "-c", "-I", LIB, "-I", os.path.dirname(os.path.abspath(path)),
+                        c, "-o", rel], tmp,
                        "erreur de compilation" if c == src else
                        "bibliothèque %s" % os.path.basename(c))
             if c == src:

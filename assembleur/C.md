@@ -54,7 +54,7 @@ Elle est compilée avec chaque programme et passe par les routines de la ROM, co
 
 Le type `real` (8 octets) est le réel **en double précision du BASIC du X-07** : 14 chiffres, calcul **décimal** (BCD). Chaque opération est faite par la routine de la ROM, si bien que les résultats sont les mêmes qu'en BASIC, au chiffre près : `0.1 + 0.2` vaut exactement `0.3`, et `1/3*3` vaut `.99999999999999`.
 
-Le C n'a pas d'opérateurs pour un type à soi : on écrit `r = a + b` sous la forme `r_add(&r, &a, &b)`. Le résultat peut être l'un des opérandes (`r_mul(&x, &x, &x)`).
+Le C n'a pas d'opérateurs pour un type à soi : on écrit `r = a + b` sous la forme `r_add(&r, &a, &b)`. Pour écrire simplement `r = a + b`, voir **Quick C** ([QUICKC.md](QUICKC.md)). Le résultat peut être l'un des opérandes (`r_mul(&x, &x, &x)`).
 
 ```c
 real x, deux, t;

@@ -39,8 +39,9 @@ COULEURS = {   # coloration syntaxique : thème clair, thème sombre
                "registre": "#e5a55a", "etiquette": "#e0c080"},
 }
 FONDS = {"clair": ("#fff3a8", "#ffd6d6"), "sombre": ("#5a5320", "#5a2a2a")}  # en cours, arrêt
-FILTRES = ("Programmes X-07 (*.bas *.qbas *.pas *.c *.asm);;BASIC du X-07 (*.bas);;"
-           "QuickBASIC (*.qbas);;Turbo Pascal (*.pas);;C (*.c);;Assembleur (*.asm);;Tous (*)")
+FILTRES = ("Programmes X-07 (*.bas *.qbas *.pas *.c *.qc *.asm);;BASIC du X-07 (*.bas);;"
+           "QuickBASIC (*.qbas);;Turbo Pascal (*.pas);;C (*.c);;Quick C (*.qc);;"
+           "Assembleur (*.asm);;Tous (*)")
 
 # touches de Qt -> noms de touches de tkinter (afficheur.send_key, HELD_KEYS)
 QT_KEYS = {Qt.Key.Key_Return: "Return", Qt.Key.Key_Enter: "KP_Enter",
@@ -596,7 +597,7 @@ class Editeur(QMainWindow):
         """Crée le programme (modèle selon l'extension) et l'ouvre."""
         ext = os.path.splitext(path)[1].lower()
         if ext not in TEMPLATES:
-            self.set_status("extension inconnue : .bas, .qbas, .pas, .c ou .asm")
+            self.set_status("extension inconnue : .bas, .qbas, .pas, .c, .qc ou .asm")
             return False
         with open(path, "w", encoding="utf-8") as f:
             f.write(TEMPLATES[ext])
@@ -616,7 +617,7 @@ class Editeur(QMainWindow):
         """Enregistre le texte sous un autre nom, qui devient le fichier ouvert
         (les points d'arrêt sont gardés ; à recompiler)."""
         if os.path.splitext(path)[1].lower() not in TEMPLATES:
-            self.set_status("extension inconnue : .bas, .qbas, .pas, .c ou .asm")
+            self.set_status("extension inconnue : .bas, .qbas, .pas, .c, .qc ou .asm")
             return False
         if self.session is not None:
             self.sync_breaks_from_text()

@@ -286,6 +286,37 @@ def cmd_c(args):
     return write_outputs(None, _CListing(prog), prog.mem, base, spec)
 
 
+def cmd_qc(args):
+    """Quick C : écrit le C produit (pour l'examiner), et compile."""
+    from . import basic, ccomp
+    try:
+        text = ccomp.translate_qc(args.source)
+    except ccomp.CError as e:
+        print("erreur : %s" % e, file=sys.stderr)
+        return 1
+    root = os.path.splitext(args.source)[0]
+    dest = args.output or root + "_qc.c"
+    with open(dest, "w", encoding="utf-8") as f:
+        f.write(text)
+    print("C produit -> %s" % dest)
+    spec = args.format or ""
+    if "asm" in spec.split(","):
+        print("erreur : pas de .asm ; le listing (-f lst) donne l'assembleur produit par SDCC",
+              file=sys.stderr)
+        return 1
+    try:
+        prog = build_c(args.source, args.org, args.ram)
+    except basic.CompileError as e:
+        print("erreur : %s" % e, file=sys.stderr)
+        return 1
+    if spec:
+        return write_outputs(None, _CListing(prog), prog.mem, root, spec)
+    print("%d octets avec les données : $%04X-$%04X ; sur le X-07 : CLEAR 50,&H%X  puis  "
+          "EXEC &H%X" % (prog.end + 1 - prog.entry, prog.entry, prog.end, prog.entry - 1,
+                         prog.entry))
+    return 0
+
+
 def cmd_basic(args):
     from . import basic
     try:
@@ -405,7 +436,7 @@ def cmd_run(args):
             mem = a.assemble_file(args.source)
             if a.errors:
                 raise basic.CompileError(str(a.errors[0]))
-        elif args.source.lower().endswith(".c"):
+        elif args.source.lower().endswith((".c", ".qc")):
             a = build_c(args.source, args.org, args.ram)
             mem = a.mem
         else:
@@ -488,7 +519,7 @@ def cmd_emu(args):
         print("erreur : --charger s'utilise avec --fenetre", file=sys.stderr)
         return 1
     src = ""
-    if args.source and args.source.lower().endswith((".asm", ".bin", ".rom", ".pas", ".c")):
+    if args.source and args.source.lower().endswith((".asm", ".bin", ".rom", ".pas", ".c", ".qc")):
         # un programme machine, pas un texte BASIC à taper au X-07
         print("erreur : %s n'est pas un programme BASIC ; pour le lancer :\n"
               "  python3 x07asm.py run %s --fenetre\n"
@@ -607,7 +638,7 @@ def _load_program(args):
             raise asmmod.AsmError(str(a.errors[0]))
         return mem, a.entry, max([max(mem)] + [v - 1 for k, v in a.symbols.items()
                                                if k == "VARS_END"])
-    if low.endswith(".c"):
+    if low.endswith((".c", ".qc")):
         prog = build_c(src, args.org or "auto", args.ram)
         return prog.mem, prog.entry, prog.end
     mem = formats.load_any(src, _num(args.org) if args.org and args.org != "auto" else None)
@@ -734,7 +765,7 @@ def load_for_debug(src, ram=16, org=None, entry=None, direct=False):
         if a.errors:
             raise asmmod.AsmError(str(a.errors[0]))
         start, listing, symbols = a.entry, a.listing, a.symbols
-    elif low.endswith(".c"):                     # LN_n : ligne n du source C
+    elif low.endswith((".c", ".qc")):            # LN_n : ligne n du source C
         prog = build_c(src, org or "auto", ram)
         mem, start, symbols = prog.mem, prog.entry, dict(prog.symbols)
         listing = [(a, b"", ("", 0), "C %s %d" % (n, size))     # variables : onglet de l'IDE
@@ -1045,13 +1076,24 @@ def main(argv=None):
     pa.set_defaults(func=cmd_pas)
 
     cc = sub.add_parser("c", help="compiler un programme C avec SDCC (voir C.md)")
-    cc.add_argument("source", help="programme C (extension .c)")
+    cc.add_argument("source", help="programme C (.c) ou Quick C (.qc)")
     cc.add_argument("-o", "--output", help="nom de base des fichiers produits")
     cc.add_argument("-f", "--format", help="bin,hex,lst,txt,bas (défaut : bin)")
     cc.add_argument("--ram", type=int, choices=(8, 16, 24), default=16,
                     help="mémoire du X-07 en Ko (défaut : 16)")
     cc.add_argument("--org", default="auto", help="adresse d'implantation (hexa)")
     cc.set_defaults(func=cmd_c)
+
+    qq = sub.add_parser("qc", help="Quick C : réels écrits comme des nombres, traduit en C "
+                                   "(examinable) puis compilé par SDCC (voir QUICKC.md)")
+    qq.add_argument("source", help="programme Quick C (extension .qc)")
+    qq.add_argument("-o", "--output", help="C produit (défaut : NOM_qc.c)")
+    qq.add_argument("-f", "--format", help="fichiers compilés en plus, à côté du source : "
+                                           "bin,hex,lst,txt,bas")
+    qq.add_argument("--ram", type=int, choices=(8, 16, 24), default=16,
+                    help="mémoire du X-07 en Ko (défaut : 16)")
+    qq.add_argument("--org", default="auto", help="adresse d'implantation (hexa)")
+    qq.set_defaults(func=cmd_qc)
 
     q = sub.add_parser("qb", help="traduire un programme QuickBASIC en BASIC du X-07")
     q.add_argument("source", help="programme QuickBASIC (extension .qbas)")
@@ -1071,7 +1113,7 @@ def main(argv=None):
     q.set_defaults(func=cmd_qb)
 
     r = sub.add_parser("run", help="exécuter un programme sur le simulateur (PC)")
-    r.add_argument("source", help="programme .bas, .qbas, .pas, .c ou source assembleur (.asm)")
+    r.add_argument("source", help="programme .bas, .qbas, .pas, .c, .qc ou source assembleur (.asm)")
     r.add_argument("-k", "--keys", help="touches pour INKEY$ (ex. \"AB\\r\")")
     r.add_argument("-i", "--input", action="append",
                    help="ligne tapée pour INPUT (répétable)")
@@ -1106,7 +1148,7 @@ def main(argv=None):
     e.add_argument("--max", type=int, default=50_000_000, help="instructions au plus")
     e.add_argument("--charger", metavar="FICHIER",
                    help="avec --fenetre : met un programme machine en mémoire, comme le câble "
-                        "(.bas, .qbas, .pas, .c compilés au passage, .asm, .hex, .bin avec --org) ; tapez ensuite EXEC")
+                        "(.bas, .qbas, .pas, .c, .qc compilés au passage, .asm, .hex, .bin avec --org) ; tapez ensuite EXEC")
     e.add_argument("--org", help="adresse (hexa) d'un .bin, ou implantation d'un .bas pour --charger")
     e.add_argument("--entry", help="adresse de lancement (hexa) d'un .bin pour --charger")
     e.add_argument("--fenetre", action="store_true",
@@ -1131,7 +1173,7 @@ def main(argv=None):
     rc.set_defaults(func=cmd_recepteur)
 
     sd = sub.add_parser("send", help="envoyer un programme au X-07 par le câble série (FT232RL)")
-    sd.add_argument("source", help=".bas, .qbas, .pas ou .c (compilé au passage), .asm, .hex, ou .bin avec --org")
+    sd.add_argument("source", help=".bas, .qbas, .pas, .c ou .qc (compilé au passage), .asm, .hex, ou .bin avec --org")
     sd.add_argument("-p", "--port", help="port série : /dev/ttyUSB0, COM3...")
     sd.add_argument("--baud", type=int, default=4800, choices=(1200, 2400, 4800, 8000))
     sd.add_argument("--org", help="adresse (hexa) d'un .bin, ou implantation d'un .bas")
