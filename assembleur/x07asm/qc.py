@@ -18,7 +18,8 @@ Règles :
   - constantes (2.5, 1E-3, et les entiers mêlés aux réels) : converties à la
     compilation par la routine FIN de la ROM.
   - fonctions : sqrt sin cos tan atan exp log fabs floor (INT) trunc (FIX)
-    pow(a, b) ; val(texte) -> réel ; str(x), fmt(x, chiffres, décimales) ->
+    pow(a, b) ; val(texte) -> réel ; f_val(canal) : nombre suivant d'un fichier
+    en RAM ; str(x), fmt(x, chiffres, décimales) ->
     texte (4 tampons tournants, pour printf).
   - une fonction peut prendre et rendre des réels (real f(real a, int n)) ; ils
     sont passés par valeur, comme en C (SDCC, qui ne passe pas de structure,
@@ -853,7 +854,7 @@ class Translator:
             name = f.a if f.k == "id" else None
             if name and name in self.funcs and self.lookup(name) == "func":
                 t = "real" if self.funcs[name][0] else "int"
-            elif name in REAL_FUNCS or name in ("pow", "val"):
+            elif name in REAL_FUNCS or name in ("pow", "val", "f_val"):
                 t = "real"
             else:
                 self.typeof(f)
@@ -1029,6 +1030,10 @@ class Translator:
             if len(args) != 1:
                 self.err("val : un argument (texte) attendu", line)
             return into("r_set", [self.iexpr(args[0])])
+        if name == "f_val":
+            if len(args) != 1:
+                self.err("f_val : un argument (canal) attendu", line)
+            return into("r_set", ["f_tok(%s)" % self.iexpr(args[0])])
         self.err("fonction réelle inconnue : %s" % name, line)
 
     def args(self, name, args):

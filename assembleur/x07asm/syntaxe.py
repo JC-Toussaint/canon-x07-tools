@@ -143,7 +143,7 @@ C_FUNCS = {"printf", "puts", "putchar", "cls", "locate", "pset", "preset", "line
            "outp", "PEEK", "POKE", "main", "exit", "strlen", "strcpy", "atoi", "sprintf",
            "sqrt", "sin", "cos", "tan", "atan", "exp", "log", "fabs", "floor", "trunc", "pow",
            "val", "str", "fmt", "f_open", "f_gets", "f_puts", "f_printf", "f_putc", "f_getc",
-           "f_eof", "f_delete"}
+           "f_eof", "f_delete", "f_val", "f_tok"}
 _C_TOKEN = re.compile(r"//.*|/\*.*?(?:\*/|$)|\"(?:[^\"\\]|\\.)*\"?|'(?:[^'\\]|\\.)*'?"
                       r"|^\s*#\s*\w+|0[xX][0-9A-Fa-f]+|[A-Za-z_]\w*|\d+(?:\.\d+)?|.")
 

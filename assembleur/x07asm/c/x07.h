@@ -87,6 +87,8 @@ int  f_gets(unsigned char channel, char *buf, int max);   /* une ligne, sans sa 
                                                     rend sa longueur, -1 en fin */
 int  f_eof(unsigned char channel);
 void f_delete(const char *name);                 /* NE Error s'il n'existe pas */
+char *f_tok(unsigned char channel);              /* valeur suivante (séparateurs : espace
+                                                    , ; fin de ligne) ; IO Error en fin */
 
 void x07_raise(unsigned char code);               /* erreur de la ROM : 5 FC, 22 IO... */
 

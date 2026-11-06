@@ -98,6 +98,7 @@ while (f_gets(2, s, sizeof s) >= 0)        /* -1 en fin de fichier */
 | `f_putc`, `f_puts`, `f_printf` | écrire un caractère, un texte, un texte mis en forme (80 caractères au plus) ; `'\n'` donne CR LF |
 | `f_gets(channel, buf, max)` | lire une ligne, sans sa fin ; rend sa longueur, ou -1 en fin de fichier |
 | `f_getc(channel)`, `f_eof(channel)` | lire un octet (-1 en fin) ; fin de fichier ? |
+| `f_tok(channel)` | valeur suivante, comme `INPUT #` : le texte jusqu'au séparateur suivant (espace, `,`, `;`, fin de ligne) ; `IO Error` au-delà de la fin. `atoi(f_tok(1))` pour un entier |
 | `f_delete(name)` | supprimer le fichier, comme `DELETE "NOM"` |
 | `f_close(channel)` | ne fait rien : le X-07 ne ferme pas les fichiers |
 

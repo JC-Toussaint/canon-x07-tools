@@ -122,6 +122,29 @@ int main(void)
 }''', lines=["10"])
         self.assertEqual(out, "10\n5  .3125  1 0\n")           # saisie en écho
 
+    def test_ram_files_with_reals(self):
+        out = run('''int main(void)
+{
+    real t, s = 0;
+    int j, n = 0;
+    f_open(1, "releve", F_WRITE, 300);
+    f_printf(1, "12 18.5\\n14,%s\\n", str(-2.25));
+    f_puts(1, "20 ; 7\\n");
+    f_open(2, "releve", F_READ, 0);
+    while (!f_eof(2)) {
+        j = f_val(2);
+        t = f_val(2);
+        s += t;
+        n++;
+        printf("%d:%s ", j, str(t));
+    }
+    printf("%d%s\\n", n, str(s / n));
+    t = f_val(2);
+    printf("jamais");
+    return 0;
+}''')
+        self.assertEqual(out, "12: 18.5 14:-2.25 20: 7 3 7.75\nIO Error\n")
+
     def test_sdcc_errors_point_to_qc_lines(self):
         with self.assertRaises(ccomp.CError) as e:
             run("int main(void)\n{\n    real x;\n    x = inconnue;\n    return 0;\n}\n")

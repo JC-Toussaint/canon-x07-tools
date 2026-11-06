@@ -53,6 +53,7 @@ C'est le C de SDCC, plus le type `real` et quelques fonctions. `x07.h` est inclu
 | `floor(x)`, `trunc(x)` | comme `INT` (partie entière par défaut) et `FIX` (tronquée) |
 | `pow(a, b)` | `a ^ b` |
 | `val(texte)` | réel lu dans un texte, comme `VAL` |
+| `f_val(canal)` | nombre suivant d'un fichier en RAM (voir plus bas) |
 | `str(x)`, `fmt(x, chiffres, décimales)` | texte, comme `STR$` et `PRINT USING "###.##"`, pour `printf("%s", …)`. Quatre au plus dans un même `printf` |
 | `real f(real a, int n)` | fonctions qui prennent ou rendent des réels, passés par valeur, comme en C |
 | `#define PI 3.14159265358979` | une macro qui vaut un nombre à virgule est un réel (un commentaire peut suivre). Un nom inconnu du traducteur, mêlé à un réel (macro calculée comme `#define G (9.81 * 2)`, `enum`), est refusé : le C le tronquerait en entier sans rien dire |
@@ -63,6 +64,26 @@ C'est le C de SDCC, plus le type `real` et quelques fonctions. `x07.h` est inclu
 - `1 / 3` reste une division entière, qui vaut 0 ; il faut écrire `1 / 3.0` ou `1.0 / 3`.
 
 **Constantes :** `2.5`, `1E-3`, et les entiers mêlés aux réels sont convertis **à la compilation**, par la routine `FIN` de la ROM, comme les constantes du BASIC compilé. Elles ne coûtent rien à l'exécution.
+
+## Fichiers en RAM
+
+Les fichiers en RAM du C ([C.md](C.md#fichiers-en-ram) : `f_open`, `f_gets`, `f_printf`…) servent tels quels. Pour les réels, on écrit leur texte, et on relit les nombres un par un avec `f_val` :
+
+```c
+real t;
+int jour;
+f_open(1, "releve", F_APPEND, 500);
+f_printf(1, "%d %s\n", 12, str(18.5));    /* une ligne : « 12 18.5 » */
+f_open(2, "releve", F_READ, 0);
+while (!f_eof(2)) {
+    jour = f_val(2);                      /* nombre suivant, comme INPUT # */
+    t = f_val(2);
+}
+```
+
+`f_val(canal)` lit le nombre suivant du fichier. Les nombres peuvent être séparés par des espaces, des virgules, des points-virgules ou des fins de ligne, si bien qu'un fichier écrit par `PRINT #` en BASIC se relit aussi. Lire au-delà de la fin donne `IO Error`, comme sur le X-07 ; `f_eof` le prévient.
+
+Exemple complet : `exemples/qc/conso.qc`, un carnet de consommation d'une voiture (pleins, litres aux 100 km).
 
 ## Ce que fait le traducteur
 
@@ -93,7 +114,9 @@ devient (voir `python3 x07asm.py qc`)
 ```
 x07asm/qc.py         traducteur Quick C -> C
 x07asm/c/x07rstr.c   str(x), fmt(x, ...) : textes dans des tampons tournants
+x07asm/c/x07ftok.c   f_tok, qui sert à f_val : valeur suivante d'un fichier
 exemples/qc/         reels.qc (Newton, e, sinus), pret.qc (prêt, courbe) : comparer à exemples/c/
-                     tir.qc (tir balistique : durée, portée, hauteur, trajectoire)
+                     tir.qc (tir balistique : durée, portée, hauteur, trajectoire),
+                     conso.qc (consommation d'une voiture, dans un fichier en RAM)
 tests/test_qc.py     traduction, calculs, fonctions, erreurs
 ```
