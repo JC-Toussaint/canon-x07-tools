@@ -55,7 +55,7 @@ C'est le C de SDCC, plus le type `real` et quelques fonctions. `x07.h` est inclu
 | `val(texte)` | réel lu dans un texte, comme `VAL` |
 | `str(x)`, `fmt(x, chiffres, décimales)` | texte, comme `STR$` et `PRINT USING "###.##"`, pour `printf("%s", …)`. Quatre au plus dans un même `printf` |
 | `real f(real a, int n)` | fonctions qui prennent ou rendent des réels, passés par valeur, comme en C |
-| `#define PI 3.14159265358979` | une macro qui vaut un nombre à virgule est un réel |
+| `#define PI 3.14159265358979` | une macro qui vaut un nombre à virgule est un réel (un commentaire peut suivre). Un nom inconnu du traducteur, mêlé à un réel (macro calculée comme `#define G (9.81 * 2)`, `enum`), est refusé : le C le tronquerait en entier sans rien dire |
 
 **Conversions, comme en C :**
 - Un entier mêlé à un réel est converti en réel (`x * 2`, `x = n`).
@@ -94,5 +94,6 @@ devient (voir `python3 x07asm.py qc`)
 x07asm/qc.py         traducteur Quick C -> C
 x07asm/c/x07rstr.c   str(x), fmt(x, ...) : textes dans des tampons tournants
 exemples/qc/         reels.qc (Newton, e, sinus), pret.qc (prêt, courbe) : comparer à exemples/c/
+                     tir.qc (tir balistique : durée, portée, hauteur, trajectoire)
 tests/test_qc.py     traduction, calculs, fonctions, erreurs
 ```

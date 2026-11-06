@@ -132,6 +132,7 @@ class Translator:
         self.funcs = {}                                    # nom -> (rend un réel, [types])
         self.consts = {}                                   # texte -> (nom, octets)
         self.real_macros = {}                              # #define PI 3.14 -> texte
+        self.int_macros = set()                            # #define N 10
         self.temps = 0
         self.max_temps = 0
         self.in_func = None
@@ -139,11 +140,15 @@ class Translator:
         self.in_for = False
         self.static = False
         for t in self.toks:
-            if t.kind == "pp":
-                m = re.match(r"\s*#\s*define\s+(\w+)\s+(-?)\s*([\d.]+(?:[eE][+-]?\d+)?)\s*$",
-                             t.text)
+            if t.kind == "pp":                            # commentaires ôtés : #define G 9.81 /* */
+                line = re.sub(r"/\*.*?\*/|//.*", " ", t.text, flags=re.S)
+                m = re.match(r"\s*#\s*define\s+(\w+)\s+\(?\s*(-?)\s*([\d.]+(?:[eE][+-]?\d+)?)"
+                             r"\s*\)?\s*$", line)
                 if m and is_real_literal(m.group(3)):
                     self.real_macros[m.group(1)] = m.group(2) + m.group(3)
+                elif re.match(r"\s*#\s*define\s+(\w+)\s+\(?\s*-?\s*(?:0[xX][0-9A-Fa-f]+|\d+)"
+                              r"[uUlL]*\s*\)?\s*$", line):
+                    self.int_macros.add(re.match(r"\s*#\s*define\s+(\w+)", line).group(1))
 
     # ------------------------------------------------ jetons
     def tok(self, k=0):
@@ -931,6 +936,7 @@ class Translator:
             p = self.const(lit)
             return "(*%s = *%s, %s)" % (dst, p, dst) if dst else p
         if n.t != "real":                                  # entier -> réel
+            self.check_known(n)
             i = self.iexpr(n)
             return into(lambda d: "r_int(%s, %s)" % (d, i))
         k = n.k
@@ -985,6 +991,21 @@ class Translator:
         if k == "call":
             return self.rcall(n, dst)
         self.err("expression réelle non gérée", self.code[n.s].line)
+
+    def check_known(self, n):
+        """Un entier converti en réel ne doit pas contenir de nom inconnu : une macro
+        réelle que le traducteur n'a pas su lire serait tronquée par le C."""
+        if n.k == "id" and self.lookup(n.a) is None and n.a not in self.int_macros \
+                and n.a not in self.funcs:
+            self.err("%s mêlé à un réel : nom inconnu (macro ?). Écrivez #define %s 2.5 "
+                     "avec un nombre seul, ou déclarez une variable" % (n.a, n.a),
+                     self.code[n.s].line)
+        if n.k == "call":                                  # nom de fonction : connu de C
+            for a in n.a[1]:
+                self.check_known(a)
+            return
+        for c in self.children(n):
+            self.check_known(c)
 
     def rcall(self, n, dst):
         f, args = n.a

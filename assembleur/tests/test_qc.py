@@ -50,13 +50,21 @@ class TestTranslation(unittest.TestCase):
         self.assertEqual(body.count("\n"), src.count("\n"))
         self.assertIn("r_mul", body.split("\n")[3])
 
+    def test_real_and_int_macros(self):
+        out = self.tr("#define G 9.81   /* commentaire */\n#define N (10)\n"
+                      "real x; int main(void) { x = x * G + N; return 0; }")
+        self.assertIn("/* 9.81 */", out)                    # constante réelle, pas tronquée
+        self.assertIn("r_int(&_qc_t2, N)", out)
+
     def test_errors(self):
         for src, msg in (
                 ("real x; int main(void) { printf(\"%d\", x); return 0; }", "str(x)"),
                 ("real x; int main(void) { int n = 3; n = n % x; return 0; }", "« % »"),
                 ("struct p { real x; };", "structure"),
                 ("real a, b = a * 2;", "constante"),
-                ("int main(void) { real x; int n; n += x; return 0; }", "n = n + x")):
+                ("int main(void) { real x; int n; n += x; return 0; }", "n = n + x"),
+                ("#define G (9.81 * 2)\nreal x; int main(void) { x = x * G; return 0; }",
+                 "G mêlé à un réel")):
             with self.assertRaises(qc.QCError) as e:
                 self.tr(src)
             self.assertIn(msg, str(e.exception), src)
