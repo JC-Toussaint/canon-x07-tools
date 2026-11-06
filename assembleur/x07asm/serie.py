@@ -211,10 +211,11 @@ def text_lines(src):
     return lines
 
 
-def send_text(port, lines, pause_car=0.01, pause_ligne=0.3, restore=True, log=print):
+def send_text(port, lines, pause_car=0.02, pause_ligne=0.5, restore=True, log=print):
     """Envoie les lignes au X-07 qui a exécuté text_setup(), un caractère à la
     fois : rien ne signale que le X-07 a fini une ligne (pas d'écho, RTS non
-    câblé), d'où des pauses fixes, larges par prudence."""
+    câblé), d'où des pauses fixes.  0,02 s et 0,5 s : vérifié sur la machine
+    à 4800 bauds, avec des lignes de plus de 70 caractères (exemples/titre.bas)."""
     todo = lines + ([TEXT_RESTORE] if restore else [])
     for k, line in enumerate(todo, 1):
         for b in (line + "\r").encode("ascii"):

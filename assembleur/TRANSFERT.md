@@ -72,7 +72,7 @@ Le PC n'a jamais plus de 22 octets d'avance, ce qui tient dans le tampon de 32 o
 - **Avec le X-07 émulé**, qui fait tourner les vrais pilotes série de la ROM et une UART émulée : le binaire arrive intact à 1200, 4800 et 8000 bauds, sans octet perdu. Le cas du `CLEAR` oublié est bien détecté.
 - **Par un pseudo-port série Linux** relié au X-07 émulé : le vrai code d'envoi fonctionne, avec pyserial comme avec termios.
 
-**Avec la machine réelle**, le premier essai a montré que la liaison du X-07 est en logique inversée : le « R » arrive en `2B 00` sur un FT232RL non inversé, et le X-07 répond « IO Error in 30 ». Le transfert complet reste à confirmer une fois TXD et RXD inversés. Il reste aussi à vérifier le nombre de bits d'arrêt du mode `B`.
+**Avec la machine réelle**, le premier essai a montré que la liaison du X-07 est en logique inversée : le « R » arrive en `2B 00` sur un FT232RL non inversé, et le X-07 répond « IO Error in 30 ». Avec TXD et RXD inversés (par un 74HC04 sur un clone de FT232R), la liaison fonctionne dans les deux sens, et l'envoi en texte (`--texte`) est vérifié. Le transfert d'un programme machine par le récepteur reste à confirmer. Il reste aussi à vérifier le nombre de bits d'arrêt du mode `B`.
 
 ## Envoi d'un programme BASIC en texte (`--texte`)
 
@@ -96,11 +96,11 @@ Les lignes s'ajoutent au programme déjà en mémoire : faites `NEW` avant l'ét
 
 | Option | Rôle |
 |---|---|
-| `--pause-car` | pause après chaque caractère, en secondes (défaut 0,01) |
-| `--pause-ligne` | pause après chaque ligne, le temps que le X-07 la range (défaut 0,3) |
+| `--pause-car` | pause après chaque caractère, en secondes (défaut 0,02) |
+| `--pause-ligne` | pause après chaque ligne, le temps que le X-07 la range (défaut 0,5) |
 | `--garder` | ne pas rendre le clavier à la fin : le X-07 continue de lire la prise série, et l'on peut lui envoyer des commandes depuis un terminal |
 
-Rien ne signale au PC que le X-07 a fini une ligne : pas d'écho, et RTS n'est pas câblé. L'envoi repose donc sur des pauses fixes, choisies larges. Si des lignes arrivent tronquées, augmentez `--pause-ligne`, puis `--pause-car`. Les lignes de plus de 79 caractères et les caractères hors ASCII (lettres accentuées) sont refusés avant l'envoi : l'éditeur du X-07 les perdrait.
+Rien ne signale au PC que le X-07 a fini une ligne : pas d'écho, et RTS n'est pas câblé. L'envoi repose donc sur des pauses fixes. Si des caractères manquent dans les lignes longues, augmentez `--pause-car` ; si des lignes entières manquent ou se collent, augmentez `--pause-ligne`. Les lignes de plus de 79 caractères et les caractères hors ASCII (lettres accentuées) sont refusés avant l'envoi : l'éditeur du X-07 les perdrait.
 
 ### La fonction cachée `$EE1F`
 
@@ -114,7 +114,16 @@ Si un envoi est interrompu, le clavier reste muet. Pour le rétablir, envoyez la
 
 ### Vérification
 
-Dans l'émulateur, avec le vrai éditeur de la ROM et l'UART émulée : le programme reçu est **identique, octet pour octet**, à celui tapé au clavier, sans octet perdu, et le clavier est bien rétabli. L'émulation n'impose aucune pause, mais son affichage est instantané alors que le vrai X-07 passe chaque caractère au T6834 : les pauses par défaut restent à confirmer sur la machine.
+Dans l'émulateur, avec le vrai éditeur de la ROM et l'UART émulée : le programme reçu est **identique, octet pour octet**, à celui tapé au clavier, sans octet perdu, et le clavier est bien rétabli. L'émulation n'impose aucune pause, car son affichage est instantané.
+
+**Sur la machine réelle**, à 4800 bauds, avec `exemples/titre.bas` (lignes de plus de 70 caractères) :
+
+| `--pause-car` | `--pause-ligne` | Résultat |
+|---|---|---|
+| 0,01 | 0,3 | erreurs : le X-07, qui affiche et fait défiler chaque ligne, prend du retard et son tampon de 32 octets déborde |
+| 0,02 | 0,5 | programme reçu sans erreur : ce sont les valeurs par défaut |
+
+Compter environ 0,02 s par caractère et 0,5 s par ligne : une dizaine de lignes partent en une quinzaine de secondes.
 
 ## Autres moyens de transfert
 

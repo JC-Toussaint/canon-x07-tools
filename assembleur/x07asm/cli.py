@@ -1188,10 +1188,10 @@ def main(argv=None):
     sd.add_argument("--texte", action="store_true",
                     help="envoyer un .bas en texte, comme tapé au clavier, sans le compiler "
                          "(le X-07 exécute d'abord INIT#5,\"COM:\":EXEC &HEE1F)")
-    sd.add_argument("--pause-car", type=float, default=0.01,
-                    help="--texte : pause après chaque caractère, en s (défaut 0,01)")
-    sd.add_argument("--pause-ligne", type=float, default=0.3,
-                    help="--texte : pause après chaque ligne, en s (défaut 0,3)")
+    sd.add_argument("--pause-car", type=float, default=0.02,
+                    help="--texte : pause après chaque caractère, en s (défaut 0,02)")
+    sd.add_argument("--pause-ligne", type=float, default=0.5,
+                    help="--texte : pause après chaque ligne, en s (défaut 0,5)")
     sd.add_argument("--garder", action="store_true",
                     help="--texte : ne pas rendre le clavier au X-07 à la fin")
     sd.set_defaults(func=cmd_send)
