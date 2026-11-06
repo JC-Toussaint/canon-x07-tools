@@ -83,7 +83,7 @@ while (!f_eof(2)) {
 
 `f_val(canal)` lit le nombre suivant du fichier. Les nombres peuvent être séparés par des espaces, des virgules, des points-virgules ou des fins de ligne, si bien qu'un fichier écrit par `PRINT #` en BASIC se relit aussi. Lire au-delà de la fin donne `IO Error`, comme sur le X-07 ; `f_eof` le prévient.
 
-Exemple complet : `exemples/qc/conso.qc`, un carnet de consommation d'une voiture (pleins, litres aux 100 km).
+Exemples complets : `exemples/qc/conso.qc`, un carnet de consommation d'une voiture (pleins, litres aux 100 km), et `exemples/qc/notes.qc`, un carnet de notes (noms lus par `f_tok`, notes par `f_val`).
 
 ## Ce que fait le traducteur
 
@@ -117,6 +117,7 @@ x07asm/c/x07rstr.c   str(x), fmt(x, ...) : textes dans des tampons tournants
 x07asm/c/x07ftok.c   f_tok, qui sert à f_val : valeur suivante d'un fichier
 exemples/qc/         reels.qc (Newton, e, sinus), pret.qc (prêt, courbe) : comparer à exemples/c/
                      tir.qc (tir balistique : durée, portée, hauteur, trajectoire),
-                     conso.qc (consommation d'une voiture, dans un fichier en RAM)
+                     conso.qc (consommation d'une voiture, dans un fichier en RAM),
+                     notes.qc (carnet de notes : moyennes, écart type, dans un fichier)
 tests/test_qc.py     traduction, calculs, fonctions, erreurs
 ```
