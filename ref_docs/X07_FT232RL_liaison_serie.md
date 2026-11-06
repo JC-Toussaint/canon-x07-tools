@@ -75,6 +75,30 @@ Version compacte :
 
 > ⚠️ **Sens de lecture :** le guide n'indique pas si ce dessin montre la face avant de la prise ou le côté soudure. Le connecteur CN12 du X-722 (p. 62) est dessiné avec le même brochage, tourné de 180°. **Vérifiez l'orientation au multimètre avant de souder** (voir §6).
 
+### La prise et sa fiche
+
+**Aucune norme.** Le catalogue des pièces du guide (p. 35) ne donne qu'une référence Canon interne : **CN9 = WS1-0221-000**, « Connector, 9P », SERIAL PORT. Je n'en ai trouvé aucun équivalent chez les fabricants de connecteurs.
+
+**Ce que dit le guide :**
+
+- **Contacts plats.** Le dessin du câble **XC-940** (p. 81) représente la fiche avec des contacts **rectangulaires**, sur deux rangées décalées : 1-3-5-7-9 d'un côté, 2-4-6-8 de l'autre. Une broche Dupont (carrée, de 0,64 mm) est trop fine pour ces logements : elle bouge et donne des **faux contacts**.
+- **Le X-722 a la même prise.** Son CN2 porte la même référence, WS1-0221-000 (p. 59). Il s'y raccorde par une pièce rigide, la n° 12 de la vue éclatée (p. 58), appelée « Flat cable, 8P » (EH2-0398-000) : un peigne de lamelles plates.
+
+**La solution publiée :** un amateur a reproduit la fiche ([ketturi.kapsi.fi, 2018](https://ketturi.kapsi.fi/2018/03/serial-port-for-canon-x-07/)).
+
+- Il a mesuré des contacts plats d'environ 3 × 2,5 mm, d'après le résumé de son article.
+- Il a réutilisé les **broches d'une fiche D-sub mâle démontée** (DB9 ou DB25), qui entrent dans les logements du X-07.
+- Il les tient au bon écartement dans un boîtier imprimé en 3D.
+
+**En pratique :**
+
+- **Seuls 4 contacts servent** : SP-4, SP-5, SP-6 et SP-8. Ils sont tous sur la rangée paire (2-4-6-8).
+- **La fiche :** des broches de DB9 mâle, soudées aux fils et tenues par un bout de plaque à trous, de la colle chaude ou une pièce imprimée.
+- **En dépannage :** une patte plate de composant en boîtier TO-220 remplit mieux le logement qu'une broche Dupont.
+- **L'écartement exact des contacts n'est pas documenté.** Mesurez-le au pied à coulisse avant de fabriquer la fiche.
+
+> Des octets faussés seulement dans le sens X-07 → PC, par exemple le « R » reçu en `52`, `D2`, `F2` ou `FD`, peuvent venir d'un faux contact sur SP-4 ou SP-8.
+
 ---
 
 ## 4. Câblage
@@ -102,7 +126,7 @@ FT232RL (VCCIO = 5V)            Canon X-07 CN9
 - 1 module FT232RL (TTL) ;
 - 1 résistance de 10 kΩ (pull-down sur RXD du FTDI) ;
 - 1 fil entre le +5 V du FTDI et SP-6 (vous pouvez aussi le souder dans la fiche du câble) ;
-- 1 fiche compatible avec CN9.
+- 1 fiche compatible avec CN9 : prise non normalisée, à contacts plats (voir §3, « La prise et sa fiche »).
 
 ---
 
