@@ -208,6 +208,31 @@ int main(void) { f_open(1, "petit", F_WRITE, 10); f_puts(1, "0123456789AB"); ret
         self.assertEqual(prog.file_space, 0)
         self.assertGreater(prog.end, 0x3FFF - 1024)               # en haut de la RAM
 
+    def test_light_printf_matches_c(self):
+        # printf de x07.lib (x07printf.c), comparé au % de Python (mêmes règles que C)
+        cases = [("%d", "0"), ("%d", "-32768"), ("%d", "32767"), ("%u", "65535"),
+                 ("%5d", "-42"), ("%-5d|", "42"), ("%05d", "-42"), ("%x", "48879"),
+                 ("%X", "48879"), ("%o", "8"), ("%ld", "-2147483647L"), ("%lu", "4294967295UL"),
+                 ("%lx", "3735928559UL"), ("%8ld", "70000L"), ("%c", "'A'"), ("%3c|", "'z'"),
+                 ("%s", '"abc"'), ("%-6s|", '"ab"'), ("%6s|", '"ab"'), ("%%", None),
+                 ("%2u", "7")]
+        body = "\n".join('    printf("[%s]\\n"%s);' % (f, ", " + v if v else "") for f, v in cases)
+        prog = build('#include <stdio.h>\n#include "x07.h"\nint main(void)\n{\n    char b[20];\n'
+                     + body + '\n    sprintf(b, "<%d,%s>", 12, "x");\n    printf("%s %d", b, '
+                     'printf("ok"));\n    return 0;\n}\n')
+        self.assertNotIn("_print_format", ccomp.LIB_MODULES)       # pas celui de SDCC
+        out = run(prog).output()
+        want = ""
+        for f, v in cases:
+            val = None if v is None else eval(v.rstrip("UL").rstrip("L")) if not v.startswith("'") \
+                else v[1]
+            if f[-1] in "dulxXo" and val is not None and "l" not in f and f[-1] != "d":
+                val &= 0xFFFF
+            if "l" in f and f[-1] in "uxX":
+                val &= 0xFFFFFFFF
+            want += "[%s]\n" % (f.replace("l", "") % val if val is not None else "%")
+        self.assertEqual(out, want + "ok<12,x> 2")
+
     def test_compile_error_is_reported(self):
         with self.assertRaises(ccomp.CError) as e:
             build("int main(void) { return x; }", name="faux.c")

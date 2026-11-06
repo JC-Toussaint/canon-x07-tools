@@ -19,7 +19,8 @@ from . import formats
 
 LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "c")
 SDCC_LIB = "/usr/share/sdcc/lib/z80"
-LIB_MODULES = ("x07.c", "x07real.c", "x07rstr.c", "x07file.c", "x07ftok.c", "x07fsp.c")   # bibliothèque (x07.h)
+LIB_MODULES = ("x07.c", "x07printf.c", "x07real.c", "x07rstr.c", "x07file.c", "x07ftok.c",
+               "x07fsp.c")   # bibliothèque (x07.h)
 FSET_RESERVED = 80     # sous les fichiers : FSET y écrit la zone des chaînes et sa pile
 
 

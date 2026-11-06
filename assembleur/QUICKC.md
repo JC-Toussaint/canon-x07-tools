@@ -37,7 +37,7 @@ r_mul(&mens, &capital, &r);
 r_div(&mens, &mens, &u);
 ```
 
-Le programme produit est le même : Quick C n'est ni plus lent ni beaucoup plus gros (pour `pret` : 687 000 instructions au lieu de 681 000, 5 783 octets au lieu de 5 615).
+Le programme produit est le même : Quick C n'est ni plus lent ni beaucoup plus gros (pour `pret` : 4 186 octets au lieu de 4 036, et à peine 1 % d'instructions en plus).
 
 ## Le langage
 

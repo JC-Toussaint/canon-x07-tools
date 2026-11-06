@@ -37,7 +37,7 @@ Elle est compilée avec chaque programme et passe par les routines de la ROM, co
 
 | Fonction | Rôle |
 |---|---|
-| `printf`, `puts`, `putchar` | écriture à l'écran (bibliothèque de SDCC). `'\n'` passe à la ligne |
+| `printf`, `puts`, `putchar`, `sprintf` | écriture à l'écran, ou dans une chaîne. `printf` est un **printf léger**, propre à `x07.lib` : `%d %i %u %x %X %o %c %s %%`, `l` pour un `long` (`%ld`), largeur (`%5d`, `%*d`), `-` à gauche (`%-12s`), `0` pour des zéros (`%05d`) ; pas de `%f`. `'\n'` passe à la ligne |
 | `cls()`, `locate(col, ligne)` | efface l'écran ; place le curseur (colonne 0-19, ligne 0-3, comme `LOCATE`) |
 | `x07_putc(c)`, `x07_puts(s)` | un caractère (codes de contrôle admis), une chaîne |
 | `pset(x, y)`, `preset(x, y)`, `line(x1, y1, x2, y2)`, `circle(x, y, r)` | graphismes : x de 0 à 119, y de 0 à 31 |
@@ -116,15 +116,15 @@ Les mêmes programmes, écrits dans les deux langages (`exemples/bench/`), ont �
 
 | Programme | C | Turbo Pascal | C plus rapide | Octets C / Pascal |
 |---|---|---|---|---|
-| `crible` : crible d'Ératosthène jusqu'à 2000 | 101 000 (0,2 s) | 327 000 (0,65 s) | 3,2 fois | 5 707 / 4 805 |
-| `fib` : Fibonacci(18) récursif | 146 000 (0,3 s) | 1 840 000 (3,7 s) | 12,6 fois | 3 594 / 627 |
-| `prodi` : double boucle 100 x 100, multiplication | 797 000 | 1 087 000 | 1,4 fois | 3 664 / 605 |
-| `racines` : somme de 30 racines carrées (réels) | 2 075 000 | 2 079 000 | pareil | 4 500 / 1 735 |
+| `crible` : crible d'Ératosthène jusqu'à 2000 | 100 000 (0,2 s) | 327 000 (0,65 s) | 3,3 fois | 4 128 / 4 805 |
+| `fib` : Fibonacci(18) récursif | 144 000 (0,3 s) | 1 840 000 (3,7 s) | 12,7 fois | 2 015 / 627 |
+| `prodi` : double boucle 100 x 100, multiplication | 796 000 | 1 087 000 | 1,4 fois | 2 085 / 605 |
+| `racines` : somme de 30 racines carrées (réels) | 2 075 000 | 2 079 000 | pareil | 2 921 / 1 735 |
 
 - **Le C va plus vite sur les entiers, et surtout sur les appels de fonction.** SDCC produit directement de l'assembleur, et garde les variables dans les registres quand il le peut. Le Pascal passe par le QuickBASIC : ses variables sont en mémoire, et il sauve ses variables locales à chaque appel récursif.
 - **Le Pascal vérifie, pas le C.** Le Pascal signale le dépassement des entiers (`OV Error`) et les indices hors du tableau, et il teste BREAK à chaque ligne. En C, `32767 + 1` donne `-32768`, et un indice faux écrit ailleurs en mémoire.
 - **Avec des réels, les deux langages se valent :** le calcul est fait par la même routine de la ROM.
-- **Le C est plus gros :** `printf` coûte à lui seul 3 Ko environ.
+- **Le C est en général plus gros :** démarrage, bibliothèque et `printf` (1,3 Ko) font environ 2 Ko, que le Pascal n'a pas.
 
 ## Mémoire
 
@@ -132,7 +132,7 @@ Les mêmes programmes, écrits dans les deux langages (`exemples/bench/`), ont �
 - **Pile :** le programme garde celle du BASIC, sous lui.
 - **Variables globales :** remises à leur valeur de départ (ou à 0) à chaque `EXEC`.
 - **Allocation dynamique :** `malloc` réserve 1 Ko de tas (bibliothèque de SDCC).
-- **Taille :** `printf` coûte environ 3 Ko. Pour un petit programme, `x07_puts` et `x07_putc` suffisent.
+- **Taille :** `printf` coûte environ 1,3 Ko : c'est le printf léger de `x07.lib`, qui remplace celui de SDCC (2,9 Ko). Pour un petit programme, `x07_puts` et `x07_putc` suffisent.
 
 ## Ce que le C du X-07 ne fait pas
 
@@ -148,7 +148,7 @@ x07asm/c/crt0.s  (démarrage) ------+--sdldz80 (+ z80.lib)--> .ihx --> mémoire 
 x07asm/c/x07*.c  (x07.lib) --------+
 ```
 
-- **Bibliothèque :** `x07.c`, `x07real.c`, `x07file.c` et `x07fsp.c` sont réunis dans `x07.lib` (par `sdar`). L'éditeur de liens n'y prend que les modules utilisés : un programme sans `real` n'emporte pas les réels, ni un programme sans `f_open` les fichiers. `x07fsp.c` ne contient que la taille par défaut de la zone des fichiers : il n'est pas pris si le programme la définit.
+- **Bibliothèque :** `x07.c`, `x07printf.c`, `x07real.c`, `x07rstr.c`, `x07file.c`, `x07ftok.c` et `x07fsp.c` sont réunis dans `x07.lib` (par `sdar`). L'éditeur de liens consulte `x07.lib` avant `z80.lib` : son `printf` remplace celui de SDCC. L'éditeur de liens n'y prend que les modules utilisés : un programme sans `real` n'emporte pas les réels, ni un programme sans `f_open` les fichiers. `x07fsp.c` ne contient que la taille par défaut de la zone des fichiers : il n'est pas pris si le programme la définit.
 - **`crt0.s`** sauve les registres et la pile du BASIC, initialise les variables, appelle `main`, puis rend la main au BASIC (fin de `main` ou `exit()`). Les zones suivent le code dans cet ordre : `_CODE`, `_INITIALIZER`, `_GSINIT`, `_DATA`, `_INITIALIZED`, puis le tas.
 - **Placement automatique :** un premier lien en `$1000` donne la taille, un second place le programme en haut de la RAM.
 - **Convention d'appel de SDCC 4 :** premier argument dans A (octet) ou HL (mot), second dans L ou DE, résultat dans A ou DE. Les enveloppes de la ROM, dans `x07.c`, sauvent IX et IY.
@@ -163,6 +163,7 @@ x07asm/c/x07.h       bibliothèque d'appui : déclarations
 x07asm/c/x07.c       écran, clavier, graphismes, son, BREAK, erreurs (ROM du X-07)
 x07asm/c/x07real.c   réels en double précision de la ROM
 x07asm/c/x07file.c   fichiers en RAM ; x07fsp.c : taille par défaut de leur zone
+x07asm/c/x07printf.c printf léger (printf, vprintf, sprintf, vsprintf)
 exemples/c/          bonjour.c (saisie, printf, récursivité), dessin.c (graphismes, son),
                      reels.c (réels de la ROM), pret.c (prêt : mensualité, courbe),
                      carnet.c (carnet d'adresses dans un fichier en RAM)
