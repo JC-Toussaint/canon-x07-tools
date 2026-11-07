@@ -12,6 +12,8 @@ python3 x07asm.py send exemples/c/bonjour.c --port /dev/ttyUSB0   # vers la mach
 
 **Sous Windows,** installez SDCC avec l'installeur de [sdcc.sourceforge.net](https://sdcc.sourceforge.net/). L'outil le trouve dans `C:\Program Files\SDCC` même si l'installeur ne l'a pas ajouté au PATH. S'il est installé ailleurs, définissez `SDCC_HOME` (par exemple `set SDCC_HOME=D:\SDCC`). Les commandes s'écrivent `python x07asm.py …`. Il en va de même pour les programmes Quick C (`.qc`).
 
+**Versions de SDCC :** l'outil a été essayé avec SDCC 4.2.0 (paquet Debian, Ubuntu, WSL) et 4.6.0 (installeur Windows). Les deux versions écrivent leurs listings (`.rst`) différemment : SDCC 4.6 donne les adresses sur 8 chiffres hexadécimaux, SDCC 4.2 sur 6. L'outil lit les deux formats. C'est de ces listings qu'il tire l'adresse de chaque ligne du source, pour les points d'arrêt, le pas à pas et les variables du débogueur. Les tests C et Quick C passent avec les deux versions.
+
 Les commandes `run`, `send`, `debug`, `ide` et `emu --charger` acceptent les `.c`. Dans l'IDE, on peut poser des points d'arrêt sur les lignes C, avancer ligne par ligne, et voir les variables globales et `static`, puis les locales de la fonction en cours ; les `real` s'affichent comme des nombres (voir [DEBOGUEUR.md](DEBOGUEUR.md#programmes-c-et-quick-c)).
 
 ## Un premier programme
