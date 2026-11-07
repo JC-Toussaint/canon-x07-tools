@@ -134,6 +134,13 @@ def _read_map(path):
     return syms
 
 
+# adresse en tête d'une ligne du listing (.rst) : 6 chiffres hexadécimaux pour
+# SDCC 4.2 (« ␣␣␣␣␣␣002021 »), 8 pour des versions plus récentes, par exemple
+# sous Windows (« ␣␣␣␣000031F7 ») ; une marge courte la distingue d'un numéro de
+# ligne seul, précédé d'une longue marge
+ADDR = r" {1,8}([0-9A-F]{4,8})\s+"
+
+
 def _line_symbols(rst_text, source_name):
     """LN_n : adresse de la première instruction de la ligne n du source."""
     out, pending = {}, None
@@ -142,7 +149,7 @@ def _line_symbols(rst_text, source_name):
         if m and os.path.basename(m.group(1)) == source_name:
             pending = int(m.group(2))
             continue
-        a = re.match(r"\s+([0-9A-F]{6})\s", line)
+        a = re.match(ADDR, line)
         if a and pending is not None:
             out.setdefault("LN_%d" % pending, int(a.group(1), 16))
             pending = None
@@ -158,7 +165,7 @@ def _labels(rst_text):
         if m:
             area, last = m.group(1), None
             continue
-        m = re.match(r"\s+([0-9A-F]{6})\s+\d+\s+_(\w+)::?\s*$", line)
+        m = re.match(ADDR + r"\d+\s+_(\w+)::?\s*$", line)
         if m:
             last = (m.group(2), int(m.group(1), 16))
             labels.setdefault(last[0], last[1])

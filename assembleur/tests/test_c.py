@@ -35,6 +35,27 @@ def run(prog, keys="", lines=(), steps=20_000_000):
     return m
 
 
+class TestListing(unittest.TestCase):
+    def test_both_sdcc_listing_formats(self):
+        # adresses sur 6 chiffres (SDCC 4.2, Linux) ou 8 (SDCC 4.6, Windows) ; un
+        # numéro de ligne de 4 chiffres, après une longue marge, n'est pas une adresse
+        for addr in ("002C17", "00002C17"):
+            pad = " " * (12 - len(addr))
+            rst = "\n".join([
+                "                         %s  1060 \tC$p.qc$14$0_0$62\t= ." % ("0" * len(addr)),
+                "                                   1061 ;C:/x/p.qc:14: static real f(real x)",
+                "                                   1062 ; Function f",
+                pad + addr + "                       1063 _f:",
+                pad + addr + " DD E5            [15]  1064 \tpush\tix",
+                "                                   1065 \t.area _DATA",
+                pad + "003F20" + "                       1066 _total:",
+                pad + "003F20" + "                       1067 \t.ds 2"])
+            self.assertEqual(ccomp._line_symbols(rst, "p.qc"), {"LN_14": 0x2C17})
+            labels, variables = ccomp._labels(rst)
+            self.assertEqual(labels["f"], 0x2C17)
+            self.assertEqual(variables, [("total", 0x3F20, 2)])
+
+
 @needs
 class TestC(unittest.TestCase):
     def test_printf_globals_and_return_to_basic(self):
